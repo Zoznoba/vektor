@@ -18,3 +18,6 @@ dist/
 # IDE
 .vscode/
 .idea/
+
+# Контекст Claude Code — локальный, в репозиторий не коммитим
+CLAUDE.md
