@@ -10,6 +10,9 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    jwt_secret_key: str = "dev-token-need-change"
+    access_token_expire_minutes: int = 60 * 24
+
     app_name: str = "Платформа Вектор API"
     app_version: str = "0.1.0"
     environment: str = "local"

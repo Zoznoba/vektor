@@ -10,6 +10,9 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0",
     "alembic>=1.14",
     "asyncpg>=0.30",
+    "pwdlib[argon2]>=0.3.0",
+    "pyjwt>=2.13.0",
+    "pydantic[email]>=2.13.4",
 ]
 
 [dependency-groups]
@@ -35,6 +38,7 @@ pythonpath = ["src"]
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
