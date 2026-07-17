@@ -1,0 +1,17 @@
+.progress {
+  height: 7px;
+  background: var(--fog);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+
+.progress > div {
+  height: 100%;
+  background: var(--lime);
+  border-radius: var(--r-pill);
+  transition: width 0.3s ease;
+}
+
+.progress--blue > div {
+  background: var(--blue);
+}

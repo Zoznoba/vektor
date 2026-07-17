@@ -1,0 +1,54 @@
+.app-topbar {
+  height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  border-bottom: 0.5px solid var(--border);
+  background: var(--surface);
+}
+
+.app-topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-topbar__brand img {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.app-topbar__name {
+  font-family: var(--font-d);
+  font-size: 15px;
+  line-height: 1.1;
+}
+
+.app-topbar__role {
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.app-topbar__user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-topbar__who {
+  text-align: right;
+}
+
+.app-topbar__who-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.app-topbar__who-role {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}

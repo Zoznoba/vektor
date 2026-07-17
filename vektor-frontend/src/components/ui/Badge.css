@@ -1,0 +1,28 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+}
+
+.badge-lime {
+  background: var(--lime-tint);
+  color: var(--lime-ink);
+}
+
+.badge-blue {
+  background: var(--blue-tint);
+  color: var(--blue-ink);
+}
+
+.badge-amber {
+  background: var(--amber-tint);
+  color: var(--amber-ink);
+}
+
+.badge-red {
+  background: var(--red-tint);
+  color: var(--red-ink);
+}

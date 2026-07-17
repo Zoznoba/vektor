@@ -1,0 +1,43 @@
+.btn {
+  font-family: var(--font-b);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 11px 20px;
+  border-radius: var(--r-pill);
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: opacity 0.15s ease;
+}
+
+.btn:hover {
+  opacity: 0.85;
+}
+
+.btn-primary {
+  background: var(--lime);
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.btn-secondary {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--ink);
+  border-radius: var(--r-sm);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--blue-ink);
+  padding: 11px 4px;
+  border-radius: 0;
+}
+
+.btn-dark {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
