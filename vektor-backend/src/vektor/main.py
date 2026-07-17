@@ -20,11 +20,7 @@ def create_app() -> FastAPI:
     Роутеры модулей будут подключаться здесь по мере появления
     (Этап 2: auth + users, дальше competencies, assessments и т.д.).
     """
-    app = FastAPI(
-        title=settings.app_name,
-        version=settings.app_version,
-        lifespan=lifespan
-    )
+    app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
 
     @app.get("/health", tags=["system"])
     async def health() -> dict[str, str]:
@@ -33,8 +29,7 @@ def create_app() -> FastAPI:
                 await session.execute(text("SELECT 1"))
         except Exception:
             return JSONResponse(
-                status_code=503,
-                content={"status": "error", "database": "unavailable"}
+                status_code=503, content={"status": "error", "database": "unavailable"}
             )
         return {"status": "ok"}
 
