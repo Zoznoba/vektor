@@ -6,6 +6,7 @@ from sqlalchemy import text
 
 from vektor.core.config import settings
 from vektor.core.database import async_session_factory, engine
+from vektor.modules.auth.router import router as auth_router
 
 
 @asynccontextmanager
@@ -15,11 +16,6 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    """Фабрика приложения.
-
-    Роутеры модулей будут подключаться здесь по мере появления
-    (Этап 2: auth + users, дальше competencies, assessments и т.д.).
-    """
     app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
 
     @app.get("/health", tags=["system"])
@@ -37,3 +33,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+app.include_router(auth_router)
