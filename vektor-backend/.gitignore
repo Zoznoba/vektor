@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# uv / venv
+.venv/
+
+# Тесты и линтеры
+.pytest_cache/
+.ruff_cache/
+
+# Локальное окружение
+.env
+
+# IDE
+.vscode/
+.idea/

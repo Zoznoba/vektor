@@ -1,0 +1,44 @@
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+
+from vektor.core.config import settings
+from vektor.core.database import async_session_factory, engine
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await engine.dispose()
+
+
+def create_app() -> FastAPI:
+    """Фабрика приложения.
+
+    Роутеры модулей будут подключаться здесь по мере появления
+    (Этап 2: auth + users, дальше competencies, assessments и т.д.).
+    """
+    app = FastAPI(
+        title=settings.app_name,
+        version=settings.app_version,
+        lifespan=lifespan
+    )
+
+    @app.get("/health", tags=["system"])
+    async def health() -> dict[str, str]:
+        try:
+            async with async_session_factory() as session:
+                await session.execute(text("SELECT 1"))
+        except Exception:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "error", "database": "unavailable"}
+            )
+        return {"status": "ok"}
+
+    return app
+
+
+app = create_app()
