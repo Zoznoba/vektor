@@ -7,6 +7,7 @@ from sqlalchemy import text
 from vektor.core.config import settings
 from vektor.core.database import async_session_factory, engine
 from vektor.modules.auth.router import router as auth_router
+from vektor.modules.users.router import router as users_router
 
 
 @asynccontextmanager
@@ -34,3 +35,4 @@ def create_app() -> FastAPI:
 
 app = create_app()
 app.include_router(auth_router)
+app.include_router(users_router)
