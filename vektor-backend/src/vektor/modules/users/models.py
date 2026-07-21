@@ -18,7 +18,11 @@ class User(Base):
 
     full_name: Mapped[str] = mapped_column(String(255))
 
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole, native_enum=False, length=20))
+    role: Mapped[UserRole] = mapped_column(
+        # values_callable: хранить в БД значения ("student"), а не имена ("STUDENT") —
+        # единый формат с API-контрактом и будущим импортом (Этап 6).
+        Enum(UserRole, native_enum=False, length=20, values_callable=lambda e: [m.value for m in e])
+    )
 
     is_active: Mapped[bool] = mapped_column(default=True)
 
