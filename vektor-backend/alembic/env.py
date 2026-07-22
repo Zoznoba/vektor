@@ -6,6 +6,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import vektor.modules.competencies.models  # noqa: F401
 import vektor.modules.users.models  # noqa: F401
 from vektor.core.config import settings
 from vektor.core.database import Base
