@@ -1,5 +1,3 @@
-# HTTP-слой auth. Тонкий: распаковать вход → вызвать service → упаковать выход.
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
