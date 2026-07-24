@@ -56,8 +56,6 @@ def require_role(*allowed: UserRole):
     async def checker(user: User = Depends(get_current_user)) -> User:
         if user.role in allowed:
             return user
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Not enough permissions")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
 
     return checker
