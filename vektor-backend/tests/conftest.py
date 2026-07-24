@@ -88,3 +88,35 @@ async def client(db_engine):
 async def register_user(client: AsyncClient) -> dict[str, str]:
     await client.post("/auth/register", json=REGISTER_DATA)
     return {"email": REGISTER_DATA["email"], "password": REGISTER_DATA["password"]}
+
+
+@pytest.fixture
+async def admin_headers(client: AsyncClient) -> dict[str, str]:
+    """Регистрирует админа и возвращает готовый заголовок Authorization.
+
+    Email намеренно отличается от REGISTER_DATA — иначе тест, где в одном
+    прогоне участвуют и обычный пользователь, и админ, столкнётся
+    с EmailAlreadyRegistered (в тестовой БД email по-прежнему уникален).
+    """
+    admin_data = {
+        "email": "admin@vektor.ru",
+        "password": "password123",
+        "full_name": "Админ Админов",
+        "role": "admin",
+    }
+    await client.post("/auth/register", json=admin_data)
+    login = await client.post(
+        "/auth/login",
+        json={"email": admin_data["email"], "password": admin_data["password"]},
+    )
+    token = login.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+async def existing_class(client: AsyncClient, admin_headers: dict[str, str]) -> dict:
+    """Готовый класс (создан через реальный API) + заголовки админа под ключом _headers."""
+    response = await client.post(
+        "/classes", json={"grade": 7, "section": "a"}, headers=admin_headers
+    )
+    return {**response.json(), "_headers": admin_headers}
