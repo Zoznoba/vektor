@@ -1,14 +1,18 @@
 .btn {
   font-family: var(--font-b);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 14px;
-  padding: 11px 20px;
-  border-radius: var(--r-pill);
-  border: 1.5px solid transparent;
+  padding: 10px 20px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  white-space: nowrap;
   transition: opacity 0.15s ease;
 }
 
@@ -16,28 +20,43 @@
   opacity: 0.85;
 }
 
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .btn-primary {
-  background: var(--lime);
-  border-color: var(--ink);
-  color: var(--ink);
+  background: var(--blue);
+  border-color: var(--blue);
+  color: var(--surface);
 }
 
 .btn-secondary {
-  background: transparent;
+  background: var(--surface);
   border-color: var(--border-strong);
   color: var(--ink);
-  border-radius: var(--r-sm);
 }
 
 .btn-ghost {
   background: transparent;
+  border-color: transparent;
   color: var(--blue-ink);
-  padding: 11px 4px;
-  border-radius: 0;
+  padding: 10px 4px;
 }
 
 .btn-dark {
   background: var(--ink);
-  color: var(--paper);
+  color: var(--surface);
   border-color: var(--ink);
+}
+
+.btn-danger {
+  background: var(--surface);
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.btn-block {
+  width: 100%;
+  padding: 12px 20px;
 }
