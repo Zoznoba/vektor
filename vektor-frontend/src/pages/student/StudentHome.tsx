@@ -4,19 +4,30 @@ import { InfoBanner } from '../../components/dashboard/InfoBanner';
 import { Panel } from '../../components/ui/Panel';
 import { SurveyTaskCard } from '../../components/dashboard/SurveyTaskCard';
 import { ResultCard } from '../../components/dashboard/ResultCard';
+import { useAuth } from '../../auth/AuthContext';
+import { ROLE_LABELS } from '../../types/auth';
 import {
   mockCompletedResults,
   mockPendingSurveys,
   mockStudent,
 } from '../../data/mockStudentDashboard';
 
+/** «Иванова Полина» → «Полина»; если слово одно — оно и есть имя. */
+function firstNameOf(fullName: string): string {
+  const words = fullName.trim().split(/\s+/);
+  return words[1] ?? words[0];
+}
+
 /**
  * Экран 1 из ТЗ (п. 4.7) — «Личный кабинет ученика».
- * Сейчас на голых моках; когда появится API, mockStudentDashboard.ts
- * заменяется на хук с реальным запросом — типы (src/types/dashboard.ts)
- * и сами компоненты ниже не меняются.
+ * Пользователь — реальный (/users/me). Данные дашборда (анкеты, результаты)
+ * пока на моках: их API появится на этапах 4–5 бэкенда; класс и учебный год
+ * тоже мок — /users/me их пока не отдаёт.
  */
 export function StudentHome() {
+  const { user, logout } = useAuth();
+  if (!user) return null; // под RequireAuth недостижимо, но успокаивает типы
+
   const pendingCount = mockPendingSurveys.length;
   const nearestDeadlineLabel = '20 июня'; // TODO: брать минимальный deadline из реальных tests_360
 
@@ -39,10 +50,11 @@ export function StudentHome() {
       navItems={STUDENT_NAV_ITEMS}
       activeNavKey="home"
       onNavigate={handleNavigate}
-      userFullName={mockStudent.fullName}
-      userRoleLabel={mockStudent.className}
+      userFullName={user.full_name}
+      userRoleLabel={ROLE_LABELS[user.role]}
+      onLogout={logout}
     >
-      <h2>Добрый день, {mockStudent.firstName}</h2>
+      <h2>Добрый день, {firstNameOf(user.full_name)}</h2>
       <div className="app-main__sub">
         {mockStudent.className} · {mockStudent.academicYear}
       </div>

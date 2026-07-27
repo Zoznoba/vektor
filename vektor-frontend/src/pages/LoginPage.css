@@ -1,0 +1,124 @@
+.login-page {
+  display: flex;
+  min-height: 100vh;
+  background: var(--surface);
+}
+
+/* левая брендовая панель с фирменным градиентом */
+.login-brand {
+  flex: 1.05;
+  background: var(--grad);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 40px;
+  text-align: center;
+}
+
+.login-brand img {
+  height: 96px;
+  width: auto;
+}
+
+.login-brand p {
+  margin: 0;
+  color: var(--surface);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.6;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* правая половина с формой */
+.login-form-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.login-form {
+  width: 100%;
+  max-width: 340px;
+}
+
+.login-form h1 {
+  font-size: 26px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.login-form__desc {
+  font-size: 14px;
+  color: var(--ink-soft);
+  margin: 0 0 28px;
+}
+
+.login-field {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.login-field span {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  margin-bottom: 6px;
+}
+
+.login-field input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  font-family: var(--font-b);
+  font-size: 14.5px;
+  background: var(--soft);
+  color: var(--ink);
+}
+
+.login-field input::placeholder {
+  color: var(--ink-faint);
+}
+
+.login-field input:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 0;
+  border-color: transparent;
+}
+
+.login-error {
+  background: var(--red-tint);
+  color: var(--red-ink);
+  font-size: 13.5px;
+  border-radius: var(--r-sm);
+  padding: 10px 14px;
+  margin-bottom: 16px;
+}
+
+.login-note {
+  margin: 28px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  text-align: center;
+  line-height: 1.6;
+}
+
+@media (max-width: 720px) {
+  .login-page {
+    flex-direction: column;
+  }
+
+  .login-brand {
+    flex: none;
+    padding: 48px 24px;
+  }
+
+  .login-brand img {
+    height: 64px;
+  }
+}
