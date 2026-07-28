@@ -21,5 +21,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://vektor:vektor@localhost:5432/vektor"
     redis_url: str = "redis://localhost:6379/0"
 
+    admin_email: str | None = None
+    admin_password: str | None = None
+
 
 settings = Settings()

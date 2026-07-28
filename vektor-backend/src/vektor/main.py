@@ -9,11 +9,14 @@ from vektor.core.database import async_session_factory, engine
 from vektor.modules.auth.router import router as auth_router
 from vektor.modules.classes.router import router as classes_router
 from vektor.modules.competencies.router import router as competency_router
+from vektor.modules.users.bootstrap import ensure_admin_exists
 from vektor.modules.users.router import router as users_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    async with async_session_factory() as session:
+        await ensure_admin_exists(session)
     yield
     await engine.dispose()
 
