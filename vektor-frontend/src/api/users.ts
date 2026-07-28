@@ -20,3 +20,14 @@ export interface CreateUserIn {
 export function createUser(data: CreateUserIn): Promise<User> {
   return apiRequest<User>('/auth/register', { method: 'POST', body: data });
 }
+
+export function fetchChildren(parentId: number): Promise<User[]> {
+  return apiRequest<User[]>(`/users/${parentId}/children`);
+}
+
+export function assignChildren(parentId: number, childIds: number[]): Promise<unknown> {
+  return apiRequest(`/users/${parentId}/children`, {
+    method: 'POST',
+    body: { child_ids: childIds },
+  });
+}

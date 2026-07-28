@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
@@ -8,11 +8,11 @@ import { Avatar } from '../../components/ui/Avatar';
 import { Modal } from '../../components/ui/Modal';
 import { Icon } from '../../components/icons/Icon';
 import { useApi } from '../../hooks/useApi';
-import { fetchUsers, createUser } from '../../api/users';
+import { fetchUsers, createUser, fetchChildren, assignChildren } from '../../api/users';
 import { fetchClasses } from '../../api/classes';
 import { ApiError } from '../../api/client';
 import { ROLE_LABELS } from '../../types/auth';
-import type { UserRole } from '../../types/auth';
+import type { User, UserRole } from '../../types/auth';
 import { classLabel } from '../../types/school';
 import type { SchoolClass } from '../../types/school';
 import './admin.css';
@@ -181,6 +181,9 @@ export function AdminUsersPage() {
               <span>{selected.is_active ? 'Активен' : 'Неактивен'}</span>
             </div>
           </div>
+          {selected.role === 'parent' && (
+            <ParentChildrenSection key={selected.id} parent={selected} allUsers={allUsers} />
+          )}
         </Panel>
       )}
 
@@ -278,6 +281,136 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
           </Button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+function ParentChildrenSection({ parent, allUsers }: { parent: User; allUsers: User[] }) {
+  const [children, setChildren] = useState<User[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showAssign, setShowAssign] = useState(false);
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchChildren(parent.id)
+      .then((list) => !cancelled && setChildren(list))
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof ApiError ? err.message : 'Не удалось загрузить детей');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [parent.id, version]);
+
+  const linkedIds = new Set((children ?? []).map((c) => c.id));
+  const candidates = allUsers.filter((u) => u.role === 'student' && !linkedIds.has(u.id));
+
+  return (
+    <div className="children-section">
+      <div className="children-section__head">
+        <span>Дети</span>
+        <Button variant="secondary" onClick={() => setShowAssign(true)}>
+          Привязать детей
+        </Button>
+      </div>
+
+      {error && <div className="form-error">{error}</div>}
+
+      {children === null ? (
+        <div className="admin-empty">Загрузка…</div>
+      ) : children.length === 0 ? (
+        <div className="admin-empty">Дети пока не привязаны</div>
+      ) : (
+        <div className="profile-rows">
+          {children.map((c) => (
+            <div key={c.id} className="profile-row">
+              <span>{c.full_name}</span>
+              <span>{c.email}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showAssign && (
+        <AssignChildrenModal
+          parent={parent}
+          candidates={candidates}
+          onClose={() => setShowAssign(false)}
+          onAssigned={() => {
+            setShowAssign(false);
+            setVersion((v) => v + 1);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function AssignChildrenModal({
+  parent,
+  candidates,
+  onClose,
+  onAssigned,
+}: {
+  parent: User;
+  candidates: User[];
+  onClose: () => void;
+  onAssigned: () => void;
+}) {
+  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const toggle = (id: number) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSubmit = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await assignChildren(parent.id, [...checked]);
+      onAssigned();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось привязать детей');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal title={`Дети — ${parent.full_name}`} onClose={onClose}>
+      {candidates.length === 0 ? (
+        <div className="admin-empty">Все ученики уже привязаны к этому родителю</div>
+      ) : (
+        <div className="assign-list">
+          {candidates.map((u) => (
+            <label key={u.id} className="assign-item">
+              <input type="checkbox" checked={checked.has(u.id)} onChange={() => toggle(u.id)} />
+              <span className="assign-item__name">{u.full_name}</span>
+              <span className="assign-item__email">{u.email}</span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {error && <div className="form-error">{error}</div>}
+
+      <div className="modal__actions">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Отмена
+        </Button>
+        <Button onClick={handleSubmit} disabled={submitting || checked.size === 0}>
+          {submitting ? 'Сохраняем…' : `Привязать (${checked.size})`}
+        </Button>
+      </div>
     </Modal>
   );
 }

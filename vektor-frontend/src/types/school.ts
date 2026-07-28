@@ -8,6 +8,7 @@ export interface SchoolClass {
   id: number;
   grade: number;
   section: string;
+  homeroom_teacher: User | null;
   students: User[];
   teachers: User[];
 }

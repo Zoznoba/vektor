@@ -6,7 +6,13 @@ import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import { Icon } from '../../components/icons/Icon';
 import { useApi } from '../../hooks/useApi';
-import { fetchClasses, createClass, assignStudents, assignTeachers } from '../../api/classes';
+import {
+  fetchClasses,
+  createClass,
+  assignStudents,
+  assignTeachers,
+  assignHomeroom,
+} from '../../api/classes';
 import { fetchUsers } from '../../api/users';
 import { ApiError } from '../../api/client';
 import { classLabel } from '../../types/school';
@@ -21,6 +27,7 @@ export function AdminClassesPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [assignRole, setAssignRole] = useState<'student' | 'teacher' | null>(null);
+  const [showHomeroom, setShowHomeroom] = useState(false);
 
   const sorted = useMemo(
     () =>
@@ -69,9 +76,9 @@ export function AdminClassesPage() {
                 <div className="class-card__name">{classLabel(cls)}</div>
                 <div className="class-card__count">{studentsCountLabel(cls.students.length)}</div>
                 <div className="class-card__teachers">
-                  {cls.teachers.length > 0
-                    ? cls.teachers.map((t) => t.full_name).join(', ')
-                    : 'Учитель не назначен'}
+                  {cls.homeroom_teacher
+                    ? `Кл. рук.: ${cls.homeroom_teacher.full_name}`
+                    : 'Кл. рук. не назначен'}
                 </div>
               </button>
             ))}
@@ -80,12 +87,13 @@ export function AdminClassesPage() {
           {selected && (
             <Panel title={`Состав класса ${classLabel(selected)}`}>
               <div className="class-detail__teachers">
-                {selected.teachers.length > 0 && (
-                  <span>Учителя: {selected.teachers.map((t) => t.full_name).join(', ')}</span>
-                )}
+                <span>{teachersSummary(selected)}</span>
                 <div className="admin-toolbar__spacer" />
+                <Button variant="secondary" onClick={() => setShowHomeroom(true)}>
+                  Кл. руководитель
+                </Button>
                 <Button variant="secondary" onClick={() => setAssignRole('teacher')}>
-                  Назначить учителя
+                  Добавить учителя
                 </Button>
                 <Button variant="secondary" onClick={() => setAssignRole('student')}>
                   Добавить учеников
@@ -135,6 +143,18 @@ export function AdminClassesPage() {
         />
       )}
 
+      {showHomeroom && selected && (
+        <HomeroomModal
+          schoolClass={selected}
+          allUsers={users.data ?? []}
+          onClose={() => setShowHomeroom(false)}
+          onAssigned={() => {
+            setShowHomeroom(false);
+            classes.reload();
+          }}
+        />
+      )}
+
       {assignRole && selected && (
         <AssignModal
           role={assignRole}
@@ -150,6 +170,17 @@ export function AdminClassesPage() {
       )}
     </AdminShell>
   );
+}
+
+/** «Классный руководитель: X · Также ведут: Y, Z» — как в концепте. */
+function teachersSummary(cls: SchoolClass): string {
+  const homeroom = cls.homeroom_teacher;
+  const others = cls.teachers.filter((t) => t.id !== homeroom?.id);
+  const parts: string[] = [];
+  if (homeroom) parts.push(`Классный руководитель: ${homeroom.full_name}`);
+  else parts.push('Классный руководитель не назначен');
+  if (others.length > 0) parts.push(`Также ведут: ${others.map((t) => t.full_name).join(', ')}`);
+  return parts.join(' · ');
 }
 
 function studentsCountLabel(n: number): string {
@@ -225,6 +256,79 @@ function CreateClassModal({
           </Button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+function HomeroomModal({
+  schoolClass,
+  allUsers,
+  onClose,
+  onAssigned,
+}: {
+  schoolClass: SchoolClass;
+  allUsers: User[];
+  onClose: () => void;
+  onAssigned: () => void;
+}) {
+  const [teacherId, setTeacherId] = useState<number | null>(
+    schoolClass.homeroom_teacher?.id ?? null,
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Кандидат — любой учитель школы: если он ещё не ведёт класс,
+  // бэкенд добавит его в учителя автоматически.
+  const teachers = useMemo(() => allUsers.filter((u) => u.role === 'teacher'), [allUsers]);
+
+  const handleSubmit = async () => {
+    if (teacherId === null) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await assignHomeroom(schoolClass.id, teacherId);
+      onAssigned();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось назначить руководителя');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal title={`Классный руководитель ${classLabel(schoolClass)}`} onClose={onClose}>
+      {teachers.length === 0 ? (
+        <div className="admin-empty">В школе пока нет ни одного учителя</div>
+      ) : (
+        <div className="assign-list">
+          {teachers.map((t) => (
+            <label key={t.id} className="assign-item">
+              <input
+                type="radio"
+                name="homeroom"
+                checked={teacherId === t.id}
+                onChange={() => setTeacherId(t.id)}
+              />
+              <span className="assign-item__name">{t.full_name}</span>
+              <span className="assign-item__email">{t.email}</span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {error && <div className="form-error">{error}</div>}
+
+      <div className="modal__actions">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Отмена
+        </Button>
+        <Button
+          onClick={handleSubmit}
+          disabled={submitting || teacherId === null || teacherId === schoolClass.homeroom_teacher?.id}
+        >
+          {submitting ? 'Сохраняем…' : 'Назначить'}
+        </Button>
+      </div>
     </Modal>
   );
 }

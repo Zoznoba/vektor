@@ -188,6 +188,22 @@
   text-align: right;
 }
 
+/* --- дети родителя в карточке --- */
+.children-section {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.children-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
 /* --- карточки классов --- */
 .class-grid {
   display: grid;

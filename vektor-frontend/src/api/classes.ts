@@ -22,3 +22,10 @@ export function assignTeachers(classId: number, teacherIds: number[]): Promise<S
     body: { teacher_ids: teacherIds },
   });
 }
+
+export function assignHomeroom(classId: number, teacherId: number): Promise<SchoolClass> {
+  return apiRequest<SchoolClass>(`/classes/${classId}/homeroom`, {
+    method: 'PUT',
+    body: { teacher_id: teacherId },
+  });
+}
