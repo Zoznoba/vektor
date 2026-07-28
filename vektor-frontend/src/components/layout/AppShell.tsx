@@ -10,6 +10,7 @@ interface AppShellProps {
   onNavigate?: (key: string) => void;
   userFullName: string;
   userRoleLabel: string;
+  onLogout?: () => void;
   children: ReactNode;
 }
 
@@ -19,11 +20,12 @@ export function AppShell({
   onNavigate,
   userFullName,
   userRoleLabel,
+  onLogout,
   children,
 }: AppShellProps) {
   return (
     <div className="app-shell">
-      <Topbar userFullName={userFullName} userRoleLabel={userRoleLabel} />
+      <Topbar userFullName={userFullName} userRoleLabel={userRoleLabel} onLogout={onLogout} />
       <div className="app-body">
         <Sidebar items={navItems} activeKey={activeNavKey} onNavigate={onNavigate} />
         <main className="app-main">{children}</main>
