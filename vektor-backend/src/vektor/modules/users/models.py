@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum, ForeignKey, String, func
+from sqlalchemy import Column, Enum, ForeignKey, Integer, String, Table, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vektor.core.database import Base
@@ -9,6 +9,18 @@ from vektor.shared.enums import UserRole
 
 if TYPE_CHECKING:
     from vektor.modules.classes.models import SchoolClass
+
+# Association table «родитель — ребёнок». Оба FK смотрят в ОДНУ И ТУ ЖЕ таблицу
+# users — в отличие от teacher_classes (там связь шла в две разные таблицы, и
+# SQLAlchemy сама разбиралась, какой FK к какой стороне относится). Здесь такой
+# автоматики нет: без явных primaryjoin/secondaryjoin в relationship SQLAlchemy
+# не поймёт, где «я родитель», а где «я ребёнок».
+parent_children = Table(
+    "parent_children",
+    Base.metadata,
+    Column("parent_id", Integer, ForeignKey("users.id"), primary_key=True),
+    Column("child_id", Integer, ForeignKey("users.id"), primary_key=True),
+)
 
 
 class User(Base):
@@ -26,8 +38,33 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
+    # foreign_keys обязателен: после появления school_classes.homeroom_teacher_id
+    # между users и school_classes ДВА пути по FK, и SQLAlchemy сама не угадает,
+    # что «мой класс» идёт именно через users.school_class_id.
     school_class_id: Mapped[int | None] = mapped_column(ForeignKey("school_classes.id"))
-    school_class: Mapped["SchoolClass | None"] = relationship(back_populates="students")
+    school_class: Mapped["SchoolClass | None"] = relationship(
+        back_populates="students", foreign_keys=[school_class_id]
+    )
+
+    # «Чтобы попасть ОТ меня К моим детям — найди строки parent_children, где
+    # parent_id == мой id (primaryjoin), затем возьми user.id из их child_id
+    # (secondaryjoin)». lambda откладывает вычисление User.id: на момент этой
+    # строки класс User ещё не определён до конца — мы внутри его тела.
+    children: Mapped[list["User"]] = relationship(
+        secondary=parent_children,
+        primaryjoin=lambda: User.id == parent_children.c.parent_id,
+        secondaryjoin=lambda: User.id == parent_children.c.child_id,
+        back_populates="parents",
+    )
+
+    # Зеркально children: primaryjoin/secondaryjoin меняются местами
+    # («найди строки, где child_id == мой id, возьми их parent_id»).
+    parents: Mapped[list["User"]] = relationship(
+        secondary=parent_children,
+        primaryjoin=lambda: User.id == parent_children.c.child_id,
+        secondaryjoin=lambda: User.id == parent_children.c.parent_id,
+        back_populates="children",
+    )
 
     def __repr__(self) -> str:
         return f"<User id={self.id} email={self.email} role={self.role}>"
