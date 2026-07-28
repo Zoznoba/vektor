@@ -1,0 +1,88 @@
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(46, 42, 43, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+}
+
+.modal {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  padding: 22px 24px;
+  width: 100%;
+  max-width: 440px;
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.modal__head h3 {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.modal__close {
+  background: none;
+  border: none;
+  color: var(--ink-faint);
+  cursor: pointer;
+  display: flex;
+  padding: 4px;
+}
+
+.modal__close:hover {
+  color: var(--ink);
+}
+
+/* поля форм в модалках — единый стиль с логином */
+.form-field {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.form-field > span {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  margin-bottom: 6px;
+}
+
+.form-field input,
+.form-field select {
+  width: 100%;
+  padding: 10px 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  font-family: var(--font-b);
+  font-size: 14px;
+  background: var(--soft);
+  color: var(--ink);
+}
+
+.form-error {
+  background: var(--red-tint);
+  color: var(--red-ink);
+  font-size: 13px;
+  border-radius: var(--r-sm);
+  padding: 9px 13px;
+  margin-bottom: 14px;
+}
+
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
