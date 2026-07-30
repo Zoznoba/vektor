@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import './Badge.css';
 
-type BadgeVariant = 'lime' | 'blue' | 'amber' | 'red';
+type BadgeVariant = 'lime' | 'blue' | 'amber' | 'red' | 'sage' | 'gray';
 
 interface BadgeProps {
   variant?: BadgeVariant;

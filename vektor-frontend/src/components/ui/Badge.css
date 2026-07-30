@@ -26,3 +26,13 @@
   background: var(--red-tint);
   color: var(--red-ink);
 }
+
+.badge-sage {
+  background: var(--sage-tint);
+  color: var(--sage-ink);
+}
+
+.badge-gray {
+  background: var(--fog);
+  color: var(--ink-soft);
+}
