@@ -1,6 +1,3 @@
-# HTTP-слой assessments. Роутер тонкий: валидация схемой, вызов сервиса,
-# маппинг доменных исключений в HTTP. Логики тут нет.
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,11 +22,7 @@ async def create_campaign(
     _admin=Depends(require_role(UserRole.ADMIN)),
 ) -> CampaignOut:
     campaign = await service.create_campaign(
-        db,
-        data.title,
-        data.period,
-        data.opens_at,
-        data.closes_at
+        db, data.title, data.period, data.opens_at, data.closes_at
     )
     return campaign
 
@@ -41,8 +34,14 @@ async def generate_assessments(
     db: AsyncSession = Depends(get_db),
     _admin=Depends(require_role(UserRole.ADMIN)),
 ) -> GenerateResult:
-    # TODO: вызвать service.generate_assessments(db, campaign_id, data.class_ids).
-    #   Он возвращает кортеж (campaign, created) — распакуй и собери
-    #   GenerateResult(created=created, campaign=campaign).
-    #   Оберни в try/except service.CampaignNotFound → HTTPException 404.
-    ...
+    try:
+        assessments = await service.generate_assessments(
+            db, campaign_id, data.class_ids, data.include_peers
+        )
+    except service.CampaignNotFound as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Компания не найдена id: {campaign_id}"
+        ) from err
+
+    campaign, created = assessments
+    return GenerateResult(created=created, campaign=campaign)

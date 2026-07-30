@@ -27,7 +27,7 @@ async def create_campaign(
     opens_at: datetime | None,
     closes_at: datetime | None,
 ) -> Campaign:
-    
+
     campaign = Campaign(
         title=title,
         period=period,
@@ -44,62 +44,80 @@ def build_pairs(
     student_ids: list[int],
     parent_ids_by_student: dict[int, list[int]],
     teacher_ids: list[int],
+    include_peers: bool = False,
 ) -> set[tuple[int, int]]:
     """Чистое доменное ядро: строит множество пар (respondent_id, subject_id)
     для ОДНОГО класса. Без БД — юнит-тестируется на голых числах (срез 4d).
 
     Правила (субъект всегда student):
-      • самооценка:    (s, s)                 для каждого ученика s
-      • одноклассники: (other, s)             для каждого другого ученика класса
+      • самооценка:    (s, s)                 ВСЕГДА, для каждого ученика s
       • родители:      (parent, s)            для каждого родителя ученика s
       • учителя:       (teacher, s)           для каждого учителя класса
+      • одноклассники: (other, s)             ТОЛЬКО если include_peers=True
 
     Возвращаем set — дубли (напр. родитель, который заодно учитель) схлопнутся
     сами, а вызывающий код объединяет пары нескольких классов через |=.
     """
     pairs: set[tuple[int, int]] = set()
-    # TODO: наполни pairs по четырём правилам выше.
-    #   Подсказка: самооценка + одноклассники вместе — это просто «каждый ученик
-    #   класса оценивает каждого» (включая себя). То есть двойной цикл по
-    #   student_ids даёт и (s, s), и (other, s) разом. Родителей и учителей
-    #   добавляешь отдельными циклами. parent_ids_by_student.get(s, []) — на
-    #   случай ученика без привязанных родителей.
+
+    for s in student_ids:
+        pairs.add((s, s))
+        for p in parent_ids_by_student.get(s, []):
+            pairs.add((p, s))
+        for t in teacher_ids:
+            pairs.add((t, s))
+
+    if include_peers:
+        for i, r in enumerate(student_ids):
+            for s in student_ids[i + 1 :]:
+                pairs.add((r, s))
+                pairs.add((s, r))
+
     return pairs
 
 
 async def generate_assessments(
-    db: AsyncSession, campaign_id: int, class_ids: list[int]
+    db: AsyncSession, campaign_id: int, class_ids: list[int], include_peers: bool = False
 ) -> tuple[Campaign, int]:
     """Оркестрация: грузит классы из БД, строит матрицу через build_pairs,
     идемпотентно вставляет НОВЫЕ анкеты, переводит кампанию в ACTIVE.
     Возвращает (campaign, сколько_новых_создано)."""
 
-    # TODO 1: достать кампанию. db.get(Campaign, campaign_id); если None → raise CampaignNotFound.
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise CampaignNotFound()
 
-    # TODO 2: загрузить классы со студентами (+ их родителями) и учителями ОДНИМ запросом.
-    #   select(SchoolClass).where(SchoolClass.id.in_(class_ids)).options(
-    #       selectinload(SchoolClass.students).selectinload(User.parents),
-    #       selectinload(SchoolClass.teachers),
-    #   )
-    #   Иначе доступ к cls.students[i].parents в async-коде даст MissingGreenlet
-    #   (ленивая догрузка вне greenlet) — тот самый урок Этапа 3.5.
+    classes_sample = await db.execute(
+        select(SchoolClass)
+        .where(SchoolClass.id.in_(class_ids))
+        .options(
+            selectinload(SchoolClass.students).selectinload(User.parents),
+            selectinload(SchoolClass.teachers),
+        )
+    )
 
-    # TODO 3: собрать все пары по всем классам.
-    #   all_pairs: set[tuple[int, int]] = set()
-    #   для каждого cls: вытащить student_ids, parent_ids_by_student
-    #   ({s.id: [p.id for p in s.parents] ...}), teacher_ids и
-    #   all_pairs |= build_pairs(...).
+    all_pairs: set[tuple[int, int]] = set()
 
-    # TODO 4: идемпотентность — какие пары уже есть в этой кампании.
-    #   select(Assessment.respondent_id, Assessment.subject_id).where(
-    #       Assessment.campaign_id == campaign_id)
-    #   result.all() вернёт список кортежей (respondent_id, subject_id) —
-    #   заверни в set и вычти из all_pairs, чтобы не нарушить UniqueConstraint.
+    for cls in classes_sample.scalars():
+        student_ids = [s.id for s in cls.students]
+        parent_ids_by_student = {s.id: [p.id for p in s.parents] for s in cls.students}
+        teacher_ids = [t.id for t in cls.teachers]
 
-    # TODO 5: db.add_all([Assessment(campaign_id=..., respondent_id=r, subject_id=s)
-    #   for r, s in new_pairs]).
+        all_pairs |= build_pairs(student_ids, parent_ids_by_student, teacher_ids, include_peers)
 
-    # TODO 6: перевести кампанию в активную: campaign.status = CampaignStatus.ACTIVE.
-    #   await db.commit(); await db.refresh(campaign).
-    #   Вернуть (campaign, len(new_pairs)).
-    ...
+    existing_pairs = await db.execute(
+        select(Assessment.respondent_id, Assessment.subject_id).where(
+            Assessment.campaign_id == campaign_id
+        )
+    )
+
+    new_pairs = all_pairs - set(existing_pairs.all())
+    db.add_all(
+        [Assessment(campaign_id=campaign_id, respondent_id=r, subject_id=s) for r, s in new_pairs]
+    )
+
+    campaign.status = CampaignStatus.ACTIVE
+    await db.commit()
+    await db.refresh(campaign)
+
+    return campaign, len(new_pairs)

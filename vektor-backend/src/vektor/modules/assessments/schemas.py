@@ -9,7 +9,6 @@ from vektor.shared.enums import CampaignStatus
 
 
 class CampaignCreate(BaseModel):
-    
     title: str = Field(min_length=1, max_length=255)
     period: str = Field(min_length=1, max_length=20)
     opens_at: datetime | None = None
@@ -29,14 +28,12 @@ class CampaignOut(BaseModel):
 
 
 class GenerateIn(BaseModel):
-    # TODO: какие классы участвуют в раунде.
-    #   class_ids: list[int] = Field(min_length=1)  (пустой список бессмыслен)
-    ...
+    class_ids: list[int] = Field(min_length=1)
+    # Оценивают ли одноклассники друг друга. По умолчанию нет — только
+    # самооценка + учителя + родители. True добавляет пиров (student→classmate).
+    include_peers: bool = False
 
 
 class GenerateResult(BaseModel):
-    # TODO: что вернём после генерации.
-    #   created: int          — сколько НОВЫХ анкет создано (идемпотентность: повтор → 0)
-    #   campaign: CampaignOut — кампания после генерации (уже в статусе active)
-    ...
-    
+    created: int
+    campaign: CampaignOut
