@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from vektor.modules.classes.models import SchoolClass
 from vektor.modules.users.models import User
+from vektor.shared.enums import UserRole
 
 
 class ClassAlreadyExists(Exception):
@@ -25,6 +26,10 @@ class TeacherAlreadyAssigned(Exception):
     """Один или несколько учителей уже привязаны к этому классу."""
 
 
+class WrongRole(Exception):
+    """Роль пользователя не подходит для операции."""
+
+
 async def create_class(db: AsyncSession, grade: int, section: str) -> SchoolClass:
     same_exist = await db.execute(
         select(SchoolClass).where(SchoolClass.grade == grade, SchoolClass.section == section)
@@ -35,14 +40,16 @@ async def create_class(db: AsyncSession, grade: int, section: str) -> SchoolClas
 
     db.add(school_class)
     await db.commit()
-    await db.refresh(school_class, attribute_names=["students", "teachers"])
+    await db.refresh(school_class, attribute_names=["students", "teachers", "homeroom_teacher"])
     return school_class
 
 
 async def all_classes(db: AsyncSession) -> list[SchoolClass]:
     result = await db.execute(
         select(SchoolClass).options(
-            selectinload(SchoolClass.teachers), selectinload(SchoolClass.students)
+            selectinload(SchoolClass.teachers),
+            selectinload(SchoolClass.students),
+            selectinload(SchoolClass.homeroom_teacher),
         )
     )
     return result.scalars().all()
@@ -66,7 +73,7 @@ async def assign_students(db: AsyncSession, class_id: int, student_ids: list[int
         student.school_class_id = class_id
 
     await db.commit()
-    await db.refresh(school_class, attribute_names=["students", "teachers"])
+    await db.refresh(school_class, attribute_names=["students", "teachers", "homeroom_teacher"])
     return school_class
 
 
@@ -94,5 +101,33 @@ async def assign_teachers(db: AsyncSession, class_id: int, teacher_ids: list[int
 
     school_class.teachers.extend(teachers)
     await db.commit()
-    await db.refresh(school_class, attribute_names=["students", "teachers"])
+    await db.refresh(school_class, attribute_names=["students", "teachers", "homeroom_teacher"])
+    return school_class
+
+
+async def assign_homeroom(db: AsyncSession, class_id: int, teacher_id: int) -> SchoolClass:
+    """Назначить классного руководителя. Кл.рук — всегда один из учителей
+    класса: если он ещё не в teachers, добавляется туда автоматически."""
+
+    school_class_query = await db.execute(
+        select(SchoolClass)
+        .where(SchoolClass.id == class_id)
+        .options(selectinload(SchoolClass.teachers))
+    )
+    school_class = school_class_query.scalar_one_or_none()
+    if school_class is None:
+        raise ClassNotFound
+
+    teacher = await db.get(User, teacher_id)
+    if teacher is None:
+        raise UserNotFound(f"Пользователь {teacher_id} не найден")
+    if teacher.role != UserRole.TEACHER:
+        raise WrongRole(f"Пользователь {teacher_id} — {teacher.role}, а не учитель")
+
+    if teacher.id not in {t.id for t in school_class.teachers}:
+        school_class.teachers.append(teacher)
+    school_class.homeroom_teacher_id = teacher.id
+
+    await db.commit()
+    await db.refresh(school_class, attribute_names=["students", "teachers", "homeroom_teacher"])
     return school_class

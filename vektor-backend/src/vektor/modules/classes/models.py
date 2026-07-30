@@ -29,7 +29,15 @@ class SchoolClass(Base):
     grade: Mapped[int]
     section: Mapped[str] = mapped_column(String(10))
 
-    students: Mapped[list["User"]] = relationship(back_populates="school_class")
+    # Классный руководитель — один из учителей класса (сервис гарантирует,
+    # что при назначении он попадает и в teachers). foreign_keys явно: между
+    # users и school_classes два FK-пути (см. комментарий в users/models.py).
+    homeroom_teacher_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    homeroom_teacher: Mapped["User | None"] = relationship(foreign_keys=[homeroom_teacher_id])
+
+    students: Mapped[list["User"]] = relationship(
+        back_populates="school_class", foreign_keys="User.school_class_id"
+    )
     teachers: Mapped[list["User"]] = relationship(secondary=teacher_classes)
 
     def __repr__(self) -> str:

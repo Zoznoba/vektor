@@ -9,6 +9,7 @@ class SchoolClassOut(BaseModel):
     id: int
     grade: int
     section: str
+    homeroom_teacher: UserOut | None
     students: list[UserOut]
     teachers: list[UserOut]
 
@@ -24,3 +25,7 @@ class AssignStudentsIn(BaseModel):
 
 class AssignTeachersIn(BaseModel):
     teacher_ids: list[int]
+
+
+class AssignHomeroomIn(BaseModel):
+    teacher_id: int
