@@ -4,15 +4,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from vektor.core.database import get_db
 from vektor.modules.assessments import service
 from vektor.modules.assessments.schemas import (
+    AssessmentDetailOut,
     CampaignCreate,
     CampaignOut,
     GenerateIn,
     GenerateResult,
 )
-from vektor.modules.auth.dependencies import require_role
+from vektor.modules.auth.dependencies import get_current_user, require_role
+from vektor.modules.users.models import User
 from vektor.shared.enums import UserRole
 
 router = APIRouter(prefix="/campaigns", tags=["assessments"])
+
+# Отдельный роутер: прохождение анкет живёт под /assessments, а не /campaigns.
+assessment_router = APIRouter(prefix="/assessments", tags=["assessments"])
 
 
 @router.post("", response_model=CampaignOut, status_code=status.HTTP_201_CREATED)
@@ -45,3 +50,18 @@ async def generate_assessments(
 
     campaign, created = assessments
     return GenerateResult(created=created, campaign=campaign)
+
+
+@assessment_router.get("/{assessment_id}", response_model=AssessmentDetailOut)
+async def get_assessment(
+    assessment_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> AssessmentDetailOut:
+    # Любой авторизованный может ПОПРОБОВАТЬ открыть, но сервис пустит только
+    # владельца-респондента (не required_role — тут проверка не по роли, а по
+    # принадлежности анкеты).
+    # TODO: вызвать service.get_assessment_detail(db, assessment_id, user.id).
+    #   except service.AssessmentNotFound → 404;
+    #   except service.NotAssessmentOwner → 403.
+    ...

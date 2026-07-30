@@ -12,12 +12,21 @@ from sqlalchemy.orm import selectinload
 
 from vektor.modules.assessments.models import Assessment, Campaign
 from vektor.modules.classes.models import SchoolClass
+from vektor.modules.competencies.models import Question
 from vektor.modules.users.models import User
 from vektor.shared.enums import CampaignStatus
 
 
 class CampaignNotFound(Exception):
     """Кампания с таким id не найдена."""
+
+
+class AssessmentNotFound(Exception):
+    """Анкета с таким id не найдена."""
+
+
+class NotAssessmentOwner(Exception):
+    """Пользователь пытается открыть/заполнить не свою анкету."""
 
 
 async def create_campaign(
@@ -121,3 +130,50 @@ async def generate_assessments(
     await db.refresh(campaign)
 
     return campaign, len(new_pairs)
+
+
+def is_question_visible(is_conditional: bool, subject_grade: int | None) -> bool:
+    """Чистое доменное правило: показывать ли вопрос в анкете про субъекта.
+
+    Базовые вопросы (is_conditional=False) — всегда. Условные — только если
+    класс субъекта 9–11. Если класс неизвестен (subject_grade=None) — прячем.
+    Юнит-тестируется без БД.
+    """
+    if is_conditional and 9 <= subject_grade <= 11:
+        return False
+    return True
+
+
+async def get_assessment_detail(db: AsyncSession, assessment_id: int, current_user_id: int) -> dict:
+    """Собрать анкету для прохождения: субъект + видимые вопросы с уже данными
+    ответами. Видит только сам респондент (владелец анкеты)."""
+    
+    
+
+    # TODO 1: загрузить анкету с нужными связями ОДНИМ запросом.
+    #   select(Assessment).where(Assessment.id == assessment_id).options(
+    #       selectinload(Assessment.subject).selectinload(User.school_class),
+    #       selectinload(Assessment.answers),
+    #   )
+    #   scalar_one_or_none(); если None → raise AssessmentNotFound.
+
+    # TODO 2: авторизация — assessment.respondent_id == current_user_id,
+    #   иначе raise NotAssessmentOwner. (Чужую анкету открывать нельзя.)
+
+    # TODO 3: класс субъекта → грейд.
+    #   subject_grade = assessment.subject.school_class.grade
+    #                   if assessment.subject.school_class else None
+
+    # TODO 4: все вопросы справочника, по порядку.
+    #   select(Question).order_by(Question.competency_id, Question.order)
+
+    # TODO 5: уже данные ответы: {answer.question_id: answer.value for ... in assessment.answers}
+
+    # TODO 6: собрать список видимых вопросов, применяя is_question_visible(
+    #   q.is_conditional, subject_grade). Для каждого видимого — dict с полями
+    #   QuestionForAssessmentOut, где value = answered.get(q.id).
+
+    # TODO 7: вернуть dict под AssessmentDetailOut:
+    #   {"id", "status", "campaign_id", "subject" (ORM User — сериализуется в UserOut),
+    #    "questions": [...]}. FastAPI провалидирует его по response_model.
+    ...

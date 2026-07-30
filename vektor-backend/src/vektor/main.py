@@ -6,6 +6,7 @@ from sqlalchemy import text
 
 from vektor.core.config import settings
 from vektor.core.database import async_session_factory, engine
+from vektor.modules.assessments.router import assessment_router
 from vektor.modules.assessments.router import router as assessments_router
 from vektor.modules.auth.router import router as auth_router
 from vektor.modules.classes.router import router as classes_router
@@ -45,3 +46,4 @@ app.include_router(users_router)
 app.include_router(competency_router)
 app.include_router(classes_router)
 app.include_router(assessments_router)
+app.include_router(assessment_router)

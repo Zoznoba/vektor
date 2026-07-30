@@ -1,11 +1,12 @@
-# Pydantic-схемы assessments. Вход — что админ имеет право прислать,
-# выход — что мы готовы показать. Ответы (Answer) появятся в срезе 4c.
+# Pydantic-схемы assessments. Вход — что клиент имеет право прислать,
+# выход — что мы готовы показать.
 
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from vektor.shared.enums import CampaignStatus
+from vektor.modules.auth.schemas import UserOut
+from vektor.shared.enums import AssessmentStatus, CampaignStatus
 
 
 class CampaignCreate(BaseModel):
@@ -37,3 +38,19 @@ class GenerateIn(BaseModel):
 class GenerateResult(BaseModel):
     created: int
     campaign: CampaignOut
+
+
+class QuestionForAssessmentOut(BaseModel):
+    id: int
+    competency_id: int
+    text: str
+    order: int
+    is_conditional: bool
+    value: int | None
+
+
+class AssessmentDetailOut(BaseModel):
+    id: int
+    campaign_id: int
+    subject: UserOut
+    questions: list[QuestionForAssessmentOut]
