@@ -139,41 +139,57 @@ def is_question_visible(is_conditional: bool, subject_grade: int | None) -> bool
     класс субъекта 9–11. Если класс неизвестен (subject_grade=None) — прячем.
     Юнит-тестируется без БД.
     """
-    if is_conditional and 9 <= subject_grade <= 11:
-        return False
-    return True
+    if not is_conditional:
+        return True
+    return subject_grade is not None and 9 <= subject_grade <= 11
 
 
 async def get_assessment_detail(db: AsyncSession, assessment_id: int, current_user_id: int) -> dict:
     """Собрать анкету для прохождения: субъект + видимые вопросы с уже данными
     ответами. Видит только сам респондент (владелец анкеты)."""
     
+    q_assessment = await db.execute(
+        select(Assessment)
+        .where(Assessment.id == assessment_id)
+        .options(
+            selectinload(Assessment.subject).selectinload(User.school_class),
+            selectinload(Assessment.answers),            
+        )
+    )
+    assessment = q_assessment.scalar_one_or_none()
+    if assessment is None:
+        raise AssessmentNotFound()
     
+    if assessment.respondent_id != current_user_id:
+        raise NotAssessmentOwner()
+    
+    subject_grade = None
+    if assessment.subject.school_class:
+        subject_grade = assessment.subject.school_class.grade
+        
+    q_ordered_questions = await db.execute(
+        select(Question).order_by(Question.competency_id, Question.order)
+    )
+    ordered_questions=  q_ordered_questions.scalars()
+    
+    already_answered = {answer.question_id: answer.value for answer in assessment.answers}
 
-    # TODO 1: загрузить анкету с нужными связями ОДНИМ запросом.
-    #   select(Assessment).where(Assessment.id == assessment_id).options(
-    #       selectinload(Assessment.subject).selectinload(User.school_class),
-    #       selectinload(Assessment.answers),
-    #   )
-    #   scalar_one_or_none(); если None → raise AssessmentNotFound.
+    questions = [
+        {
+            "id": q.id,
+            "competency_id": q.competency_id,
+            "text": q.text,
+            "order": q.order,
+            "is_conditional": q.is_conditional,
+            "value": already_answered.get(q.id),
+        }
+        for q in ordered_questions
+        if is_question_visible(q.is_conditional, subject_grade)
+    ]
 
-    # TODO 2: авторизация — assessment.respondent_id == current_user_id,
-    #   иначе raise NotAssessmentOwner. (Чужую анкету открывать нельзя.)
-
-    # TODO 3: класс субъекта → грейд.
-    #   subject_grade = assessment.subject.school_class.grade
-    #                   if assessment.subject.school_class else None
-
-    # TODO 4: все вопросы справочника, по порядку.
-    #   select(Question).order_by(Question.competency_id, Question.order)
-
-    # TODO 5: уже данные ответы: {answer.question_id: answer.value for ... in assessment.answers}
-
-    # TODO 6: собрать список видимых вопросов, применяя is_question_visible(
-    #   q.is_conditional, subject_grade). Для каждого видимого — dict с полями
-    #   QuestionForAssessmentOut, где value = answered.get(q.id).
-
-    # TODO 7: вернуть dict под AssessmentDetailOut:
-    #   {"id", "status", "campaign_id", "subject" (ORM User — сериализуется в UserOut),
-    #    "questions": [...]}. FastAPI провалидирует его по response_model.
-    ...
+    return {
+        "id": assessment.id,
+        "campaign_id": assessment.campaign_id,
+        "subject": assessment.subject,
+        "questions": questions,
+    }

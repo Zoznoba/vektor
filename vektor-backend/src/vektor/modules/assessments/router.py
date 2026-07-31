@@ -58,10 +58,19 @@ async def get_assessment(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> AssessmentDetailOut:
-    # Любой авторизованный может ПОПРОБОВАТЬ открыть, но сервис пустит только
-    # владельца-респондента (не required_role — тут проверка не по роли, а по
-    # принадлежности анкеты).
-    # TODO: вызвать service.get_assessment_detail(db, assessment_id, user.id).
-    #   except service.AssessmentNotFound → 404;
-    #   except service.NotAssessmentOwner → 403.
-    ...
+    try:
+        assessment = await service.get_assessment_detail(
+            db, assessment_id, user.id
+        )
+    except service.AssessmentNotFound as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Анкета не найдена"
+        ) from err
+    except service.NotAssessmentOwner as err:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Пользователь не является владельцем анкеты"
+        ) from err
+
+    return assessment

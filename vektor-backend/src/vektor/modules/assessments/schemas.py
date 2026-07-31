@@ -6,7 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from vektor.modules.auth.schemas import UserOut
-from vektor.shared.enums import AssessmentStatus, CampaignStatus
+from vektor.shared.enums import CampaignStatus
 
 
 class CampaignCreate(BaseModel):

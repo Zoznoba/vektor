@@ -228,3 +228,143 @@ async def test_generate_requires_admin(client: AsyncClient, scenario, register_u
         headers=student_headers,
     )
     assert response.status_code == 403
+
+
+# --- 4c-1: чтение анкеты (GET /assessments/{id}) ---
+from sqlalchemy import select  # noqa: E402
+from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
+
+from vektor.modules.assessments.models import Assessment  # noqa: E402
+from vektor.modules.assessments.service import is_question_visible  # noqa: E402
+from vektor.modules.competencies.models import Competency, Question  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    ("is_conditional", "grade", "expected"),
+    [
+        (False, 10, True),  # базовый — всегда виден
+        (False, 7, True),
+        (False, None, True),
+        (True, 9, True),  # условный — границы 9..11 видимы
+        (True, 10, True),
+        (True, 11, True),
+        (True, 8, False),  # ниже 9 — скрыт
+        (True, 12, False),  # 12 класса не бывает, но правило строго 9..11
+        (True, None, False),  # класс неизвестен — скрыт, без падения
+    ],
+)
+def test_is_question_visible(is_conditional: bool, grade: int | None, expected: bool) -> None:
+    assert is_question_visible(is_conditional, grade) is expected
+
+
+@pytest.fixture
+async def db_session(db_engine):
+    factory = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with factory() as session:
+        yield session
+
+
+async def _seed_two_questions(db_session) -> None:
+    """1 компетенция, 2 вопроса: базовый + условный (для 9–11)."""
+    comp = Competency(code="C1", name="Компетенция 1", order=1)
+    db_session.add(comp)
+    await db_session.flush()
+    db_session.add_all(
+        [
+            Question(competency_id=comp.id, text="базовый", is_conditional=False, order=1),
+            Question(competency_id=comp.id, text="условный", is_conditional=True, order=2),
+        ]
+    )
+    await db_session.commit()
+
+
+async def _setup_scenario(client: AsyncClient, headers: dict, grade: int) -> dict:
+    """Класс заданного грейда: ученик s1 (+ второй s2 для полноты), учитель t1."""
+    tag = f"g{grade}"
+    s1 = await _register(client, f"s1_{tag}@vektor.ru", "student")
+    s2 = await _register(client, f"s2_{tag}@vektor.ru", "student")
+    cls = (
+        await client.post("/classes", json={"grade": grade, "section": "a"}, headers=headers)
+    ).json()
+    await client.post(
+        f"/classes/{cls['id']}/students", json={"student_ids": [s1, s2]}, headers=headers
+    )
+    return {"class_id": cls["id"], "s1": s1, "s2": s2, "s1_email": f"s1_{tag}@vektor.ru"}
+
+
+async def _self_assessment_id(db_session, subject_id: int) -> int:
+    row = await db_session.execute(
+        select(Assessment.id).where(
+            Assessment.respondent_id == subject_id, Assessment.subject_id == subject_id
+        )
+    )
+    return row.scalar_one()
+
+
+async def _login(client: AsyncClient, email: str) -> dict[str, str]:
+    login = await client.post("/auth/login", json={"email": email, "password": "password123"})
+    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+
+async def test_get_assessment_not_found(client: AsyncClient, admin_headers) -> None:
+    response = await client.get("/assessments/99999", headers=admin_headers)
+    assert response.status_code == 404
+
+
+async def test_get_assessment_forbidden_for_non_owner(
+    client: AsyncClient, admin_headers, db_session
+) -> None:
+    setup = await _setup_scenario(client, admin_headers, grade=10)
+    cid = await _create_campaign(client, admin_headers)
+    await client.post(
+        f"/campaigns/{cid}/generate", json={"class_ids": [setup["class_id"]]}, headers=admin_headers
+    )
+    aid = await _self_assessment_id(db_session, setup["s1"])  # анкета s1 про s1
+
+    # s2 пытается открыть анкету s1 — не свою.
+    s2_headers = await _login(client, "s2_g10@vektor.ru")
+    response = await client.get(f"/assessments/{aid}", headers=s2_headers)
+    assert response.status_code == 403
+
+
+async def test_get_assessment_grade_10_sees_all_questions(
+    client: AsyncClient, admin_headers, db_session
+) -> None:
+    await _seed_two_questions(db_session)
+    setup = await _setup_scenario(client, admin_headers, grade=10)
+    cid = await _create_campaign(client, admin_headers)
+    await client.post(
+        f"/campaigns/{cid}/generate", json={"class_ids": [setup["class_id"]]}, headers=admin_headers
+    )
+    aid = await _self_assessment_id(db_session, setup["s1"])
+
+    headers = await _login(client, setup["s1_email"])
+    response = await client.get(f"/assessments/{aid}", headers=headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["subject"]["id"] == setup["s1"]
+    # грейд 10 → видны оба вопроса (базовый + условный), ответов ещё нет.
+    assert len(body["questions"]) == 2
+    assert all(q["value"] is None for q in body["questions"])
+
+
+async def test_get_assessment_grade_7_hides_conditional(
+    client: AsyncClient, admin_headers, db_session
+) -> None:
+    await _seed_two_questions(db_session)
+    setup = await _setup_scenario(client, admin_headers, grade=7)
+    cid = await _create_campaign(client, admin_headers)
+    await client.post(
+        f"/campaigns/{cid}/generate", json={"class_ids": [setup["class_id"]]}, headers=admin_headers
+    )
+    aid = await _self_assessment_id(db_session, setup["s1"])
+
+    headers = await _login(client, setup["s1_email"])
+    response = await client.get(f"/assessments/{aid}", headers=headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    # грейд 7 → условный вопрос скрыт, остаётся только базовый.
+    assert len(body["questions"]) == 1
+    assert body["questions"][0]["is_conditional"] is False
