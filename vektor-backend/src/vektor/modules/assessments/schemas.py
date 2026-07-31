@@ -6,7 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from vektor.modules.auth.schemas import UserOut
-from vektor.shared.enums import CampaignStatus
+from vektor.shared.enums import AssessmentStatus, CampaignStatus
 
 
 class CampaignCreate(BaseModel):
@@ -54,3 +54,20 @@ class AssessmentDetailOut(BaseModel):
     campaign_id: int
     subject: UserOut
     questions: list[QuestionForAssessmentOut]
+
+
+class AnswerIn(BaseModel):
+    question_id: int
+    value: int = Field(ge=1, le=5)
+
+class SubmitAnswersIn(BaseModel):
+    answers: list[AnswerIn] = Field(min_length=1)
+
+
+class SubmitResult(BaseModel):
+    # Ложится на фронтовый PendingSurvey: answered_questions ↔ answeredQuestions,
+    # total_questions ↔ totalQuestions.
+    assessment_id: int
+    status: AssessmentStatus
+    answered_questions: int
+    total_questions: int

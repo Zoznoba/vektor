@@ -9,6 +9,8 @@ from vektor.modules.assessments.schemas import (
     CampaignOut,
     GenerateIn,
     GenerateResult,
+    SubmitAnswersIn,
+    SubmitResult,
 )
 from vektor.modules.auth.dependencies import get_current_user, require_role
 from vektor.modules.users.models import User
@@ -74,3 +76,19 @@ async def get_assessment(
         ) from err
 
     return assessment
+
+
+@assessment_router.post("/{assessment_id}/answers", response_model=SubmitResult)
+async def submit_answers(
+    assessment_id: int,
+    data: SubmitAnswersIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> SubmitResult:
+    # TODO: вызвать service.submit_answers(db, assessment_id, user.id, data.answers)
+    #   и вернуть результат. Маппинг исключений:
+    #     AssessmentNotFound  → 404
+    #     NotAssessmentOwner  → 403
+    #     CampaignNotActive   → 409 (приём закрыт)
+    #     QuestionNotAllowed  → 422 (ответ на невидимый вопрос)
+    ...
