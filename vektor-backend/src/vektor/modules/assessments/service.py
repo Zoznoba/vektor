@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from vektor.modules.assessments.models import Assessment, Campaign
+from vektor.modules.assessments.models import Answer, Assessment, Campaign
 from vektor.modules.classes.models import SchoolClass
 from vektor.modules.competencies.models import Question
 from vektor.modules.users.models import User
@@ -152,34 +152,41 @@ def is_question_visible(is_conditional: bool, subject_grade: int | None) -> bool
     return subject_grade is not None and 9 <= subject_grade <= 11
 
 
+async def get_visible_questions_for_subject(db: AsyncSession, subject: User) -> list[Question]:
+    """Все вопросы (упорядоченные по competency_id, order), видимые для анкеты
+    про данного субъекта — с учётом его класса (is_question_visible)."""
+    subject_grade = subject.school_class.grade if subject.school_class else None
+
+    q_ordered_questions = await db.execute(
+        select(Question).order_by(Question.competency_id, Question.order)
+    )
+    return [
+        q
+        for q in q_ordered_questions.scalars()
+        if is_question_visible(q.is_conditional, subject_grade)
+    ]
+
+
 async def get_assessment_detail(db: AsyncSession, assessment_id: int, current_user_id: int) -> dict:
     """Собрать анкету для прохождения: субъект + видимые вопросы с уже данными
     ответами. Видит только сам респондент (владелец анкеты)."""
-    
+
     q_assessment = await db.execute(
         select(Assessment)
         .where(Assessment.id == assessment_id)
         .options(
             selectinload(Assessment.subject).selectinload(User.school_class),
-            selectinload(Assessment.answers),            
+            selectinload(Assessment.answers),
         )
     )
     assessment = q_assessment.scalar_one_or_none()
     if assessment is None:
         raise AssessmentNotFound()
-    
+
     if assessment.respondent_id != current_user_id:
         raise NotAssessmentOwner()
-    
-    subject_grade = None
-    if assessment.subject.school_class:
-        subject_grade = assessment.subject.school_class.grade
-        
-    q_ordered_questions = await db.execute(
-        select(Question).order_by(Question.competency_id, Question.order)
-    )
-    ordered_questions=  q_ordered_questions.scalars()
-    
+
+    visible_questions = await get_visible_questions_for_subject(db, assessment.subject)
     already_answered = {answer.question_id: answer.value for answer in assessment.answers}
 
     questions = [
@@ -191,8 +198,7 @@ async def get_assessment_detail(db: AsyncSession, assessment_id: int, current_us
             "is_conditional": q.is_conditional,
             "value": already_answered.get(q.id),
         }
-        for q in ordered_questions
-        if is_question_visible(q.is_conditional, subject_grade)
+        for q in visible_questions
     ]
 
     return {
@@ -210,13 +216,52 @@ def compute_status(answered_questions: int, total_questions: int) -> AssessmentS
     что-то посередине → in_progress. total_questions=0 (нет видимых вопросов)
     трактуем как completed — заполнять нечего.
     """
+    if total_questions == 0 or answered_questions >= total_questions:
+        return AssessmentStatus.COMPLETED
     if answered_questions == 0:
-        
-    # TODO:
-    #   answered_questions == 0                -> AssessmentStatus.NOT_STARTED
-    #   answered_questions >= total_questions  -> AssessmentStatus.COMPLETED
-    #   иначе                                  -> AssessmentStatus.IN_PROGRESS
-    ...
+        return AssessmentStatus.NOT_STARTED
+    return AssessmentStatus.IN_PROGRESS
+
+
+async def list_my_assessments(
+    db: AsyncSession, current_user_id: int, campaign_id: int | None = None
+) -> list[dict]:
+    """Все анкеты, где current_user — респондент (то, что ему предстоит/уже
+    заполнено), опционально отфильтрованные по кампании. Прогресс считается
+    так же, как в submit_answers — по видимым для субъекта вопросам."""
+
+    query = (
+        select(Assessment)
+        .where(Assessment.respondent_id == current_user_id)
+        .options(
+            selectinload(Assessment.campaign),
+            selectinload(Assessment.subject).selectinload(User.school_class),
+            selectinload(Assessment.answers),
+        )
+    )
+    if campaign_id is not None:
+        query = query.where(Assessment.campaign_id == campaign_id)
+
+    result = await db.execute(query)
+
+    items = []
+    for assessment in result.scalars():
+        visible_ids = {q.id for q in await get_visible_questions_for_subject(db, assessment.subject)}
+        answered = {a.question_id for a in assessment.answers} & visible_ids
+        items.append(
+            {
+                "id": assessment.id,
+                "campaign_id": assessment.campaign_id,
+                "campaign_title": assessment.campaign.title,
+                "campaign_period": assessment.campaign.period,
+                "subject": assessment.subject,
+                "is_self": assessment.respondent_id == assessment.subject_id,
+                "status": assessment.status,
+                "answered_questions": len(answered),
+                "total_questions": len(visible_ids),
+            }
+        )
+    return items
 
 
 async def submit_answers(
@@ -228,36 +273,55 @@ async def submit_answers(
     Всё в ОДНОЙ транзакции: любая проверка падает ДО commit → ничего не пишется.
     """
 
-    # TODO 1: загрузить анкету со связями: campaign (для статуса), subject.school_class
-    #   (для грейда), answers (для upsert).
-    #   select(Assessment).where(Assessment.id == assessment_id).options(
-    #       selectinload(Assessment.campaign),
-    #       selectinload(Assessment.subject).selectinload(User.school_class),
-    #       selectinload(Assessment.answers),
-    #   )
-    #   None → raise AssessmentNotFound.
+    assessment_query = await db.execute(
+        select(Assessment)
+        .where(Assessment.id == assessment_id)
+        .options(
+            selectinload(Assessment.campaign),
+            selectinload(Assessment.subject).selectinload(User.school_class),
+            selectinload(Assessment.answers),
+        )
+    )
+    assessment = assessment_query.scalar_one_or_none()
+    if assessment is None:
+        raise AssessmentNotFound()
 
-    # TODO 2: владелец — assessment.respondent_id == current_user_id, иначе NotAssessmentOwner.
+    if assessment.respondent_id != current_user_id:
+        raise NotAssessmentOwner()
 
-    # TODO 3: кампания активна — assessment.campaign.status == CampaignStatus.ACTIVE,
-    #   иначе CampaignNotActive (приём закрыт для draft/closed).
+    if assessment.campaign.status != CampaignStatus.ACTIVE:
+        raise CampaignNotActive()
 
-    # TODO 4: видимые вопросы. subject_grade из subject.school_class (как в get_assessment_detail),
-    #   загрузить все Question, собрать visible_ids = {q.id ... if is_question_visible(...)}.
+    visible_questions = await get_visible_questions_for_subject(db, assessment.subject)
+    visible_ids = {q.id for q in visible_questions}
 
-    # TODO 5: валидация — каждый incoming.question_id должен быть в visible_ids,
-    #   иначе QuestionNotAllowed (нельзя отвечать на скрытый/чужой вопрос).
+    existing_answers = {a.question_id: a for a in assessment.answers}
 
-    # TODO 6: upsert. existing = {a.question_id: a for a in assessment.answers}.
-    #   для каждого item в answers:
-    #     если item.question_id в existing → existing[...].value = item.value (обновляем)
-    #     иначе db.add(Answer(assessment_id=assessment_id, question_id=item.question_id, value=item.value))
+    # Сначала валидация: все присланные question_id должны быть в видимом наборе
+    for incoming_answer in answers:
+        if incoming_answer.question_id not in visible_ids:
+            raise QuestionNotAllowed()
 
-    # TODO 7: пересчёт статуса. answered_qids = set(existing) | {i.question_id for i in answers};
-    #   answered_questions = len(visible_ids & answered_qids);
-    #   assessment.status = compute_status(answered_questions, len(visible_ids)).
+    # Затем апдейт/инсерт, чтобы не было частичного сохранения (транзакция откатится при ошибке)
+    for incoming_answer in answers:
+        if incoming_answer.question_id in existing_answers:
+            existing_answers[incoming_answer.question_id].value = incoming_answer.value
+        else:
+            new_answer = Answer(
+                assessment_id=assessment_id,
+                question_id=incoming_answer.question_id,
+                value=incoming_answer.value,
+            )
+            db.add(new_answer)
 
-    # TODO 8: await db.commit(). Вернуть dict под SubmitResult:
-    #   {"assessment_id": assessment.id, "status": assessment.status,
-    #    "answered_questions": answered_questions, "total_questions": len(visible_ids)}.
-    ...
+    answered_qids = set(existing_answers.keys()) | {i.question_id for i in answers}
+    answered_questions_count = len(visible_ids & answered_qids)
+    assessment.status = compute_status(answered_questions_count, len(visible_ids))
+
+    await db.commit()
+    return {
+        "assessment_id": assessment.id,
+        "status": assessment.status,
+        "answered_questions": answered_questions_count,
+        "total_questions": len(visible_ids),
+    }

@@ -234,7 +234,7 @@ async def test_generate_requires_admin(client: AsyncClient, scenario, register_u
 from sqlalchemy import select  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 
-from vektor.modules.assessments.models import Assessment  # noqa: E402
+from vektor.modules.assessments.models import Assessment, Campaign  # noqa: E402
 from vektor.modules.assessments.service import is_question_visible  # noqa: E402
 from vektor.modules.competencies.models import Competency, Question  # noqa: E402
 
@@ -368,3 +368,170 @@ async def test_get_assessment_grade_7_hides_conditional(
     # грейд 7 → условный вопрос скрыт, остаётся только базовый.
     assert len(body["questions"]) == 1
     assert body["questions"][0]["is_conditional"] is False
+
+
+# --- 4d: сохранение ответов (POST /assessments/{id}/answers) ---
+from vektor.modules.assessments.service import compute_status  # noqa: E402
+from vektor.shared.enums import CampaignStatus  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    ("answered", "total", "expected"),
+    [
+        (0, 5, "not_started"),
+        (3, 5, "in_progress"),
+        (5, 5, "completed"),
+        (0, 0, "completed"),  # нет видимых вопросов — заполнять нечего
+    ],
+)
+def test_compute_status(answered: int, total: int, expected: str) -> None:
+    assert compute_status(answered, total) == expected
+
+
+async def _submit(client: AsyncClient, aid: int, headers: dict, answers: list[dict]) -> object:
+    return await client.post(
+        f"/assessments/{aid}/answers", json={"answers": answers}, headers=headers
+    )
+
+
+async def test_submit_answers_completes_assessment(
+    client: AsyncClient, admin_headers, db_session
+) -> None:
+    await _seed_two_questions(db_session)
+    setup = await _setup_scenario(client, admin_headers, grade=10)
+    cid = await _create_campaign(client, admin_headers)
+    await client.post(
+        f"/campaigns/{cid}/generate", json={"class_ids": [setup["class_id"]]}, headers=admin_headers
+    )
+    aid = await _self_assessment_id(db_session, setup["s1"])
+    headers = await _login(client, setup["s1_email"])
+
+    detail = (await client.get(f"/assessments/{aid}", headers=headers)).json()
+    question_ids = [q["id"] for q in detail["questions"]]
+
+    response = await _submit(
+        client, aid, headers, [{"question_id": qid, "value": 4} for qid in question_ids]
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "completed"
+    assert body["answered_questions"] == 2
+    assert body["total_questions"] == 2
+
+
+async def test_submit_answers_partial_is_in_progress(
+    client: AsyncClient, admin_headers, db_session
+) -> None:
+    await _seed_two_questions(db_session)
+    setup = await _setup_scenario(client, admin_headers, grade=10)
+    cid = await _create_campaign(client, admin_headers)
+    await client.post(
+        f"/campaigns/{cid}/generate", json={"class_ids": [setup["class_id"]]}, headers=admin_headers
+    )
+    aid = await _self_assessment_id(db_session, setup["s1"])
+    headers = await _login(client, setup["s1_email"])
+
+    detail = (await client.get(f"/assessments/{aid}", headers=headers)).json()
+    first_question_id = detail["questions"][0]["id"]
+
+    response = await _submit(client, aid, headers, [{"question_id": first_question_id, "value": 3}])
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "in_progress"
+    assert body["answered_questions"] == 1
+    assert body["total_questions"] == 2
+
+
+async def test_submit_answers_upsert_updates_existing_value(
+    client: AsyncClient, admin_headers, db_session
+) -> None:
+    await _seed_two_questions(db_session)
+    setup = await _setup_scenario(client, admin_headers, grade=10)
+    cid = await _create_campaign(client, admin_headers)
+    await client.post(
+        f"/campaigns/{cid}/generate", json={"class_ids": [setup["class_id"]]}, headers=admin_headers
+    )
+    aid = await _self_assessment_id(db_session, setup["s1"])
+    headers = await _login(client, setup["s1_email"])
+
+    detail = (await client.get(f"/assessments/{aid}", headers=headers)).json()
+    question_id = detail["questions"][0]["id"]
+
+    await _submit(client, aid, headers, [{"question_id": question_id, "value": 2}])
+    response = await _submit(client, aid, headers, [{"question_id": question_id, "value": 5}])
+
+    assert response.status_code == 200
+    assert response.json()["answered_questions"] == 1  # обновили, а не задвоили
+
+    detail_after = (await client.get(f"/assessments/{aid}", headers=headers)).json()
+    updated = next(q for q in detail_after["questions"] if q["id"] == question_id)
+    assert updated["value"] == 5
+
+
+async def test_submit_answers_forbidden_for_non_owner(
+    client: AsyncClient, admin_headers, db_session
+) -> None:
+    await _seed_two_questions(db_session)
+    setup = await _setup_scenario(client, admin_headers, grade=10)
+    cid = await _create_campaign(client, admin_headers)
+    await client.post(
+        f"/campaigns/{cid}/generate", json={"class_ids": [setup["class_id"]]}, headers=admin_headers
+    )
+    aid = await _self_assessment_id(db_session, setup["s1"])  # анкета s1 про s1
+
+    s2_headers = await _login(client, "s2_g10@vektor.ru")
+    response = await _submit(client, aid, s2_headers, [{"question_id": 1, "value": 3}])
+
+    assert response.status_code == 403
+
+
+async def test_submit_answers_not_found(client: AsyncClient, admin_headers) -> None:
+    headers = await _login(client, "admin@vektor.ru")
+    response = await _submit(client, 99999, headers, [{"question_id": 1, "value": 3}])
+    assert response.status_code == 404
+
+
+async def test_submit_answers_rejects_hidden_question(
+    client: AsyncClient, admin_headers, db_session
+) -> None:
+    await _seed_two_questions(db_session)
+    setup = await _setup_scenario(client, admin_headers, grade=7)  # 7 класс — условный скрыт
+    cid = await _create_campaign(client, admin_headers)
+    await client.post(
+        f"/campaigns/{cid}/generate", json={"class_ids": [setup["class_id"]]}, headers=admin_headers
+    )
+    aid = await _self_assessment_id(db_session, setup["s1"])
+    headers = await _login(client, setup["s1_email"])
+
+    conditional_question = await db_session.execute(
+        select(Question).where(Question.is_conditional.is_(True))
+    )
+    hidden_id = conditional_question.scalar_one().id
+
+    response = await _submit(client, aid, headers, [{"question_id": hidden_id, "value": 3}])
+    assert response.status_code == 422
+
+
+async def test_submit_answers_rejects_when_campaign_not_active(
+    client: AsyncClient, admin_headers, db_session
+) -> None:
+    await _seed_two_questions(db_session)
+    setup = await _setup_scenario(client, admin_headers, grade=10)
+    cid = await _create_campaign(client, admin_headers)
+    await client.post(
+        f"/campaigns/{cid}/generate", json={"class_ids": [setup["class_id"]]}, headers=admin_headers
+    )
+    aid = await _self_assessment_id(db_session, setup["s1"])
+    headers = await _login(client, setup["s1_email"])
+
+    campaign = await db_session.get(Campaign, cid)
+    campaign.status = CampaignStatus.CLOSED
+    await db_session.commit()
+
+    detail = (await client.get(f"/assessments/{aid}", headers=headers)).json()
+    question_id = detail["questions"][0]["id"]
+
+    response = await _submit(client, aid, headers, [{"question_id": question_id, "value": 3}])
+    assert response.status_code == 409

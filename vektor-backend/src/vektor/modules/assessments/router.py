@@ -5,6 +5,7 @@ from vektor.core.database import get_db
 from vektor.modules.assessments import service
 from vektor.modules.assessments.schemas import (
     AssessmentDetailOut,
+    AssessmentListItemOut,
     CampaignCreate,
     CampaignOut,
     GenerateIn,
@@ -54,6 +55,15 @@ async def generate_assessments(
     return GenerateResult(created=created, campaign=campaign)
 
 
+@assessment_router.get("", response_model=list[AssessmentListItemOut])
+async def list_assessments(
+    campaign_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[AssessmentListItemOut]:
+    return await service.list_my_assessments(db, user.id, campaign_id)
+
+
 @assessment_router.get("/{assessment_id}", response_model=AssessmentDetailOut)
 async def get_assessment(
     assessment_id: int,
@@ -61,18 +71,15 @@ async def get_assessment(
     user: User = Depends(get_current_user),
 ) -> AssessmentDetailOut:
     try:
-        assessment = await service.get_assessment_detail(
-            db, assessment_id, user.id
-        )
+        assessment = await service.get_assessment_detail(db, assessment_id, user.id)
     except service.AssessmentNotFound as err:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Анкета не найдена"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Анкета не найдена"
         ) from err
     except service.NotAssessmentOwner as err:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Пользователь не является владельцем анкеты"
+            detail="Пользователь не является владельцем анкеты",
         ) from err
 
     return assessment
@@ -85,10 +92,25 @@ async def submit_answers(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> SubmitResult:
-    # TODO: вызвать service.submit_answers(db, assessment_id, user.id, data.answers)
-    #   и вернуть результат. Маппинг исключений:
-    #     AssessmentNotFound  → 404
-    #     NotAssessmentOwner  → 403
-    #     CampaignNotActive   → 409 (приём закрыт)
-    #     QuestionNotAllowed  → 422 (ответ на невидимый вопрос)
-    ...
+    try:
+        result = await service.submit_answers(db, assessment_id, user.id, data.answers)
+    except service.AssessmentNotFound as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Анкета не найдена"
+        ) from err
+    except service.NotAssessmentOwner as err:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Пользователь не является владельцем анкеты",
+        ) from err
+    except service.CampaignNotActive as err:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Приём ответов закрыт"
+        ) from err
+    except service.QuestionNotAllowed as err:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Ответ на недоступный вопрос",
+        ) from err
+
+    return result
