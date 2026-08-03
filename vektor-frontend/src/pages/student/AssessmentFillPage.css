@@ -1,0 +1,98 @@
+.assessment-fill__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  font-family: var(--font-b);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 16px;
+}
+
+.assessment-fill__back:hover {
+  color: var(--ink);
+}
+
+.assessment-fill__progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 18px;
+}
+
+.assessment-fill__progress-bar {
+  width: 220px;
+}
+
+.assessment-fill__progress span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-faint);
+}
+
+.assessment-question {
+  border-bottom: 0.5px solid var(--border);
+  padding: 16px 0;
+}
+
+.assessment-question:first-child {
+  padding-top: 0;
+}
+
+.assessment-question:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.assessment-question__text {
+  font-size: 14.5px;
+  font-weight: 500;
+  margin-bottom: 12px;
+}
+
+.assessment-question__scale {
+  display: flex;
+  gap: 8px;
+}
+
+.assessment-question__option {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--soft);
+  color: var(--ink-soft);
+  font-family: var(--font-b);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.assessment-question__option:hover {
+  border-color: var(--blue);
+}
+
+.assessment-question__option--selected {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.assessment-fill__saved {
+  background: var(--lime-tint);
+  color: var(--lime-ink);
+  font-size: 13px;
+  border-radius: var(--r-sm);
+  padding: 9px 13px;
+  margin-bottom: 14px;
+}
+
+.assessment-fill__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}

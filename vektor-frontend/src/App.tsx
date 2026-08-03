@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './auth/AuthContext';
 import { RequireAuth } from './auth/RequireAuth';
 import { LoginPage } from './pages/LoginPage';
 import { StudentHome } from './pages/student/StudentHome';
+import { AssessmentFillPage } from './pages/student/AssessmentFillPage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminUsersPage } from './pages/admin/AdminUsersPage';
 import { AdminClassesPage } from './pages/admin/AdminClassesPage';
@@ -38,6 +39,7 @@ function App() {
           <Route path="/login" element={<LoginRoute />} />
           <Route element={<RequireAuth />}>
             <Route path="/" element={<HomeRedirect />} />
+            <Route path="/assessments/:id" element={<AssessmentFillPage />} />
             <Route
               path="/admin"
               element={
