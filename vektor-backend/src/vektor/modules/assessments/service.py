@@ -246,7 +246,8 @@ async def list_my_assessments(
 
     items = []
     for assessment in result.scalars():
-        visible_ids = {q.id for q in await get_visible_questions_for_subject(db, assessment.subject)}
+        visible_questions = await get_visible_questions_for_subject(db, assessment.subject)
+        visible_ids = {q.id for q in visible_questions}
         answered = {a.question_id for a in assessment.answers} & visible_ids
         items.append(
             {

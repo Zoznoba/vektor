@@ -56,9 +56,22 @@ class AssessmentDetailOut(BaseModel):
     questions: list[QuestionForAssessmentOut]
 
 
+class AssessmentListItemOut(BaseModel):
+    id: int
+    campaign_id: int
+    campaign_title: str
+    campaign_period: str
+    subject: UserOut
+    is_self: bool
+    status: AssessmentStatus
+    answered_questions: int
+    total_questions: int
+
+
 class AnswerIn(BaseModel):
     question_id: int
     value: int = Field(ge=1, le=5)
+
 
 class SubmitAnswersIn(BaseModel):
     answers: list[AnswerIn] = Field(min_length=1)

@@ -535,3 +535,89 @@ async def test_submit_answers_rejects_when_campaign_not_active(
 
     response = await _submit(client, aid, headers, [{"question_id": question_id, "value": 3}])
     assert response.status_code == 409
+
+
+# --- 4e: листинг «мои анкеты» (GET /assessments) ---
+
+
+async def test_list_assessments_returns_only_own(client: AsyncClient, scenario) -> None:
+    cid = await _create_campaign(client, scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]]},
+        headers=scenario["headers"],
+    )
+
+    t1_headers = await _login(client, "t1@vektor.ru")
+    response = await client.get("/assessments", headers=t1_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 2  # t1 → s1, t1 → s2
+    subject_ids = {item["subject"]["id"] for item in body}
+    assert subject_ids == {scenario["ids"]["s1"], scenario["ids"]["s2"]}
+    assert all(item["is_self"] is False for item in body)
+
+
+async def test_list_assessments_self_flag(client: AsyncClient, scenario) -> None:
+    cid = await _create_campaign(client, scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]]},
+        headers=scenario["headers"],
+    )
+
+    s1_headers = await _login(client, "s1@vektor.ru")
+    response = await client.get("/assessments", headers=s1_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1  # только самооценка
+    assert body[0]["is_self"] is True
+    assert body[0]["campaign_title"] == "360 · июнь 2026"
+
+
+async def test_list_assessments_filters_by_campaign(client: AsyncClient, scenario) -> None:
+    cid1 = await _create_campaign(client, scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid1}/generate",
+        json={"class_ids": [scenario["class_id"]]},
+        headers=scenario["headers"],
+    )
+    cid2 = (
+        await client.post(
+            "/campaigns",
+            json={"title": "360 · сентябрь 2026", "period": "2026-09"},
+            headers=scenario["headers"],
+        )
+    ).json()["id"]  # без generate — анкет под ней нет
+
+    s1_headers = await _login(client, "s1@vektor.ru")
+    matching = await client.get(f"/assessments?campaign_id={cid1}", headers=s1_headers)
+    empty = await client.get(f"/assessments?campaign_id={cid2}", headers=s1_headers)
+
+    assert len(matching.json()) == 1
+    assert empty.json() == []
+
+
+async def test_list_assessments_reflects_progress(
+    client: AsyncClient, scenario, db_session
+) -> None:
+    await _seed_two_questions(db_session)
+    cid = await _create_campaign(client, scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]]},
+        headers=scenario["headers"],
+    )
+
+    s1_headers = await _login(client, "s1@vektor.ru")
+    aid = await _self_assessment_id(db_session, scenario["ids"]["s1"])
+    detail = (await client.get(f"/assessments/{aid}", headers=s1_headers)).json()
+    question_id = detail["questions"][0]["id"]
+    await _submit(client, aid, s1_headers, [{"question_id": question_id, "value": 4}])
+
+    item = (await client.get("/assessments", headers=s1_headers)).json()[0]
+    assert item["answered_questions"] == 1
+    assert item["total_questions"] == 2
+    assert item["status"] == "in_progress"
