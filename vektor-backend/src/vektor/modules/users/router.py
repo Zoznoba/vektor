@@ -4,12 +4,18 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from vektor.core.config import settings
 from vektor.core.database import get_db
 from vektor.modules.auth.dependencies import get_current_user, require_role
 from vektor.modules.auth.schemas import UserOut
 from vektor.modules.users import service
 from vektor.modules.users.models import User
-from vektor.modules.users.schemas import AssignChildrenIn, ParentWithChildrenOut
+from vektor.modules.users.schemas import (
+    AssignChildrenIn,
+    BulkCreateIn,
+    BulkCreateOut,
+    ParentWithChildrenOut,
+)
 from vektor.shared.enums import UserRole
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -26,6 +32,28 @@ async def get_all_users(
 ):
     all_users = (await db.execute(select(User).order_by(User.id))).scalars().all()
     return all_users
+
+
+@router.post("/bulk", response_model=BulkCreateOut, status_code=status.HTTP_201_CREATED)
+async def bulk_create_users(
+    data: BulkCreateIn,
+    db: AsyncSession = Depends(get_db),
+    _admin_user: User = Depends(require_role(UserRole.ADMIN)),
+) -> BulkCreateOut:
+    try:
+        created = await service.bulk_create_users(db, data.users, data.class_id)
+    except service.DuplicateEmailsInBatch as err:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(err)) from err
+    except service.EmailsAlreadyTaken as err:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(err)) from err
+    except service.ClassNotFound as err:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(err)) from err
+
+    return BulkCreateOut(
+        created=created,
+        class_id=data.class_id,
+        default_password=settings.bulk_default_password,
+    )
 
 
 @router.get("/{user_id}/children", response_model=list[UserOut])
