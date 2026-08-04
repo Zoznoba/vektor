@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
 import { Button } from '../../components/ui/Button';
@@ -13,7 +12,8 @@ import {
   assignTeachers,
   assignHomeroom,
 } from '../../api/classes';
-import { fetchUsers } from '../../api/users';
+import { fetchUsers, bulkCreateUsers } from '../../api/users';
+import type { BulkUserIn } from '../../api/users';
 import { ApiError } from '../../api/client';
 import { classLabel } from '../../types/school';
 import type { SchoolClass } from '../../types/school';
@@ -134,11 +134,13 @@ export function AdminClassesPage() {
 
       {showCreate && (
         <CreateClassModal
+          allUsers={users.data ?? []}
           onClose={() => setShowCreate(false)}
-          onCreated={(cls) => {
+          onCreated={(classId) => {
             setShowCreate(false);
-            setSelectedId(cls.id);
+            setSelectedId(classId);
             classes.reload();
+            users.reload();
           }}
         />
       )}
@@ -191,28 +193,117 @@ function studentsCountLabel(n: number): string {
   return `${n} учеников`;
 }
 
+/** Одна распарсенная строка ростера. error !== null → строку нельзя отправлять. */
+interface RosterRow {
+  fullName: string;
+  email: string;
+  error: string | null;
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Парсинг вставленного списка «ФИО<tab>email» (по строке на ученика).
+ * Разделитель — таб (вставка из Excel) либо запятая/точка с запятой при
+ * ручном вводе. Валидируем каждую строку: пустое ФИО, кривой/пустой email,
+ * дубль внутри пачки, уже занятый в школе email — всё помечается, чтобы
+ * админ починил ДО отправки (бэковый /users/bulk атомарен — либо всё, либо
+ * ничего, так что частичной загрузки не будет).
+ */
+function parseRoster(raw: string, existingEmails: Set<string>): RosterRow[] {
+  const rows: RosterRow[] = [];
+  const seen = new Set<string>();
+  for (const rawLine of raw.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const [namePart = '', emailPart = ''] = line.split(/[\t,;]/);
+    const fullName = namePart.trim();
+    const email = emailPart.trim();
+    const emailKey = email.toLowerCase();
+
+    let error: string | null = null;
+    if (!fullName) error = 'пустое ФИО';
+    else if (!email) error = 'нет email';
+    else if (!EMAIL_RE.test(email)) error = 'некорректный email';
+    else if (existingEmails.has(emailKey)) error = 'email уже занят в школе';
+    else if (seen.has(emailKey)) error = 'дубль в списке';
+
+    if (email && !error) seen.add(emailKey);
+    rows.push({ fullName, email, error });
+  }
+  return rows;
+}
+
+/**
+ * Мастер «Новый класс» в два шага:
+ *  1) параллель + литера + (опц.) классный руководитель;
+ *  2) вставка списка учеников «ФИО<tab>email», превью с валидацией.
+ * По кнопке: createClass → (опц.) assignHomeroom → bulkCreateUsers(class_id).
+ * Порядок homeroom-перед-bulk выбран ради безопасного ретрая: если что-то
+ * упало после создания класса, класс не пересоздаётся (createdClassId), а
+ * homeroom-PUT идемпотентен — повторное нажатие «Создать» не ломается.
+ */
 function CreateClassModal({
+  allUsers,
   onClose,
   onCreated,
 }: {
+  allUsers: User[];
   onClose: () => void;
-  onCreated: (cls: SchoolClass) => void;
+  onCreated: (classId: number) => void;
 }) {
+  const [step, setStep] = useState<1 | 2>(1);
   const [grade, setGrade] = useState(1);
   const [section, setSection] = useState('');
+  const [homeroomId, setHomeroomId] = useState<number | null>(null);
+  const [roster, setRoster] = useState('');
+  const [createdClassId, setCreatedClassId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
+  const teachers = useMemo(() => allUsers.filter((u) => u.role === 'teacher'), [allUsers]);
+  const existingEmails = useMemo(
+    () => new Set(allUsers.map((u) => u.email.toLowerCase())),
+    [allUsers],
+  );
+
+  const rows = useMemo(() => parseRoster(roster, existingEmails), [roster, existingEmails]);
+  const errorCount = rows.filter((r) => r.error).length;
+  const canSubmit = rows.length > 0 && errorCount === 0;
+
+  const handleCreate = async () => {
+    if (!canSubmit) return;
     setError(null);
     setSubmitting(true);
     try {
-      const cls = await createClass(grade, section.trim());
-      onCreated(cls);
+      let classId = createdClassId;
+      if (classId === null) {
+        const cls = await createClass(grade, section.trim());
+        classId = cls.id;
+        setCreatedClassId(classId); // ретрай не пересоздаёт класс
+      }
+      if (homeroomId !== null) await assignHomeroom(classId, homeroomId);
+      const users: BulkUserIn[] = rows.map((r) => ({
+        email: r.email,
+        full_name: r.fullName,
+        role: 'student',
+      }));
+      await bulkCreateUsers(users, classId);
+      onCreated(classId);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
+      if (err instanceof ApiError && err.status === 409 && createdClassId === null) {
+        setStep(1);
         setError('Такой класс уже существует');
+      } else if (err instanceof ApiError && err.status === 409) {
+        setError('Некоторые email уже заняты — поправьте список и попробуйте снова');
+      } else if (err instanceof ApiError && err.status === 422) {
+        // Бэк (Pydantic EmailStr) строже нашего превью: режет зарезервированные
+        // домены (.test, example.com и т.п.), которые формально «похожи» на email.
+        setError(
+          'Бэкенд отклонил один из адресов как недопустимый email — обычно это ' +
+            'зарезервированный домен вроде «@test.test» или «@example.com». ' +
+            'Используйте реальный домен (например, @vektor.ru) и попробуйте снова.',
+        );
       } else {
         setError(err instanceof ApiError ? err.message : 'Не удалось создать класс');
       }
@@ -222,40 +313,124 @@ function CreateClassModal({
   };
 
   return (
-    <Modal title="Новый класс" onClose={onClose}>
-      <form onSubmit={handleSubmit} noValidate>
-        <label className="form-field">
-          <span>Параллель (1–11)</span>
-          <select value={grade} onChange={(e) => setGrade(Number(e.target.value))}>
-            {Array.from({ length: 11 }, (_, i) => i + 1).map((g) => (
-              <option key={g} value={g}>
-                {g}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="form-field">
-          <span>Литера или номер (А, Б, 1…)</span>
-          <input
-            value={section}
-            onChange={(e) => setSection(e.target.value)}
-            placeholder="А"
-            maxLength={10}
-            required
-          />
-        </label>
+    <Modal title={`Новый класс · шаг ${step} из 2`} onClose={onClose}>
+      {step === 1 ? (
+        <div>
+          <label className="form-field">
+            <span>Параллель (1–11)</span>
+            <select value={grade} onChange={(e) => setGrade(Number(e.target.value))}>
+              {Array.from({ length: 11 }, (_, i) => i + 1).map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="form-field">
+            <span>Литера или номер (А, Б, 1…)</span>
+            <input
+              value={section}
+              onChange={(e) => setSection(e.target.value)}
+              placeholder="А"
+              maxLength={10}
+              required
+            />
+          </label>
+          <label className="form-field">
+            <span>Классный руководитель (необязательно)</span>
+            <select
+              value={homeroomId ?? ''}
+              onChange={(e) => setHomeroomId(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">— не назначать —</option>
+              {teachers.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.full_name}
+                </option>
+              ))}
+            </select>
+          </label>
 
-        {error && <div className="form-error">{error}</div>}
+          {error && <div className="form-error">{error}</div>}
 
-        <div className="modal__actions">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Отмена
-          </Button>
-          <Button type="submit" disabled={submitting || !section.trim()}>
-            {submitting ? 'Создаём…' : 'Создать'}
-          </Button>
+          <div className="modal__actions">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Отмена
+            </Button>
+            <Button onClick={() => setStep(2)} disabled={!section.trim()}>
+              Далее
+            </Button>
+          </div>
         </div>
-      </form>
+      ) : (
+        <div>
+          <p className="roster-hint">
+            Вставьте список учеников — по одному на строку в формате{' '}
+            <strong>ФИО&nbsp;⇥&nbsp;email</strong> (можно скопировать два столбца прямо из
+            Excel).
+          </p>
+          <textarea
+            className="roster-input"
+            value={roster}
+            onChange={(e) => setRoster(e.target.value)}
+            rows={7}
+            placeholder={'Иванов Иван\tivanov.i@vektor.ru\nПетрова Анна\tpetrova.a@vektor.ru'}
+            autoFocus
+          />
+
+          {rows.length > 0 && (
+            <>
+              <div className="roster-summary">
+                Распознано: {rows.length}{' '}
+                {errorCount === 0 ? (
+                  <span className="roster-summary__ok">· ошибок нет ✓</span>
+                ) : (
+                  <span className="roster-summary__err">· с ошибками: {errorCount}</span>
+                )}
+              </div>
+              <div className="roster-preview">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>ФИО</th>
+                      <th>Email</th>
+                      <th>Статус</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r, i) => (
+                      <tr key={i} className={r.error ? 'roster-row--error' : ''}>
+                        <td>{r.fullName || <span className="roster-cell--empty">—</span>}</td>
+                        <td>{r.email || <span className="roster-cell--empty">—</span>}</td>
+                        <td>
+                          {r.error ? (
+                            <span className="roster-status roster-status--err">{r.error}</span>
+                          ) : (
+                            <span className="roster-status roster-status--ok">✓</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          {error && <div className="form-error">{error}</div>}
+
+          <div className="modal__actions">
+            <Button type="button" variant="secondary" onClick={() => setStep(1)}>
+              Назад
+            </Button>
+            <Button onClick={handleCreate} disabled={submitting || !canSubmit}>
+              {submitting
+                ? 'Создаём…'
+                : `Создать класс и ${rows.length} ${studentsCountLabel(rows.length).split(' ')[1]}`}
+            </Button>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }
