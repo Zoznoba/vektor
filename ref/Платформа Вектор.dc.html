@@ -1,0 +1,1525 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;500;600;700&family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/@tabler/icons-webfont@3.11.0/dist/tabler-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#F5F4F1;color:#2E2A2B;font-family:'Onest',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#1F66C4;text-decoration:none}
+a:hover{color:#3C8FED}
+img{display:block}
+button{font-family:'Onest',system-ui,sans-serif}
+input{font-family:'Onest',system-ui,sans-serif}
+::selection{background:#D9EE8E}
+@keyframes vkFadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes vkFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes vkPop{0%{opacity:0;transform:scale(.82)}60%{transform:scale(1.04)}100%{opacity:1;transform:scale(1)}}
+@keyframes vkShaft{from{height:0;opacity:0}to{height:190px;opacity:1}}
+@keyframes vkHead{from{transform:translateY(190px) rotate(45deg);opacity:0}to{transform:translateY(0) rotate(45deg);opacity:1}}
+@keyframes vkRing{from{transform:scale(.2);opacity:.5}to{transform:scale(2.6);opacity:0}}
+@keyframes vkWipe{from{clip-path:inset(0 0 0 0)}to{clip-path:inset(0 0 100% 0)}}
+@keyframes vkSlideIn{from{opacity:0;transform:translateX(26px)}to{opacity:1;transform:translateX(0)}}
+@keyframes vkMedal{0%{opacity:0;transform:scale(.6) rotate(-18deg)}70%{transform:scale(1.08) rotate(3deg)}100%{opacity:1;transform:scale(1) rotate(0)}}
+</style>
+</helmet>
+
+<div style="min-height:100vh;display:flex;flex-direction:column">
+
+<div style="display:flex;align-items:center;gap:14px;padding:9px 18px;background:#2E2A2B;color:#fff;font-size:11.5px;font-weight:500;flex-wrap:wrap">
+  <span style="opacity:.45;letter-spacing:.04em;text-transform:uppercase;font-size:10px">Прототип · роль</span>
+  <div style="display:flex;gap:4px">
+    <sc-for list="{{ roles }}" as="r" hint-placeholder-count="4">
+      <button onClick="{{ r.pick }}" style="{{ r.style }}">{{ r.label }}</button>
+    </sc-for>
+  </div>
+  <span style="opacity:.2">·</span>
+  <span style="opacity:.45;letter-spacing:.04em;text-transform:uppercase;font-size:10px">Кампания</span>
+  <div style="display:flex;gap:4px">
+    <button onClick="{{ pickAudStudents }}" style="{{ audStudentsStyle }}">Ученики · июнь</button>
+    <button onClick="{{ pickAudTeachers }}" style="{{ audTeachersStyle }}">Учителя · прогон</button>
+  </div>
+  <span style="margin-left:auto;opacity:.4;font-size:11px">{{ chromeHint }}</span>
+</div>
+
+<sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
+<div style="flex:1;display:flex;min-height:calc(100vh - 40px);background:#fff;position:relative;overflow:hidden">
+
+  <div style="flex:1.05;background:linear-gradient(135deg,#D9EE8E 0%,#9BD2C9 45%,#3C8FED 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:48px;text-align:center">
+    <img src="assets/vektor-logo-white.png" alt="Вектор" style="height:66px;width:auto">
+    <div style="color:#fff;font-size:15px;font-weight:500;line-height:1.6;text-shadow:0 1px 14px rgba(0,0,0,.08)">Платформа развития<br>учеников школы Вектор</div>
+  </div>
+
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px;background:#fff">
+    <div style="width:100%;max-width:300px">
+      <div style="font-family:'Unbounded',sans-serif;font-size:21px;font-weight:600;margin-bottom:6px">Вход</div>
+      <div style="font-size:12.5px;color:#6E6A6B;margin-bottom:24px">Используйте email и пароль, выданные администратором школы</div>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:11.5px;font-weight:500;color:#6E6A6B;margin-bottom:6px">Email</label>
+        <input type="email" placeholder="имя@shkola-vektor.ru" style="width:100%;padding:10px 13px;border:1px solid rgba(46,42,43,.18);border-radius:7px;font-size:13px;background:#FAF9F7;color:#2E2A2B"></input>
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:11.5px;font-weight:500;color:#6E6A6B;margin-bottom:6px">Пароль</label>
+        <input type="password" placeholder="••••••••" style="width:100%;padding:10px 13px;border:1px solid rgba(46,42,43,.18);border-radius:7px;font-size:13px;background:#FAF9F7;color:#2E2A2B"></input>
+      </div>
+      <button onClick="{{ doLogin }}" style="width:100%;justify-content:center;padding:11px;font-size:12.5px;font-weight:500;border-radius:7px;border:1px solid #3C8FED;background:#3C8FED;color:#fff;cursor:pointer;display:flex;align-items:center;gap:6px">Войти</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;font-size:12px">
+        <span style="color:#A6A2A3">Первый вход?</span>
+        <a href="#" style="font-weight:500">Установить пароль по приглашению</a>
+      </div>
+      <div style="margin-top:26px;font-size:11.5px;color:#A6A2A3;text-align:center;line-height:1.6">Доступ к платформе предоставляется по приглашению — администратор школы создаёт учётную запись и отправляет ссылку для входа</div>
+    </div>
+  </div>
+
+  <sc-if value="{{ isTakeoff }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;inset:0;background:linear-gradient(135deg,#D9EE8E 0%,#9BD2C9 45%,#3C8FED 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;animation:vkFadeIn .45s ease both,vkWipe .5s cubic-bezier(.7,0,.3,1) 2.05s both;overflow:hidden">
+    <div style="position:absolute;width:260px;height:260px;border:1px solid rgba(255,255,255,.55);border-radius:50%;animation:vkRing 1.5s ease-out .35s infinite"></div>
+    <div style="position:absolute;width:260px;height:260px;border:1px solid rgba(255,255,255,.4);border-radius:50%;animation:vkRing 1.5s ease-out .75s infinite"></div>
+    <div style="position:relative;height:210px;width:60px;display:flex;justify-content:center;align-items:flex-end">
+      <div style="position:absolute;bottom:0;width:2px;background:#fff;animation:vkShaft .8s cubic-bezier(.2,.8,.2,1) .25s both"></div>
+      <div style="position:absolute;bottom:182px;width:16px;height:16px;border-top:2px solid #fff;border-right:2px solid #fff;animation:vkHead .8s cubic-bezier(.2,.8,.2,1) .25s both"></div>
+    </div>
+    <img src="assets/vektor-logo-white.png" alt="Вектор" style="height:44px;width:auto;margin-top:26px;animation:vkPop .6s cubic-bezier(.2,.8,.2,1) .85s both">
+    <div style="color:#fff;font-family:'Unbounded',sans-serif;font-size:19px;font-weight:600;margin-top:20px;animation:vkFadeUp .5s ease 1.15s both">{{ welcomeLine }}</div>
+    <div style="color:rgba(255,255,255,.82);font-size:12.5px;margin-top:7px;animation:vkFadeUp .5s ease 1.35s both">{{ welcomeSub }}</div>
+  </div>
+  </sc-if>
+
+</div>
+</sc-if>
+
+<sc-if value="{{ isApp }}" hint-placeholder-val="{{ false }}">
+<div style="flex:1;display:flex;flex-direction:column;min-height:calc(100vh - 40px)">
+
+  <div style="display:flex;align-items:center;gap:12px;padding:0 22px;height:58px;background:#fff;border-bottom:1px solid rgba(46,42,43,.09);flex-shrink:0">
+    <img src="assets/vektor-logo-dark.png" alt="Вектор" style="height:28px;width:auto">
+    <div style="margin-left:auto;display:flex;align-items:center;gap:16px">
+      <sc-if value="{{ showXp }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:7px;padding:5px 12px 5px 8px;border-radius:999px;background:#F4FAE2;color:#7E9A2E;font-size:12px;font-weight:600">
+        <i class="ti ti-arrow-up" style="font-size:14px"></i>{{ xpLabel }}
+      </div>
+      </sc-if>
+      <div style="display:flex;align-items:center;gap:9px;font-size:12.5px;color:#6E6A6B">
+        <div style="{{ userAvStyle }}">{{ userInitials }}</div>
+        {{ userLine }}
+        <i class="ti ti-chevron-down" style="font-size:12px"></i>
+      </div>
+    </div>
+  </div>
+
+  <sc-if value="{{ isPilot }}" hint-placeholder-val="{{ false }}">
+  <div style="display:flex;align-items:center;gap:11px;padding:9px 22px;background:#F4FAE2;border-bottom:1px solid rgba(126,154,46,.3);flex-wrap:wrap">
+    <i class="ti ti-flask" style="font-size:15px;color:#7E9A2E"></i>
+    <span style="font-size:12px;font-weight:600;color:#2E2A2B">Тестовый прогон · август 2026</span>
+    <span style="font-size:11.5px;color:#7E9A2E">Данные не идут в статистику школы. Администратор может очистить результаты прогона.</span>
+    <a href="#" style="margin-left:auto;font-size:11.5px;font-weight:500;color:#7E9A2E">Оставить отзыв о форме</a>
+  </div>
+  </sc-if>
+
+  <div style="display:flex;flex:1;align-items:stretch">
+    <div style="width:196px;flex-shrink:0;background:#2E2A2B;padding:14px 0;display:flex;flex-direction:column;gap:2px">
+      <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="4">
+        <button onClick="{{ n.pick }}" style="{{ n.style }}"><i class="{{ n.icon }}" style="font-size:16px;flex-shrink:0"></i>{{ n.label }}</button>
+      </sc-for>
+      <div style="margin-top:auto;padding:14px 22px;color:rgba(255,255,255,.28);font-size:10.5px;line-height:1.6">2025–2026<br>Школа «Вектор», Воронеж</div>
+    </div>
+
+    <div style="flex:1;padding:24px 26px 40px;background:#FAF9F7;min-width:0">
+
+      <sc-if value="{{ isStudentHome }}" hint-placeholder-val="{{ false }}">
+      <div style="animation:vkFadeUp .3s ease both">
+        <div style="font-family:'Unbounded',sans-serif;font-size:22px;font-weight:600;margin-bottom:4px">Привет, Полина</div>
+        <div style="font-size:12.5px;color:#6E6A6B;margin-bottom:20px">10А · 360-диагностика I полугодия идёт до 20 июня</div>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:15px 17px">
+            <div style="font-family:'Unbounded',sans-serif;font-size:25px;font-weight:600;line-height:1.1">3.4</div>
+            <div style="font-size:11px;color:#6E6A6B;margin-top:3px">Средний балл</div>
+          </div>
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:15px 17px">
+            <div style="font-family:'Unbounded',sans-serif;font-size:25px;font-weight:600;line-height:1.1;color:#7E9A2E">+0.2</div>
+            <div style="font-size:11px;color:#6E6A6B;margin-top:3px">К декабрю 2025</div>
+          </div>
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:15px 17px">
+            <div style="font-family:'Unbounded',sans-serif;font-size:25px;font-weight:600;line-height:1.1">{{ sv.chaptersDone }}<span style="font-size:15px;color:#A6A2A3">/8</span></div>
+            <div style="font-size:11px;color:#6E6A6B;margin-top:3px">Глав самооценки</div>
+          </div>
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:15px 17px">
+            <div style="font-family:'Unbounded',sans-serif;font-size:25px;font-weight:600;line-height:1.1;color:#3C8FED">3</div>
+            <div style="font-size:11px;color:#6E6A6B;margin-top:3px">Анкеты на других</div>
+          </div>
+        </div>
+
+        <div style="font-size:10.5px;font-weight:600;color:#A6A2A3;text-transform:uppercase;letter-spacing:.08em;margin-bottom:9px">Нужно заполнить</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:16px 18px;display:flex;flex-direction:column;gap:9px">
+            <span style="align-self:flex-start;font-size:10.5px;font-weight:500;padding:3px 10px;border-radius:999px;background:#E9F2FE;color:#1F66C4">{{ selfBadge }}</span>
+            <div style="font-size:14px;font-weight:500">Как я вижу себя</div>
+            <div style="font-size:11.5px;color:#6E6A6B">{{ sv.answeredCount }} из {{ sv.totalCount }} вопросов · {{ sv.statusLabel }}</div>
+            <div style="height:5px;background:rgba(46,42,43,.09);border-radius:3px;overflow:hidden"><div style="{{ sv.barStyle }}"></div></div>
+            <button onClick="{{ goSurvey }}" style="align-self:flex-start;margin-top:2px;font-size:12.5px;font-weight:500;padding:9px 18px;border-radius:7px;border:1px solid #3C8FED;background:#3C8FED;color:#fff;cursor:pointer;display:flex;align-items:center;gap:6px">{{ sv.ctaLabel }}<i class="ti ti-arrow-right" style="font-size:13px"></i></button>
+          </div>
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:16px 18px;display:flex;flex-direction:column;gap:9px">
+            <span style="align-self:flex-start;font-size:10.5px;font-weight:500;padding:3px 10px;border-radius:999px;background:#E9F4F3;color:#3F7E79">{{ peerBadge }}</span>
+            <div style="font-size:14px;font-weight:500">Оценить трёх одноклассников</div>
+            <div style="font-size:11.5px;color:#6E6A6B">{{ peerCardLine }}</div>
+            <div style="height:5px;background:rgba(46,42,43,.09);border-radius:3px;overflow:hidden"><div style="{{ peerCardBarStyle }}"></div></div>
+            <button onClick="{{ goMyClass }}" style="align-self:flex-start;margin-top:2px;font-size:12.5px;font-weight:500;padding:9px 18px;border-radius:7px;border:1px solid rgba(46,42,43,.18);background:#fff;color:#2E2A2B;cursor:pointer;display:flex;align-items:center;gap:6px">Открыть список<i class="ti ti-arrow-right" style="font-size:13px"></i></button>
+          </div>
+        </div>
+
+        <div style="font-size:10.5px;font-weight:600;color:#A6A2A3;text-transform:uppercase;letter-spacing:.08em;margin-bottom:9px">Мои зоны роста на это полугодие</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+          <sc-for list="{{ growthZones }}" as="g" hint-placeholder-count="3">
+            <div style="background:#E9F4F3;border:1px solid rgba(63,126,121,.16);border-radius:11px;padding:15px 17px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
+                <div style="width:24px;height:24px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;color:#3F7E79"><i class="ti ti-arrow-up" style="font-size:14px"></i></div>
+                <div style="font-size:12.5px;font-weight:600;color:#2E2A2B">{{ g.name }}</div>
+              </div>
+              <div style="font-size:11.5px;color:#3F7E79;line-height:1.55">{{ g.step }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isSurvey }}" hint-placeholder-val="{{ false }}">
+      <div>
+        <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:16px;flex-wrap:wrap">
+          <div>
+            <div style="font-family:'Unbounded',sans-serif;font-size:19px;font-weight:600">{{ campaignTitle }}</div>
+            <div style="font-size:12px;color:#6E6A6B;margin-top:3px"><i class="ti ti-user" style="font-size:12px;vertical-align:-1px"></i> {{ sv.subjectLine }}</div>
+          </div>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;color:#A6A2A3">Вариант формы</span>
+            <div style="display:flex;gap:3px;background:#fff;padding:3px;border-radius:999px;border:1px solid rgba(46,42,43,.09)">
+              <button onClick="{{ sv.pickFocus }}" style="{{ sv.focusTabStyle }}">Фокус · по одному</button>
+              <button onClick="{{ sv.pickDense }}" style="{{ sv.denseTabStyle }}">Лента · главой</button>
+            </div>
+          </div>
+        </div>
+
+        <sc-if value="{{ sv.isPeerSubject }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:flex-start;gap:11px;padding:13px 16px;border-radius:11px;background:#E9F4F3;border:1px solid rgba(63,126,121,.2);margin-bottom:14px">
+          <i class="ti ti-shield-lock" style="font-size:17px;color:#3F7E79;flex-shrink:0;margin-top:1px"></i>
+          <div style="font-size:12px;line-height:1.6;color:#2E2A2B">Твои ответы одноклассник увидит только вместе с ответами других — по отдельности никогда. Если оценок в группе окажется меньше трёх, балл вообще не покажут: так нельзя вычислить, кто что поставил.</div>
+        </div>
+        </sc-if>
+
+        <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+          <sc-for list="{{ sv.chapters }}" as="c" hint-placeholder-count="8">
+            <button onClick="{{ c.pick }}" style="{{ c.pillStyle }}"><i class="{{ c.icon }}" style="font-size:12px"></i>{{ c.num }}</button>
+          </sc-for>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:10px;font-size:11.5px;color:#6E6A6B">
+            <span>{{ sv.answeredCount }} / {{ sv.totalCount }}</span>
+            <span style="color:#A6A2A3">≈ {{ sv.minutesLeft }} мин осталось</span>
+          </div>
+        </div>
+
+        <sc-if value="{{ sv.isFocus }}" hint-placeholder-val="{{ true }}">
+        <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:18px;overflow:hidden;position:relative">
+          <div style="{{ sv.chapterHeadStyle }}">
+            <span style="{{ sv.chapterBadgeStyle }}">Глава {{ sv.chapterNum }} из 8 · {{ sv.chapterName }}</span>
+            <span style="margin-left:auto;font-size:11.5px;color:#6E6A6B">Вопрос {{ sv.qNumInChapter }} из {{ sv.qTotalInChapter }}</span>
+          </div>
+          <div style="height:4px;background:rgba(46,42,43,.07)"><div style="{{ sv.barStyle }}"></div></div>
+
+          <div style="padding:44px 48px 34px;min-height:330px;display:flex;flex-direction:column;gap:30px" key="{{ sv.qKey }}">
+            <div style="animation:vkSlideIn .28s cubic-bezier(.2,.8,.2,1) both">
+              <div style="font-size:11px;font-weight:600;color:#A6A2A3;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">{{ sv.aboutLine }}</div>
+              <div style="font-family:'Unbounded',sans-serif;font-size:27px;font-weight:500;line-height:1.35;max-width:760px;text-wrap:pretty">{{ sv.qText }}</div>
+            </div>
+            <div style="display:flex;gap:10px;animation:vkFadeUp .3s ease .06s both">
+              <sc-for list="{{ sv.scale }}" as="o" hint-placeholder-count="5">
+                <button onClick="{{ o.pick }}" style="{{ o.style }}">
+                  <div style="{{ o.numStyle }}">{{ o.v }}</div>
+                  <div style="{{ o.labelStyle }}">{{ o.label }}</div>
+                </button>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;font-size:11.5px;color:#A6A2A3;margin-top:auto">
+              <span style="display:flex;align-items:center;gap:5px"><i class="ti ti-keyboard" style="font-size:14px"></i>Клавиши 1–5</span>
+              <span style="display:flex;align-items:center;gap:5px;color:#7E9A2E"><i class="ti ti-cloud-check" style="font-size:14px"></i>Черновик сохраняется автоматически</span>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-top:1px solid rgba(46,42,43,.09);background:#FAF9F7">
+            <div style="display:flex;align-items:center;gap:14px">
+              <button onClick="{{ sv.back }}" style="font-size:12.5px;font-weight:500;padding:9px 16px;border-radius:7px;border:1px solid rgba(46,42,43,.18);background:#fff;color:#2E2A2B;cursor:pointer;display:flex;align-items:center;gap:6px"><i class="ti ti-arrow-left" style="font-size:13px"></i>Назад</button>
+              <span style="font-size:12px;color:#6E6A6B;display:flex;align-items:center;gap:6px;cursor:default"><i class="ti ti-message" style="font-size:14px"></i>Добавить комментарий</span>
+            </div>
+            <button onClick="{{ sv.skip }}" style="font-size:12.5px;font-weight:500;padding:9px 16px;border-radius:7px;border:1px solid transparent;background:none;color:#6E6A6B;cursor:pointer;display:flex;align-items:center;gap:6px">Пропустить<i class="ti ti-arrow-right" style="font-size:13px"></i></button>
+          </div>
+
+          <sc-if value="{{ sv.showChapterDone }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;background:rgba(250,249,247,.94);backdrop-filter:blur(3px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:40px;text-align:center;animation:vkFadeIn .25s ease both">
+            <div style="{{ sv.medalStyle }}"><div style="{{ sv.medalInnerStyle }}"></div></div>
+            <div style="font-family:'Unbounded',sans-serif;font-size:20px;font-weight:600;margin-top:22px;animation:vkFadeUp .4s ease .18s both">Глава пройдена</div>
+            <div style="font-size:13px;color:#6E6A6B;margin-top:6px;animation:vkFadeUp .4s ease .26s both">{{ sv.doneChapterName }}</div>
+            <sc-if value="{{ sv.showDoneXp }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;gap:7px;margin-top:16px;padding:6px 14px;border-radius:999px;background:#F4FAE2;color:#7E9A2E;font-size:12.5px;font-weight:600;animation:vkPop .4s cubic-bezier(.2,.8,.2,1) .34s both"><i class="ti ti-arrow-up" style="font-size:15px"></i>+{{ sv.doneXp }} XP за главу</div>
+            </sc-if>
+
+            <div style="width:100%;max-width:470px;margin-top:22px;text-align:left;animation:vkFadeUp .4s ease .42s both">
+              <label style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;font-weight:500;color:#2E2A2B;margin-bottom:7px">Один пример, когда это проявилось<span style="font-size:11px;font-weight:400;color:#A6A2A3">по желанию</span></label>
+              <textarea value="{{ sv.noteValue }}" onChange="{{ sv.onNote }}" placeholder="{{ sv.notePlaceholder }}" rows="2" style="width:100%;resize:vertical;padding:10px 12px;border:1px solid rgba(46,42,43,.18);border-radius:9px;font-size:12.5px;line-height:1.55;font-family:'Onest',sans-serif;background:#fff;color:#2E2A2B"></textarea>
+              <div style="font-size:11px;color:#A6A2A3;margin-top:6px;line-height:1.5">Один конкретный случай полезнее балла: по нему видно, что именно менять.</div>
+            </div>
+
+            <div style="font-size:12px;color:#A6A2A3;margin-top:18px;animation:vkFadeUp .4s ease .5s both">{{ sv.doneProgressLine }}</div>
+            <button onClick="{{ sv.continue }}" style="margin-top:18px;font-size:13px;font-weight:500;padding:11px 24px;border-radius:7px;border:1px solid #3C8FED;background:#3C8FED;color:#fff;cursor:pointer;display:flex;align-items:center;gap:7px;animation:vkFadeUp .4s ease .5s both">{{ sv.continueLabel }}<i class="ti ti-arrow-right" style="font-size:14px"></i></button>
+          </div>
+          </sc-if>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ sv.isDense }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:238px 1fr;gap:12px;align-items:start">
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:10px;display:flex;flex-direction:column;gap:2px">
+            <sc-for list="{{ sv.chapters }}" as="c" hint-placeholder-count="8">
+              <button onClick="{{ c.pick }}" style="{{ c.railStyle }}">
+                <div style="{{ c.ringStyle }}">{{ c.ringLabel }}</div>
+                <div style="flex:1;min-width:0;text-align:left">
+                  <div style="font-size:12px;font-weight:500;line-height:1.35">{{ c.name }}</div>
+                  <div style="font-size:10.5px;color:#A6A2A3;margin-top:1px">{{ c.countLabel }}</div>
+                </div>
+              </button>
+            </sc-for>
+          </div>
+
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;overflow:hidden">
+            <div style="{{ sv.chapterHeadStyle }}">
+              <span style="{{ sv.chapterBadgeStyle }}">Глава {{ sv.chapterNum }} из 8</span>
+              <span style="font-size:13.5px;font-weight:600">{{ sv.chapterName }}</span>
+              <span style="margin-left:auto;font-size:11.5px;color:#6E6A6B">{{ sv.chapterAnsweredLabel }}</span>
+            </div>
+            <div style="padding:6px 22px 18px">
+              <sc-for list="{{ sv.chapterQuestions }}" as="q" hint-placeholder-count="4">
+                <div style="{{ q.rowStyle }}">
+                  <div style="flex:1;min-width:0;font-size:13.5px;line-height:1.5;padding-right:16px;text-wrap:pretty">{{ q.text }}<span style="{{ q.condStyle }}">{{ q.condLabel }}</span></div>
+                  <div style="display:flex;gap:4px;flex-shrink:0">
+                    <sc-for list="{{ q.scale }}" as="o" hint-placeholder-count="5">
+                      <button onClick="{{ o.pick }}" style="{{ o.denseStyle }}" title="{{ o.label }}">{{ o.v }}</button>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="padding:0 22px 18px">
+              <label style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;font-weight:500;color:#2E2A2B;margin-bottom:7px">Один пример, когда это проявилось<span style="font-size:11px;font-weight:400;color:#A6A2A3">по желанию</span></label>
+              <textarea value="{{ sv.noteValue }}" onChange="{{ sv.onNote }}" placeholder="{{ sv.notePlaceholder }}" rows="2" style="width:100%;resize:vertical;padding:10px 12px;border:1px solid rgba(46,42,43,.18);border-radius:9px;font-size:12.5px;line-height:1.55;font-family:'Onest',sans-serif;background:#FAF9F7;color:#2E2A2B"></textarea>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 22px;border-top:1px solid rgba(46,42,43,.09);background:#FAF9F7;gap:10px;flex-wrap:wrap">
+              <span style="font-size:11.5px;color:#7E9A2E;display:flex;align-items:center;gap:6px"><i class="ti ti-cloud-check" style="font-size:14px"></i>Сохранено</span>
+              <div style="display:flex;gap:8px">
+                <button onClick="{{ sv.prevChapter }}" style="font-size:12.5px;font-weight:500;padding:9px 16px;border-radius:7px;border:1px solid rgba(46,42,43,.18);background:#fff;color:#2E2A2B;cursor:pointer;display:flex;align-items:center;gap:6px"><i class="ti ti-arrow-left" style="font-size:13px"></i>Предыдущая глава</button>
+                <button onClick="{{ sv.nextChapter }}" style="font-size:12.5px;font-weight:500;padding:9px 18px;border-radius:7px;border:1px solid #3C8FED;background:#3C8FED;color:#fff;cursor:pointer;display:flex;align-items:center;gap:6px">Следующая глава<i class="ti ti-arrow-right" style="font-size:13px"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isResults }}" hint-placeholder-val="{{ false }}">
+      <div style="animation:vkFadeUp .3s ease both">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap">
+          <div style="width:52px;height:52px;border-radius:50%;background:#3C8FED;color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Unbounded',sans-serif;font-size:17px;font-weight:600">ИП</div>
+          <div>
+            <div style="font-family:'Unbounded',sans-serif;font-size:19px;font-weight:600">Иванова Полина</div>
+            <div style="font-size:12px;color:#6E6A6B;margin-top:2px">{{ resultsSubline }}</div>
+          </div>
+          <button style="margin-left:auto;font-size:12.5px;font-weight:500;padding:9px 16px;border-radius:7px;border:1px solid rgba(46,42,43,.18);background:#fff;color:#2E2A2B;cursor:pointer;display:flex;align-items:center;gap:6px"><i class="ti ti-download" style="font-size:14px"></i>Скачать отчёт</button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:15px 17px">
+            <div style="font-family:'Unbounded',sans-serif;font-size:25px;font-weight:600;line-height:1.1">3.4</div>
+            <div style="font-size:11px;color:#6E6A6B;margin-top:3px">Средний балл</div>
+          </div>
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:15px 17px">
+            <div style="font-family:'Unbounded',sans-serif;font-size:25px;font-weight:600;line-height:1.1;color:#7E9A2E">+0.2</div>
+            <div style="font-size:11px;color:#6E6A6B;margin-top:3px">Динамика за год</div>
+          </div>
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:15px 17px">
+            <div style="font-family:'Unbounded',sans-serif;font-size:25px;font-weight:600;line-height:1.1">3.4</div>
+            <div style="font-size:11px;color:#6E6A6B;margin-top:3px">Средний по 10А</div>
+          </div>
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:15px 17px">
+            <div style="font-family:'Unbounded',sans-serif;font-size:25px;font-weight:600;line-height:1.1;color:#3F7E79">+0.4</div>
+            <div style="font-size:11px;color:#6E6A6B;margin-top:3px">Разрыв самооценки</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:12px;margin-bottom:12px">
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:16px 18px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
+              <div style="font-size:13.5px;font-weight:600">Профиль по 8 компетенциям</div>
+              <div style="margin-left:auto;display:flex;gap:12px;flex-wrap:wrap">
+                <sc-for list="{{ radarLegend }}" as="l" hint-placeholder-count="4">
+                  <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#6E6A6B"><span style="{{ l.dotStyle }}"></span>{{ l.label }}</span>
+                </sc-for>
+              </div>
+            </div>
+            <div style="height:330px;position:relative"><canvas id="vkRadar"></canvas></div>
+            <sc-if value="{{ peersShort }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:flex-start;gap:11px;padding:12px 14px;border-radius:10px;background:#E9F4F3;border:1px dashed rgba(63,126,121,.4);margin-top:12px">
+              <i class="ti ti-shield-lock" style="font-size:16px;color:#3F7E79;flex-shrink:0;margin-top:1px"></i>
+              <div>
+                <div style="font-size:12px;font-weight:600;margin-bottom:3px">Слой одноклассников скрыт — данных недостаточно</div>
+                <div style="font-size:11.5px;line-height:1.55;color:#3F7E79">{{ peerCountLine }}. Балл группы из менее чем трёх ответов позволяет вычислить автора, поэтому он не показывается никому — ни ученику, ни учителю, ни родителям. В расчёте среднего и разрыва этот слой тоже не участвует.</div>
+              </div>
+            </div>
+            </sc-if>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:16px 18px">
+              <div style="font-size:13.5px;font-weight:600;margin-bottom:3px">Как я вижу себя и как видят другие</div>
+              <div style="font-size:11.5px;color:#6E6A6B;margin-bottom:14px">Самый полезный сигнал 360°: не сам балл, а расхождение</div>
+              <sc-for list="{{ gapRows }}" as="g" hint-placeholder-count="4">
+                <div style="padding:9px 0;border-top:1px solid rgba(46,42,43,.09)">
+                  <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+                    <span style="font-size:12.5px;flex:1;min-width:0">{{ g.name }}</span>
+                    <span style="{{ g.deltaStyle }}">{{ g.deltaLabel }}</span>
+                  </div>
+                  <div style="position:relative;height:6px;background:rgba(46,42,43,.07);border-radius:3px">
+                    <div style="{{ g.selfBarStyle }}"></div>
+                    <div style="{{ g.othersMarkStyle }}"></div>
+                  </div>
+                </div>
+              </sc-for>
+              <div style="display:flex;gap:14px;margin-top:12px;font-size:10.5px;color:#A6A2A3">
+                <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:5px;border-radius:3px;background:#3C8FED;display:inline-block"></span>самооценка</span>
+                <span style="display:flex;align-items:center;gap:5px"><span style="width:2px;height:10px;background:#2E2A2B;display:inline-block"></span>оценка других</span>
+              </div>
+            </div>
+
+            <div style="background:#E9F4F3;border:1px solid rgba(63,126,121,.16);border-radius:11px;padding:16px 18px">
+              <div style="font-size:13.5px;font-weight:600;margin-bottom:3px">Зоны роста</div>
+              <div style="font-size:11.5px;color:#3F7E79;margin-bottom:12px">Три компетенции, где следующий шаг даст больше всего</div>
+              <sc-for list="{{ growthZones }}" as="g" hint-placeholder-count="3">
+                <div style="display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-top:1px solid rgba(63,126,121,.14)">
+                  <div style="width:22px;height:22px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;color:#3F7E79;flex-shrink:0"><i class="ti ti-arrow-up" style="font-size:13px"></i></div>
+                  <div>
+                    <div style="font-size:12.5px;font-weight:500">{{ g.name }}</div>
+                    <div style="font-size:11.5px;color:#3F7E79;line-height:1.5;margin-top:2px">{{ g.step }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:12px">
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:16px 18px">
+            <div style="font-size:13.5px;font-weight:600;margin-bottom:3px">Динамика по годам</div>
+            <div style="font-size:11.5px;color:#6E6A6B;margin-bottom:12px">Историчные оценки 1–3 приведены к шкале 1–5</div>
+            <div style="height:260px;position:relative"><canvas id="vkYears"></canvas></div>
+          </div>
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:16px 18px">
+            <div style="font-size:13.5px;font-weight:600;margin-bottom:12px">Детали по компетенциям</div>
+            <div style="overflow-x:auto">
+            <div style="display:grid;grid-template-columns:130px repeat(5,minmax(38px,1fr)) minmax(40px,.8fr);gap:0;font-size:11.5px;min-width:400px">
+              <sc-for list="{{ detailCells }}" as="c" hint-placeholder-count="56">
+                <div style="{{ c.style }}">{{ c.text }}</div>
+              </sc-for>
+            </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isMyClass }}" hint-placeholder-val="{{ false }}">
+      <div style="animation:vkFadeUp .3s ease both">
+        <div style="font-family:'Unbounded',sans-serif;font-size:19px;font-weight:600;margin-bottom:4px">Мой класс · 10А</div>
+        <div style="font-size:12.5px;color:#6E6A6B;margin-bottom:18px">Классный руководитель — Козлов Р.С. · 24 ученика</div>
+
+        <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:12px;margin-bottom:12px">
+          <div style="background:linear-gradient(135deg,#D9EE8E 0%,#9BD2C9 45%,#3C8FED 100%);border-radius:18px;padding:24px 26px;color:#fff">
+            <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;opacity:.8">Класс собирает диагностику вместе</div>
+            <div style="display:flex;align-items:flex-end;gap:12px;margin-top:10px">
+              <div style="font-family:'Unbounded',sans-serif;font-size:52px;font-weight:600;line-height:1">68<span style="font-size:26px">%</span></div>
+              <div style="font-size:12.5px;padding-bottom:9px;opacity:.9">669 из 988<br>анкет заполнено</div>
+            </div>
+            <div style="height:7px;background:rgba(255,255,255,.3);border-radius:4px;margin-top:16px;overflow:hidden"><div style="height:100%;width:68%;background:#fff;border-radius:4px"></div></div>
+            <div style="font-size:11.5px;margin-top:10px;opacity:.85">До 20 июня осталось 12 дней. Ещё 6 одноклассников не начали самооценку.</div>
+          </div>
+
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:16px 18px">
+            <div style="font-size:13.5px;font-weight:600;margin-bottom:3px">Кого мне осталось оценить</div>
+            <div style="font-size:11.5px;color:#6E6A6B;margin-bottom:12px">Выборка назначена автоматически. Ваши ответы одноклассник не увидит по отдельности.</div>
+            <sc-for list="{{ peersToRate }}" as="p" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid rgba(46,42,43,.09)">
+                <div style="{{ p.avStyle }}">{{ p.initials }}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:12.5px;font-weight:500">{{ p.name }}</div>
+                  <div style="font-size:11px;color:#A6A2A3">{{ p.status }}</div>
+                </div>
+                <button onClick="{{ p.rate }}" style="{{ p.btnStyle }}">{{ p.btnLabel }}</button>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:16px 18px">
+          <div style="font-size:13.5px;font-weight:600;margin-bottom:3px">Мои достижения</div>
+          <div style="font-size:11.5px;color:#6E6A6B;margin-bottom:14px">Медаль за каждую пройденную главу самооценки</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <sc-for list="{{ sv.chapters }}" as="c" hint-placeholder-count="8">
+              <div style="{{ c.medalCardStyle }}">
+                <div style="{{ c.medalStyle }}"><div style="{{ c.medalInnerStyle }}"></div></div>
+                <div style="font-size:11px;font-weight:500;text-align:center;line-height:1.35">{{ c.short }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isTeacherClass }}" hint-placeholder-val="{{ false }}">
+      <div style="animation:vkFadeUp .3s ease both">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+          <div style="font-family:'Unbounded',sans-serif;font-size:19px;font-weight:600">Мои классы</div>
+          <div style="display:flex;gap:6px;margin-left:6px">
+            <sc-for list="{{ teacherClasses }}" as="c" hint-placeholder-count="3">
+              <button onClick="{{ c.pick }}" style="{{ c.chipStyle }}">{{ c.label }}<span style="{{ c.chipTagStyle }}">{{ c.tag }}</span></button>
+            </sc-for>
+          </div>
+          <div style="margin-left:auto;font-size:11.5px;color:#A6A2A3;display:flex;align-items:center;gap:6px"><i class="ti ti-lock" style="font-size:13px"></i>Состав класса меняет администратор</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">
+          <sc-for list="{{ teacherMetrics }}" as="m" hint-placeholder-count="4">
+            <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:15px 17px">
+              <div style="{{ m.valStyle }}">{{ m.val }}</div>
+              <div style="font-size:11px;color:#6E6A6B;margin-top:3px">{{ m.label }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 340px;gap:12px;align-items:start">
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid rgba(46,42,43,.09);flex-wrap:wrap">
+              <div style="font-size:13.5px;font-weight:600">Состав 10А · прогресс диагностики</div>
+              <div style="margin-left:auto;display:flex;gap:5px">
+                <sc-for list="{{ teacherFilters }}" as="f" hint-placeholder-count="3">
+                  <button onClick="{{ f.pick }}" style="{{ f.style }}">{{ f.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+            <div style="overflow-x:auto">
+            <div style="display:grid;grid-template-columns:1.5fr .9fr .8fr .7fr .7fr auto;font-size:12px;min-width:600px">
+              <sc-for list="{{ teacherRosterCells }}" as="c" hint-placeholder-count="48">
+                <div style="{{ c.style }}"><sc-if value="{{ c.isBtn }}" hint-placeholder-val="{{ false }}"><button onClick="{{ c.action }}" style="{{ c.btnStyle }}">{{ c.text }}</button></sc-if><sc-if value="{{ c.isText }}" hint-placeholder-val="{{ true }}"><span style="{{ c.textStyle }}">{{ c.text }}</span></sc-if></div>
+              </sc-for>
+            </div>
+            </div>
+            <div style="padding:11px 18px;font-size:11px;color:#A6A2A3;border-top:1px solid rgba(46,42,43,.09)">Показаны 8 из 24 учеников</div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:16px 18px">
+              <div style="font-size:13.5px;font-weight:600;margin-bottom:3px">Средний профиль класса</div>
+              <div style="font-size:11.5px;color:#6E6A6B;margin-bottom:8px">10А против школы</div>
+              <div style="height:270px;position:relative"><canvas id="vkClassRadar"></canvas></div>
+            </div>
+            <div style="background:#E9F4F3;border:1px solid rgba(63,126,121,.16);border-radius:11px;padding:16px 18px">
+              <div style="font-size:13.5px;font-weight:600;margin-bottom:10px">Зоны роста класса</div>
+              <sc-for list="{{ classGrowth }}" as="g" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid rgba(63,126,121,.14)">
+                  <div style="font-family:'Unbounded',sans-serif;font-size:15px;font-weight:600;color:#3F7E79;width:30px">{{ g.score }}</div>
+                  <div style="flex:1;min-width:0;font-size:12px">{{ g.name }}</div>
+                  <span style="font-size:11px;color:#3F7E79">{{ g.count }}</span>
+                </div>
+              </sc-for>
+              <div style="font-size:11px;color:#3F7E79;margin-top:10px;line-height:1.55">Это темы для классных часов, а не список «слабых» учеников.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isParentChild }}" hint-placeholder-val="{{ false }}">
+      <div style="animation:vkFadeUp .3s ease both">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+          <div style="font-family:'Unbounded',sans-serif;font-size:19px;font-weight:600">Мои дети</div>
+          <div style="display:flex;gap:6px;margin-left:6px">
+            <sc-for list="{{ children }}" as="c" hint-placeholder-count="2">
+              <button onClick="{{ c.pick }}" style="{{ c.chipStyle }}"><span style="{{ c.avStyle }}">{{ c.initials }}</span>{{ c.name }}</button>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:20px 22px;margin-bottom:12px;display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+          <div style="width:60px;height:60px;border-radius:50%;background:#3C8FED;color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Unbounded',sans-serif;font-size:19px;font-weight:600">ИП</div>
+          <div>
+            <div style="font-family:'Unbounded',sans-serif;font-size:19px;font-weight:600">Иванова Полина</div>
+            <div style="font-size:12px;color:#6E6A6B;margin-top:3px">10А · классный руководитель Козлов Р.С. · диагностика июнь 2026 завершена</div>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:26px;text-align:right">
+            <div>
+              <div style="font-family:'Unbounded',sans-serif;font-size:26px;font-weight:600;line-height:1.1">3.4</div>
+              <div style="font-size:11px;color:#6E6A6B">средний балл</div>
+            </div>
+            <div>
+              <div style="font-family:'Unbounded',sans-serif;font-size:26px;font-weight:600;line-height:1.1;color:#7E9A2E">+0.2</div>
+              <div style="font-size:11px;color:#6E6A6B">за год</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:16px 18px">
+            <div style="font-size:13.5px;font-weight:600;margin-bottom:8px">Профиль Полины</div>
+            <div style="height:290px;position:relative"><canvas id="vkChildRadar"></canvas></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="background:#E9F2FE;border:1px solid rgba(31,102,196,.16);border-radius:11px;padding:16px 18px">
+              <span style="display:inline-block;font-size:10.5px;font-weight:500;padding:3px 10px;border-radius:999px;background:#fff;color:#1F66C4;margin-bottom:9px">Ваша анкета · родитель</span>
+              <div style="font-size:14px;font-weight:500;margin-bottom:4px">Оцените Полину по 8 компетенциям</div>
+              <div style="font-size:11.5px;color:#1F66C4;margin-bottom:12px">33 вопроса · около 9 минут · до 20 июня</div>
+              <button onClick="{{ goSurvey }}" style="font-size:12.5px;font-weight:500;padding:10px 18px;border-radius:7px;border:1px solid #3C8FED;background:#3C8FED;color:#fff;cursor:pointer;display:flex;align-items:center;gap:6px">Заполнить анкету<i class="ti ti-arrow-right" style="font-size:13px"></i></button>
+            </div>
+            <div style="background:#E9F4F3;border:1px solid rgba(63,126,121,.16);border-radius:11px;padding:16px 18px">
+              <div style="font-size:13.5px;font-weight:600;margin-bottom:10px">О чём поговорить дома</div>
+              <sc-for list="{{ growthZones }}" as="g" hint-placeholder-count="3">
+                <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid rgba(63,126,121,.14)">
+                  <div style="width:22px;height:22px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;color:#3F7E79;flex-shrink:0"><i class="ti ti-arrow-up" style="font-size:13px"></i></div>
+                  <div>
+                    <div style="font-size:12.5px;font-weight:500">{{ g.name }}</div>
+                    <div style="font-size:11.5px;color:#3F7E79;line-height:1.5;margin-top:2px">{{ g.parentStep }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:16px 18px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap">
+            <div style="font-size:13.5px;font-weight:600">Полина и класс 10А</div>
+            <span style="margin-left:auto;font-size:11px;color:#A6A2A3;display:flex;align-items:center;gap:6px"><i class="ti ti-eye-off" style="font-size:13px"></i>Результаты других учеников обезличены</span>
+          </div>
+          <div style="font-size:11.5px;color:#6E6A6B;margin-bottom:14px">Средние значения по классу — контекст, а не рейтинг. Списка учеников с баллами нет ни у одного родителя.</div>
+          <sc-for list="{{ parentCompare }}" as="c" hint-placeholder-count="8">
+            <div style="padding:8px 0;border-top:1px solid rgba(46,42,43,.09);display:flex;align-items:center;gap:12px">
+              <div style="width:230px;flex-shrink:0;font-size:12px">{{ c.name }}</div>
+              <div style="flex:1;position:relative;height:8px;background:rgba(46,42,43,.07);border-radius:4px">
+                <div style="{{ c.barStyle }}"></div>
+                <div style="{{ c.markStyle }}"></div>
+              </div>
+              <div style="width:74px;text-align:right;font-size:12px;font-weight:500">{{ c.label }}</div>
+            </div>
+          </sc-for>
+          <div style="display:flex;gap:14px;margin-top:12px;font-size:10.5px;color:#A6A2A3">
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:6px;border-radius:3px;background:#3C8FED;display:inline-block"></span>Полина</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:2px;height:11px;background:#2E2A2B;display:inline-block"></span>среднее по 10А</span>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isAdminClasses }}" hint-placeholder-val="{{ false }}">
+      <div style="animation:vkFadeUp .3s ease both">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+          <div style="font-family:'Unbounded',sans-serif;font-size:19px;font-weight:600">Классы · 2025–2026</div>
+          <span style="font-size:11.5px;color:#6E6A6B;padding:4px 11px;border-radius:999px;background:#fff;border:1px solid rgba(46,42,43,.09)">11 классов · 247 учеников</span>
+          <div style="margin-left:auto;display:flex;gap:8px">
+            <button style="font-size:12.5px;font-weight:500;padding:9px 16px;border-radius:7px;border:1px solid rgba(46,42,43,.18);background:#fff;color:#2E2A2B;cursor:pointer;display:flex;align-items:center;gap:6px"><i class="ti ti-upload" style="font-size:13px"></i>Загрузить пачкой</button>
+            <button style="font-size:12.5px;font-weight:500;padding:9px 18px;border-radius:7px;border:1px solid #3C8FED;background:#3C8FED;color:#fff;cursor:pointer;display:flex;align-items:center;gap:6px"><i class="ti ti-plus" style="font-size:13px"></i>Добавить класс</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:12px">
+          <sc-for list="{{ adminClasses }}" as="c" hint-placeholder-count="6">
+            <button onClick="{{ c.pick }}" style="{{ c.cardStyle }}">
+              <div style="display:flex;align-items:baseline;gap:7px">
+                <div style="font-family:'Unbounded',sans-serif;font-size:17px;font-weight:600">{{ c.label }}</div>
+                <div style="{{ c.pctStyle }}">{{ c.pct }}</div>
+              </div>
+              <div style="font-size:11.5px;color:#6E6A6B;margin-top:4px">{{ c.students }}</div>
+              <div style="font-size:10.5px;color:#A6A2A3;margin-top:5px">{{ c.homeroom }}</div>
+              <div style="height:4px;background:rgba(46,42,43,.09);border-radius:2px;margin-top:9px;overflow:hidden"><div style="{{ c.barStyle }}"></div></div>
+            </button>
+          </sc-for>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 356px;gap:12px;align-items:start">
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid rgba(46,42,43,.09);flex-wrap:wrap">
+              <div style="font-size:13.5px;font-weight:600">Состав класса {{ adminSelected }}</div>
+              <input type="text" value="" placeholder="Поиск по имени или email" readonly="readonly" style="margin-left:auto;font-size:12px;padding:7px 12px;border:1px solid rgba(46,42,43,.18);border-radius:7px;background:#FAF9F7;width:210px"></input>
+              <button style="font-size:12.5px;font-weight:500;padding:8px 14px;border-radius:7px;border:1px solid rgba(46,42,43,.18);background:#fff;color:#2E2A2B;cursor:pointer;display:flex;align-items:center;gap:6px"><i class="ti ti-user-plus" style="font-size:13px"></i>Добавить ученика</button>
+            </div>
+
+            <div style="{{ bulkBarStyle }}">
+              <span style="font-size:12px;font-weight:500;color:#1F66C4">{{ bulkLabel }}</span>
+              <div style="margin-left:auto;display:flex;gap:7px;flex-wrap:wrap;min-width:0">
+                <button style="font-size:12px;font-weight:500;padding:7px 13px;border-radius:7px;border:1px solid rgba(46,42,43,.18);background:#fff;color:#2E2A2B;cursor:pointer;white-space:nowrap">Перевести в другой класс</button>
+                <button style="font-size:12px;font-weight:500;padding:7px 13px;border-radius:7px;border:1px solid rgba(46,42,43,.18);background:#fff;color:#2E2A2B;cursor:pointer;white-space:nowrap">Привязать родителя</button>
+                <button style="font-size:12px;font-weight:500;padding:7px 13px;border-radius:7px;border:1px solid #E2574C;background:#fff;color:#E2574C;cursor:pointer;white-space:nowrap">Открепить от класса</button>
+              </div>
+            </div>
+
+            <div style="overflow-x:auto">
+            <div style="display:grid;grid-template-columns:34px 1.4fr 1.5fr .9fr .8fr;font-size:12px;min-width:620px">
+              <sc-for list="{{ adminRosterCells }}" as="c" hint-placeholder-count="45">
+                <div style="{{ c.style }}"><sc-if value="{{ c.isCheck }}" hint-placeholder-val="{{ false }}"><button onClick="{{ c.action }}" style="{{ c.boxStyle }}"><i class="{{ c.boxIcon }}" style="font-size:12px"></i></button></sc-if><sc-if value="{{ c.isText }}" hint-placeholder-val="{{ true }}"><span style="{{ c.textStyle }}">{{ c.text }}</span></sc-if></div>
+              </sc-for>
+            </div>
+            </div>
+            <div style="padding:11px 18px;font-size:11px;color:#A6A2A3;border-top:1px solid rgba(46,42,43,.09);display:flex;align-items:center;gap:6px"><i class="ti ti-info-circle" style="font-size:13px"></i>Показаны 8 из 24. Привязка идемпотентна — повторное добавление не создаёт дубль.</div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:16px 18px">
+              <div style="font-size:13.5px;font-weight:600;margin-bottom:12px">Классный руководитель</div>
+              <div style="display:flex;align-items:center;gap:11px;padding:11px;border:1px solid rgba(60,143,237,.3);background:#E9F2FE;border-radius:9px">
+                <div style="width:34px;height:34px;border-radius:50%;background:#3C8FED;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;font-family:'Unbounded',sans-serif">КР</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:12.5px;font-weight:500">Козлов Роман С.</div>
+                  <div style="font-size:11px;color:#1F66C4">kozlov@shkola-vektor.ru</div>
+                </div>
+                <button style="font-size:11.5px;font-weight:500;padding:6px 12px;border-radius:7px;border:1px solid rgba(46,42,43,.18);background:#fff;color:#2E2A2B;cursor:pointer">Заменить</button>
+              </div>
+              <div style="font-size:11px;color:#A6A2A3;margin-top:9px;line-height:1.55">Кл. рук. всегда один и автоматически попадает в список учителей класса.</div>
+
+              <div style="font-size:13.5px;font-weight:600;margin:18px 0 10px">Учителя класса · 4</div>
+              <sc-for list="{{ classTeachers }}" as="t" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid rgba(46,42,43,.09)">
+                  <div style="{{ t.avStyle }}">{{ t.initials }}</div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:12px;font-weight:500">{{ t.name }}</div>
+                    <div style="font-size:10.5px;color:#A6A2A3">{{ t.subject }}</div>
+                  </div>
+                  <i class="ti ti-x" style="font-size:14px;color:#A6A2A3"></i>
+                </div>
+              </sc-for>
+              <button style="margin-top:12px;width:100%;justify-content:center;font-size:12.5px;font-weight:500;padding:10px;border-radius:7px;border:1px dashed rgba(46,42,43,.24);background:#FAF9F7;color:#6E6A6B;cursor:pointer;display:flex;align-items:center;gap:6px"><i class="ti ti-plus" style="font-size:13px"></i>Привязать учителей списком</button>
+            </div>
+
+            <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:16px 18px">
+              <div style="font-size:13.5px;font-weight:600;margin-bottom:3px">Родители класса</div>
+              <div style="font-size:11.5px;color:#6E6A6B;margin-bottom:12px">У одного ученика может быть несколько родителей и наоборот</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-top:1px solid rgba(46,42,43,.09);font-size:12px"><span style="color:#6E6A6B">Привязано родителей</span><span style="font-weight:500">28</span></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-top:1px solid rgba(46,42,43,.09);font-size:12px"><span style="color:#6E6A6B">Учеников без родителя</span><span style="{{ warnValStyle }}">3</span></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-top:1px solid rgba(46,42,43,.09);font-size:12px"><span style="color:#6E6A6B">Приглашения не приняты</span><span style="font-weight:500">5</span></div>
+              <button style="margin-top:12px;width:100%;justify-content:center;font-size:12.5px;font-weight:500;padding:10px;border-radius:7px;border:1px solid rgba(46,42,43,.18);background:#fff;color:#2E2A2B;cursor:pointer;display:flex;align-items:center;gap:6px"><i class="ti ti-mail" style="font-size:13px"></i>Разослать приглашения</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isAdminCampaign }}" hint-placeholder-val="{{ false }}">
+      <div style="animation:vkFadeUp .3s ease both">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+          <div style="font-family:'Unbounded',sans-serif;font-size:19px;font-weight:600">Кампании 360°</div>
+          <div style="margin-left:auto"><button style="font-size:12.5px;font-weight:500;padding:9px 18px;border-radius:7px;border:1px solid #3C8FED;background:#3C8FED;color:#fff;cursor:pointer;display:flex;align-items:center;gap:6px"><i class="ti ti-plus" style="font-size:13px"></i>Новая кампания</button></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+          <sc-for list="{{ campaigns }}" as="c" hint-placeholder-count="3">
+            <div style="{{ c.cardStyle }}">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <span style="{{ c.badgeStyle }}">{{ c.status }}</span>
+                <span style="margin-left:auto;font-size:11px;color:#A6A2A3">{{ c.period }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:7px;margin-bottom:4px;flex-wrap:wrap">
+                <div style="font-size:13.5px;font-weight:600">{{ c.title }}</div>
+                <span style="{{ c.audStyle }}">{{ c.aud }}</span>
+              </div>
+              <div style="font-size:11.5px;color:#6E6A6B">{{ c.meta }}</div>
+              <div style="height:5px;background:rgba(46,42,43,.09);border-radius:3px;margin-top:11px;overflow:hidden"><div style="{{ c.barStyle }}"></div></div>
+              <div style="font-size:10.5px;color:#A6A2A3;margin-top:5px">{{ c.progressLabel }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 380px;gap:12px;align-items:start">
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:16px 18px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:3px;flex-wrap:wrap">
+              <div style="font-size:13.5px;font-weight:600">Покрытие по классам · июнь 2026</div>
+              <span style="margin-left:auto;font-size:11.5px;color:#6E6A6B">669 из 988 анкет</span>
+            </div>
+            <div style="font-size:11.5px;color:#6E6A6B;margin-bottom:14px">Анкеты сгенерированы матрицей «кто кого оценивает»: самооценка всегда, родители и учителя всегда, одноклассники — при включённой выборке</div>
+            <sc-for list="{{ coverage }}" as="c" hint-placeholder-count="6">
+              <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid rgba(46,42,43,.09)">
+                <div style="width:44px;font-family:'Unbounded',sans-serif;font-size:13px;font-weight:600">{{ c.label }}</div>
+                <div style="flex:1;height:8px;background:rgba(46,42,43,.07);border-radius:4px;overflow:hidden"><div style="{{ c.barStyle }}"></div></div>
+                <div style="width:120px;text-align:right;font-size:11.5px;color:#6E6A6B">{{ c.counts }}</div>
+                <div style="width:44px;text-align:right;font-size:12.5px;font-weight:600">{{ c.pct }}</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:16px 18px">
+              <div style="font-size:13.5px;font-weight:600;margin-bottom:3px">Кто кого оценивает</div>
+              <div style="font-size:11.5px;color:#6E6A6B;margin-bottom:14px">Матрица применяется к каждому классу кампании</div>
+              <sc-for list="{{ pairRules }}" as="r" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid rgba(46,42,43,.09)">
+                  <div style="{{ r.iconStyle }}"><i class="{{ r.icon }}" style="font-size:14px"></i></div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:12.5px;font-weight:500">{{ r.label }}</div>
+                    <div style="font-size:11px;color:#A6A2A3">{{ r.note }}</div>
+                  </div>
+                  <button onClick="{{ r.toggle }}" style="{{ r.switchStyle }}"><span style="{{ r.knobStyle }}"></span></button>
+                </div>
+              </sc-for>
+              <button style="margin-top:14px;width:100%;justify-content:center;font-size:12.5px;font-weight:500;padding:11px;border-radius:7px;border:1px solid #3C8FED;background:#3C8FED;color:#fff;cursor:pointer;display:flex;align-items:center;gap:7px"><i class="ti ti-wand" style="font-size:14px"></i>Сгенерировать анкеты</button>
+              <div style="font-size:11px;color:#A6A2A3;margin-top:9px;line-height:1.55">Повторный запуск добавит только новые пары — уже заполненные анкеты не тронет.</div>
+            </div>
+
+            <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:16px 18px">
+              <div style="font-size:13.5px;font-weight:600;margin-bottom:12px">Импорт исторических данных</div>
+              <div style="display:flex;align-items:center;gap:11px;padding:11px;border:1px dashed rgba(46,42,43,.24);border-radius:9px;background:#FAF9F7">
+                <i class="ti ti-table-import" style="font-size:18px;color:#6E6A6B"></i>
+                <div style="flex:1;min-width:0;font-size:11.5px;color:#6E6A6B;line-height:1.5">Google Sheets · шкала 1–3 приводится к 1–5 автоматически</div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0 0;font-size:12px;margin-top:6px"><span style="color:#6E6A6B">Спорных совпадений имён</span><span style="{{ warnValStyle }}">7 · нужно подтвердить</span></div>
+              <div style="font-size:11px;color:#A6A2A3;margin-top:8px;line-height:1.55">Ни один человек не привязывается без ручного подтверждения.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isAdminForm }}" hint-placeholder-val="{{ false }}">
+      <div style="animation:vkFadeUp .3s ease both">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
+          <div style="font-family:'Unbounded',sans-serif;font-size:19px;font-weight:600">Анкета 360°</div>
+          <span style="{{ formVersionStyle }}">{{ formVersionLabel }}</span>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;color:#A6A2A3">Для кого</span>
+            <div style="display:flex;gap:3px;background:#fff;padding:3px;border-radius:999px;border:1px solid rgba(46,42,43,.09)">
+              <button onClick="{{ pickEditorStudents }}" style="{{ editorAudStudentsStyle }}">Ученики</button>
+              <button onClick="{{ pickEditorTeachers }}" style="{{ editorAudTeachersStyle }}">Учителя</button>
+            </div>
+          </div>
+        </div>
+        <div style="font-size:12.5px;color:#6E6A6B;margin-bottom:16px;max-width:62em">8 компетенций и 33 вопроса. Компетенции и порядок вопросов зафиксированы — меняются только формулировки. У каждой аудитории свой набор текстов: то же по смыслу, но на своём языке.</div>
+
+        <div style="display:grid;grid-template-columns:268px minmax(0,1fr);gap:12px;align-items:start">
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;padding:10px;display:flex;flex-direction:column;gap:2px">
+            <sc-for list="{{ formComps }}" as="c" hint-placeholder-count="8">
+              <button onClick="{{ c.pick }}" style="{{ c.railStyle }}">
+                <i class="{{ c.icon }}" style="font-size:15px;flex-shrink:0"></i>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:12px;font-weight:500;line-height:1.35">{{ c.name }}</div>
+                  <div style="font-size:10.5px;color:#A6A2A3;margin-top:1px">{{ c.count }}</div>
+                </div>
+                <span style="{{ c.editedStyle }}">{{ c.editedLabel }}</span>
+              </button>
+            </sc-for>
+          </div>
+
+          <div style="background:#fff;border:1px solid rgba(46,42,43,.09);border-radius:11px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:10px;padding:14px 20px;border-bottom:1px solid rgba(46,42,43,.09);flex-wrap:wrap">
+              <div style="font-size:13.5px;font-weight:600">{{ editorCompName }}</div>
+              <span style="margin-left:auto;font-size:11px;color:#A6A2A3">{{ editorAudienceLabel }}</span>
+            </div>
+
+            <div style="padding:4px 20px 18px">
+              <sc-for list="{{ formRows }}" as="r" hint-placeholder-count="4">
+                <div style="padding:16px 0;border-bottom:1px solid rgba(46,42,43,.08)">
+                  <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px;flex-wrap:wrap">
+                    <span style="font-size:11px;font-weight:600;color:#A6A2A3;text-transform:uppercase;letter-spacing:.06em">{{ r.num }}</span>
+                    <span style="{{ r.condStyle }}">{{ r.condLabel }}</span>
+                    <button onClick="{{ r.reset }}" style="{{ r.resetStyle }}">Вернуть исходную</button>
+                  </div>
+                  <div style="display:grid;gap:9px">
+                    <div>
+                      <label style="display:block;font-size:11px;color:#6E6A6B;margin-bottom:5px">О человеке — так вопрос видят одноклассники, учителя и родители</label>
+                      <textarea value="{{ r.about }}" onChange="{{ r.onAbout }}" rows="2" style="{{ r.aboutStyle }}"></textarea>
+                    </div>
+                    <div>
+                      <label style="display:block;font-size:11px;color:#6E6A6B;margin-bottom:5px">{{ r.selfLabel }}</label>
+                      <textarea value="{{ r.self }}" onChange="{{ r.onSelf }}" rows="2" style="{{ r.selfStyle }}"></textarea>
+                    </div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="{{ saveBarStyle }}">
+              <span style="font-size:12px;font-weight:500;color:#1F66C4">{{ saveLabel }}</span>
+              <span style="font-size:11.5px;color:#1F66C4">Опубликованная версия {{ publishedVersion }} не тронута — уже собранные ответы останутся сравнимыми</span>
+              <div style="margin-left:auto;display:flex;gap:7px">
+                <button onClick="{{ saveDraft }}" style="font-family:'Onest',sans-serif;font-size:12px;font-weight:500;padding:8px 14px;border-radius:7px;border:1px solid rgba(46,42,43,.18);background:#fff;color:#2E2A2B;cursor:pointer;white-space:nowrap">Сохранить черновик</button>
+                <button onClick="{{ publish }}" style="font-family:'Onest',sans-serif;font-size:12px;font-weight:500;padding:8px 14px;border-radius:7px;border:1px solid #3C8FED;background:#3C8FED;color:#fff;cursor:pointer;white-space:nowrap">Опубликовать версию</button>
+              </div>
+            </div>
+            <div style="{{ saveNoteStyle }}"><i class="ti ti-database-check" style="font-size:14px"></i>{{ saveNote }}</div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;gap:11px;padding:13px 16px;border-radius:11px;background:#E9F4F3;border:1px solid rgba(63,126,121,.2);margin-top:12px;max-width:70em">
+          <i class="ti ti-git-compare" style="font-size:16px;color:#3F7E79;flex-shrink:0;margin-top:1px"></i>
+          <div style="font-size:11.5px;line-height:1.6;color:#2E2A2B">Публикация создаёт новую версию, а не переписывает старую. Ответы, собранные по версии {{ publishedVersion }}, остаются привязанными к ней — поэтому в графике динамики на стыке версий появится разрыв линии с подписью «формулировки изменились, сравнение приблизительное».</div>
+        </div>
+      </div>
+      </sc-if>
+
+    </div>
+  </div>
+</div>
+</sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;surveyVariant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;focus&quot;,&quot;dense&quot;],&quot;default&quot;:&quot;focus&quot;,&quot;tsType&quot;:&quot;'focus' | 'dense'&quot;,&quot;section&quot;:&quot;360-анкета&quot;},&quot;gamification&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;360-анкета&quot;},&quot;peerResponses&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:3,&quot;min&quot;:0,&quot;max&quot;:8,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Порог анонимности&quot;},&quot;growthAccent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;options&quot;:[&quot;#3F7E79&quot;,&quot;#1F66C4&quot;,&quot;#7E9A2E&quot;],&quot;default&quot;:&quot;#3F7E79&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Зоны роста&quot;}}">
+const C = [
+  {code:'interests', name:'Самоопределение и интересы', short:'Интересы', icon:'ti ti-compass',
+   qs:['Называет свои интересы и объясняет, почему они важны','Пробует новые для себя направления и активности','Связывает свои интересы с тем, чем хочет заниматься дальше','Рассказывает о своих увлечениях так, что другим понятно'],
+   self:['Могу объяснить, какие занятия мне интересны и почему','Пробую новые для себя направления и активности','Связываю свои интересы с тем, чем хочу заниматься дальше','Рассказываю о своих увлечениях так, что другим понятно'],
+   adult:['Понимаю, что мне интересно в профессии, и почему именно это','Пробую новые для себя форматы работы и предметные направления','Связываю свои интересы с тем, куда хочу развиваться дальше','Могу рассказать коллегам о своих профессиональных интересах так, что это понятно']},
+  {code:'emotional_intelligence', name:'Эмоциональный интеллект', short:'Эмоции', icon:'ti ti-heart-handshake',
+   qs:['Называет словами, что чувствует','Замечает состояние других и учитывает его','Сохраняет спокойствие в напряжённой ситуации','Восстанавливается после неудачи и возвращается к делу'],
+   self:['Могу назвать словами, что я чувствую','Замечаю состояние других и учитываю его','Сохраняю спокойствие в напряжённой ситуации','Восстанавливаюсь после неудачи и возвращаюсь к делу'],
+   adult:['Замечаю и называю собственное состояние в течение рабочего дня','Вижу состояние учеников и коллег и учитываю его в работе','Сохраняю спокойствие в конфликтной ситуации с учеником или родителем','Восстанавливаюсь после трудного дня и возвращаюсь к работе']},
+  {code:'strengths_weaknesses', name:'Сильные и слабые стороны', short:'Сильные стороны', icon:'ti ti-scale',
+   qs:['Называет свои сильные и слабые стороны','Объясняет, как сильные стороны могут помочь в дальнейшей жизни','Работает над улучшением своих слабых сторон','Просит помощи там, где не хватает своих ресурсов'],
+   self:['Могу назвать свои сильные и слабые стороны','Понимаю, как мои сильные стороны помогут мне дальше','Работаю над тем, что у меня получается хуже','Прошу помощи, когда своих сил не хватает'],
+   adult:['Могу назвать свои сильные стороны как педагога и свои ограничения','Понимаю, как мои сильные стороны помогают мне в работе с классом','Целенаправленно работаю над тем, что у меня получается хуже','Обращаюсь за помощью к коллегам, когда своих ресурсов не хватает']},
+  {code:'values', name:'Ценности и решения', short:'Ценности', icon:'ti ti-diamond',
+   qs:['Объясняет, что считает важным при выборе','Принимает решение, а не откладывает его на других','Держит слово и договорённости','Отстаивает свою позицию без давления на других'],
+   self:['Могу объяснить, что для меня важно, когда я выбираю','Принимаю решение сам, а не оставляю его другим','Держу слово и договорённости','Отстаиваю свою позицию, не давя на других'],
+   adult:['Могу объяснить, что для меня важно, когда я принимаю решение в работе','Принимаю решение сам, а не передаю его администрации','Держу договорённости с учениками, родителями и коллегами','Отстаиваю свою профессиональную позицию, не давя на других']},
+  {code:'goal_setting', name:'Целеполагание', short:'Цели', icon:'ti ti-target-arrow',
+   qs:['Формулирует цель конкретно и измеримо','Разбивает цель на шаги и сроки','Доводит начатое до результата','Пересматривает план, когда обстоятельства меняются','Планирует шаги после школы с учётом сроков поступления|cond'],
+   self:['Формулирую цель конкретно, а не «хочу лучше»','Разбиваю цель на шаги и ставлю сроки','Довожу начатое до результата','Меняю план, когда обстоятельства изменились','Планирую шаги после школы с учётом сроков поступления|cond'],
+   adult:['Ставлю цель в работе так, что понятно, по чему я пойму, что достиг её','Разбиваю профессиональную цель на шаги и сроки','Довожу начатое до результата, а не до конца учебного года','Меняю план, когда условия в школе изменились','Планирую своё профессиональное развитие на год вперёд|cond']},
+  {code:'learning_feedback', name:'Работа с информацией и обратной связью', short:'Информация', icon:'ti ti-bulb',
+   qs:['Находит и проверяет информацию из разных источников','Выделяет главное в большом объёме материала','Спокойно принимает критику и уточняет, что именно улучшить','Применяет полученную обратную связь в следующей работе'],
+   self:['Нахожу информацию и проверяю её по разным источникам','Выделяю главное в большом объёме материала','Спокойно принимаю критику и уточняю, что именно улучшить','Использую замечания в следующей работе, а не откладываю'],
+   adult:['Нахожу нужную профессиональную информацию и проверяю её','Выделяю главное в большом объёме методических материалов','Спокойно принимаю замечания от коллег и администрации и уточняю суть','Применяю полученную обратную связь в следующей работе, а не откладываю']},
+  {code:'career', name:'Профессиональное самоопределение', short:'Профессия', icon:'ti ti-briefcase',
+   qs:['Может назвать профессии, связанные со своими интересами','Понимает, какие навыки нужны в выбранном направлении','Пробует профессию на практике: проекты, стажировки, олимпиады','Имеет план поступления и понимает следующий шаг|cond'],
+   self:['Знаю, какие профессии связаны с моими интересами','Понимаю, какие навыки нужны в выбранном направлении','Пробую профессию на практике: проекты, стажировки, олимпиады','У меня есть план поступления и понятен следующий шаг|cond'],
+   adult:['Понимаю, куда я двигаюсь в профессии в следующие несколько лет','Знаю, каких навыков мне не хватает для этого направления','Пробую новое на практике: курсы, наставничество, проекты','У меня есть конкретный следующий шаг в профессиональном развитии|cond']},
+  {code:'proactivity', name:'Проактивность и ответственность', short:'Проактивность', icon:'ti ti-flame',
+   qs:['Предлагает идеи, не ожидая просьбы','Берёт на себя роль в командной работе','Признаёт ошибку и исправляет её','Помогает другим, когда видит, что нужна помощь'],
+   self:['Предлагаю идеи, не ожидая, что меня попросят','Беру на себя роль в командной работе','Признаю ошибку и исправляю её','Помогаю другим, когда вижу, что нужна помощь'],
+   adult:['Предлагаю идеи, не ожидая, что меня попросят','Беру на себя роль в командной работе с коллегами','Признаю свою ошибку перед классом или коллегами и исправляю её','Помогаю коллегам, когда вижу, что нужна помощь']}
+];
+
+const ACC = {
+  'Иванова Полина': 'Полину', 'Коваль Максим': 'Максима', 'Смирнова Алина': 'Алину',
+  'Дроздов Егор': 'Егора', 'Юсупова Камилла': 'Камиллу', 'Петров Артём': 'Артёма',
+  'Лебедева Ника': 'Нику', 'Гаврилов Тимур': 'Тимура'
+};
+function accName(full) {
+  if (ACC[full]) return ACC[full];
+  const first = String(full || '').split(' ')[1] || String(full || '');
+  const last = first.slice(-1);
+  if (last === 'а') return first.slice(0, -1) + 'у';
+  if (last === 'я') return first.slice(0, -1) + 'ю';
+  return first + 'а';
+}
+
+const SCALE = [
+  {v:1, label:'Пока редко'},
+  {v:2, label:'Иногда'},
+  {v:3, label:'Часто'},
+  {v:4, label:'Почти всегда'},
+  {v:5, label:'Всегда'}
+];
+
+const SELF   = [3.9, 3.0, 2.4, 3.7, 4.0, 3.6, 2.8, 4.0];
+const PEERS  = [3.5, 3.2, 2.8, 3.4, 3.6, 3.8, 2.6, 3.6];
+const TEACH  = [3.6, 3.4, 2.6, 3.5, 3.8, 4.0, 2.8, 3.8];
+const PARENT = [3.4, 3.2, 2.6, 3.6, 3.4, 3.8, 3.0, 3.8];
+const PREV   = [3.2, 2.8, 2.2, 3.4, 3.4, 3.2, 2.4, 3.4];
+const CLASSAVG = [3.5, 3.1, 2.7, 3.4, 3.5, 3.6, 2.7, 3.6];
+const SCHOOLAVG = [3.4, 3.2, 2.9, 3.4, 3.4, 3.5, 2.9, 3.5];
+
+const ROLES = [
+  {key:'student', label:'Ученик',  line:'Иванова Полина · 10А',        initials:'ИП', av:'#3C8FED', first:'home',
+   nav:[['home','Главная','ti ti-home'],['survey','Анкеты','ti ti-clipboard-list'],['myclass','Мой класс','ti ti-users-group'],['results','Результаты','ti ti-chart-radar']]},
+  {key:'teacher', label:'Учитель', line:'Козлов Р.С. · Классный рук. 10А', initials:'КР', av:'#3F7E79', first:'teacherclass',
+   nav:[['teacherclass','Мои классы','ti ti-school'],['survey','Анкеты','ti ti-clipboard-list'],['results','Профиль ученика','ti ti-chart-radar']]},
+  {key:'parent',  label:'Родитель', line:'Семёнова Е.В. · Родитель',     initials:'ЕС', av:'#8FC2BE', first:'parentchild',
+   nav:[['parentchild','Мои дети','ti ti-heart'],['survey','Моя анкета','ti ti-clipboard-list'],['results','Результаты Полины','ti ti-chart-radar']]},
+  {key:'admin',   label:'Админ',   line:'Новикова О.А. · Администратор', initials:'НО', av:'#2E2A2B', first:'adminclasses',
+   nav:[['adminclasses','Классы','ti ti-school'],['admincampaign','Кампании 360°','ti ti-wand'],['adminform','Анкета','ti ti-list-details'],['results','Результаты','ti ti-chart-radar']]}
+];
+
+const ROSTER = [
+  {name:'Иванова Полина',    email:'polina.ivanova@shkola-vektor.ru', self:'Завершена', got:'27/27', avg:'3.4', d:'+0.2'},
+  {name:'Коваль Максим',     email:'koval.maxim@shkola-vektor.ru',    self:'В процессе', got:'19/27', avg:'3.1', d:'+0.1'},
+  {name:'Смирнова Алина',    email:'smirnova.alina@shkola-vektor.ru', self:'Завершена', got:'27/27', avg:'3.7', d:'+0.4'},
+  {name:'Дроздов Егор',      email:'drozdov.egor@shkola-vektor.ru',   self:'Не начата', got:'12/27', avg:'—',  d:'—'},
+  {name:'Юсупова Камилла',   email:'yusupova.k@shkola-vektor.ru',     self:'Завершена', got:'25/27', avg:'3.5', d:'+0.3'},
+  {name:'Петров Артём',      email:'petrov.artem@shkola-vektor.ru',   self:'В процессе', got:'21/27', avg:'2.9', d:'0.0'},
+  {name:'Лебедева Ника',     email:'lebedeva.nika@shkola-vektor.ru',  self:'Завершена', got:'27/27', avg:'3.8', d:'+0.5'},
+  {name:'Гаврилов Тимур',    email:'gavrilov.t@shkola-vektor.ru',     self:'Не начата', got:'8/27',  avg:'—',  d:'—'}
+];
+
+const ZONES = [
+  {i:2, step:'Назвать одну сильную сторону и один шаг по слабой — на встрече с куратором', parentStep:'Спросите, какую свою сильную сторону она сама считает главной'},
+  {i:6, step:'Сходить на одну профессиональную пробу в этом полугодии', parentStep:'Обсудите две профессии, которые ей интересны, и что в них нужно уметь'},
+  {i:1, step:'Раз в неделю коротко описывать, что получилось и что чувствовал', parentStep:'Дайте ей время назвать свои эмоции, не подсказывая формулировку'}
+];
+
+class Component extends DCLogic {
+  state = {
+    role: 'student',
+    screen: 'login',
+    phase: 0,
+    variant: null,
+    qIndex: 0,
+    chapterIdx: 0,
+    answers: {},
+    notes: {},
+    peerName: null,
+    xp: 0,
+    doneOverlay: null,
+    filter: 0,
+    picked: {1:true, 4:true},
+    adminSel: '10А',
+    audience: 'students',
+    qtext: {},
+    qbase: {},
+    editorAud: 'students',
+    editorComp: 0,
+    published: 1,
+    saveNote: '',
+    peers: true,
+    child: 0,
+    tclass: 0
+  };
+
+  componentDidMount() {
+    this._keys = (e) => {
+      if (this.state.screen !== 'survey' || this.state.doneOverlay) return;
+      const n = parseInt(e.key, 10);
+      if (n >= 1 && n <= 5) { this.answer(n); }
+    };
+    window.addEventListener('keydown', this._keys);
+    this.scheduleCharts();
+  }
+  componentWillUnmount() {
+    window.removeEventListener('keydown', this._keys);
+    clearTimeout(this._ct);
+    this.killCharts();
+  }
+  componentDidUpdate(pp, ps) {
+    const p = ps || {}, s = this.state || {};
+    if (this._lastKey !== s.screen + '|' + s.role + '|' + s.tclass) {
+      this._lastKey = s.screen + '|' + s.role + '|' + s.tclass;
+      this.killCharts();
+    }
+    this.scheduleCharts();
+  }
+
+  scheduleCharts() {
+    const scr = (this.state || {}).screen;
+    clearTimeout(this._ct);
+    this._ct = setTimeout(() => this.buildCharts(scr), 0);
+  }
+
+  killCharts() {
+    Object.values(this._ch || {}).forEach(c => { try { c.destroy(); } catch (e) {} });
+    this._ch = {};
+  }
+
+  peerN() { const n = this.props.peerResponses; return n === undefined || n === null ? 3 : n; }
+  peersOk() { return this.peerN() >= 3; }
+  layers() { return this.peersOk() ? [PEERS, TEACH, PARENT] : [TEACH, PARENT]; }
+  othersAvg() { const L = this.layers(); return C.map((c, i) => +(L.reduce((a, X) => a + X[i], 0) / L.length).toFixed(2)); }
+  totalAvg() { const L = [SELF].concat(this.layers()); return C.map((c, i) => +(L.reduce((a, X) => a + X[i], 0) / L.length).toFixed(2)); }
+
+  buildCharts(scr) {
+    const want = { results: ['vkRadar', 'vkYears'], teacherclass: ['vkClassRadar'], parentchild: ['vkChildRadar'] }[scr] || [];
+    if (!want.length) return;
+    if (!window.Chart || want.some(id => !document.getElementById(id))) {
+      clearTimeout(this._ct);
+      this._ct = setTimeout(() => this.buildCharts(scr), 120);
+      return;
+    }
+    this._ch = this._ch || {};
+    const shorts = C.map(c => c.short);
+    const grid = 'rgba(46,42,43,.08)', tick = 'rgba(46,42,43,.5)';
+    const radarOpts = {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { r: { min: 1, max: 5, ticks: { stepSize: 1, color: tick, font: { size: 9, family: 'Onest' }, backdropColor: 'transparent' }, grid: { color: grid }, angleLines: { color: grid }, pointLabels: { color: tick, font: { size: 10, family: 'Onest' } } } }
+    };
+    const mk = (id, cfg) => {
+      const el = document.getElementById(id);
+      if (!el || this._ch[id]) return;
+      this._ch[id] = new window.Chart(el, cfg);
+    };
+    const radarSets = [{ label: 'Самооценка', data: SELF, borderColor: '#3C8FED', backgroundColor: 'rgba(60,143,237,.10)', borderWidth: 1.8, pointRadius: 2.5, pointBackgroundColor: '#3C8FED' }];
+    if (this.peersOk()) radarSets.push({ label: 'Одноклассники', data: PEERS, borderColor: '#3F7E79', backgroundColor: 'rgba(63,126,121,.06)', borderWidth: 1.4, pointRadius: 2 });
+    radarSets.push({ label: 'Учителя', data: TEACH, borderColor: '#7E9A2E', backgroundColor: 'rgba(126,154,46,.06)', borderWidth: 1.4, pointRadius: 2 });
+    radarSets.push({ label: 'Родители', data: PARENT, borderColor: '#A6A2A3', backgroundColor: 'rgba(166,162,163,.05)', borderWidth: 1.4, pointRadius: 2 });
+    mk('vkRadar', { type: 'radar', data: { labels: shorts, datasets: radarSets }, options: radarOpts });
+    mk('vkClassRadar', { type: 'radar', data: { labels: shorts, datasets: [
+      { label: '10А', data: CLASSAVG, borderColor: '#3C8FED', backgroundColor: 'rgba(60,143,237,.10)', borderWidth: 1.8, pointRadius: 2.5 },
+      { label: 'Школа', data: SCHOOLAVG, borderColor: '#A6A2A3', backgroundColor: 'rgba(166,162,163,.05)', borderWidth: 1.3, pointRadius: 2, borderDash: [4, 3] }
+    ] }, options: radarOpts });
+    mk('vkChildRadar', { type: 'radar', data: { labels: shorts, datasets: [
+      { label: 'Полина', data: this.totalAvg(), borderColor: '#3C8FED', backgroundColor: 'rgba(60,143,237,.12)', borderWidth: 1.8, pointRadius: 2.5 },
+      { label: 'Класс', data: CLASSAVG, borderColor: '#A6A2A3', backgroundColor: 'rgba(166,162,163,.05)', borderWidth: 1.3, pointRadius: 2, borderDash: [4, 3] }
+    ] }, options: radarOpts });
+    mk('vkYears', { type: 'bar', data: { labels: shorts, datasets: [
+      { label: 'дек 2025', data: PREV, backgroundColor: '#8FC2BE', borderRadius: 3, barPercentage: .78 },
+      { label: 'июн 2026', data: this.totalAvg(), backgroundColor: '#3C8FED', borderRadius: 3, barPercentage: .78 }
+    ] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, labels: { boxWidth: 10, boxHeight: 10, font: { size: 10, family: 'Onest' }, color: tick } } },
+      scales: { x: { grid: { display: false }, ticks: { color: tick, font: { size: 9, family: 'Onest' }, maxRotation: 44, autoSkip: false } }, y: { min: 0, max: 5, grid: { color: grid }, ticks: { color: tick, font: { size: 10, family: 'Onest' }, stepSize: 1 } } } } });
+  }
+
+  // ---------- survey model ----------
+  isSelfForm() {
+    const s = this.state;
+    if (s.peerName) return false;
+    return s.audience === 'teachers' ? s.role === 'teacher' : s.role === 'student';
+  }
+
+  qCond(ci, qi) { return C[ci].qs[qi].indexOf('|cond') > 0; }
+
+  qKeyFor(ci, qi, selfForm, aud) { return (aud || this.state.audience) + '|' + C[ci].code + '_' + qi + '|' + (selfForm ? 'self' : 'about'); }
+
+  qBase(ci, qi, selfForm, aud) {
+    const a = aud || this.state.audience;
+    const pub = this.state.qbase[this.qKeyFor(ci, qi, selfForm, a)];
+    if (pub !== undefined) return pub;
+    const c = C[ci];
+    if (!selfForm) return c.qs[qi];
+    return (a === 'teachers' ? c.adult : c.self)[qi];
+  }
+
+  qText(ci, qi, selfForm, aud) {
+    const a = aud || this.state.audience;
+    const ov = this.state.qtext[this.qKeyFor(ci, qi, selfForm, a)];
+    const src = ov === undefined ? this.qBase(ci, qi, selfForm, a) : ov;
+    return src.replace('|cond', '');
+  }
+
+  flat() {
+    const selfForm = this.isSelfForm();
+    const out = [];
+    C.forEach((c, ci) => c.qs.forEach((q, qi) => {
+      out.push({ id: c.code + '_' + qi, text: this.qText(ci, qi, selfForm), ci, qi, cond: this.qCond(ci, qi), chapterLen: c.qs.length });
+    }));
+    return out;
+  }
+
+  subj() { return this.state.peerName || 'self'; }
+
+  firstUnanswered(sk) {
+    const list = this.flat();
+    const i = list.findIndex(q => !this.state.answers[sk + '|' + q.id]);
+    return i < 0 ? list.length - 1 : i;
+  }
+
+  answer(v) {
+    const list = this.flat();
+    const q = list[this.state.qIndex];
+    if (!q) return;
+    const key = this.subj() + '|' + q.id;
+    const answers = Object.assign({}, this.state.answers, { [key]: v });
+    const xp = this.state.xp + (this.state.answers[key] || this.subj() !== 'self' ? 0 : 10);
+    const vk = this.state.variant || this.props.surveyVariant || 'focus';
+    if (vk === 'dense') { this.setState({ answers, xp }); return; }
+    const pre = this.subj() + '|' + C[q.ci].code + '_';
+    const chapterFull = C[q.ci].qs.every((qq, qi) => answers[pre + qi]);
+    if (chapterFull) this.setState({ answers, xp, doneOverlay: q.ci });
+
+    else this.setState({ answers, xp, qIndex: Math.min(this.state.qIndex + 1, list.length - 1) });
+  }
+
+  renderVals() {
+    const s = this.state;
+    const list = this.flat();
+    const variant = s.variant || this.props.surveyVariant || 'focus';
+    const game = this.props.gamification !== false;
+    const growth = this.props.growthAccent || '#3F7E79';
+    const subj = s.peerName || 'self';
+    const A = (qid) => s.answers[subj + '|' + qid];
+    const cur = list[Math.min(s.qIndex, list.length - 1)];
+    const chapter = C[variant === 'dense' ? s.chapterIdx : cur.ci];
+    const answeredCount = Object.keys(s.answers).filter(k => k.indexOf(subj + '|') === 0).length;
+    const roleDef = ROLES.find(r => r.key === s.role) || ROLES[0];
+
+    const btn = (active) => 'font-size:11.5px;font-weight:500;padding:5px 12px;border-radius:999px;border:1px solid ' + (active ? '#D9EE8E' : 'rgba(255,255,255,.16)') + ';background:' + (active ? '#D9EE8E' : 'transparent') + ';color:' + (active ? '#2E2A2B' : 'rgba(255,255,255,.72)') + ';cursor:pointer';
+
+    const roles = ROLES.map(r => ({
+      label: r.label,
+      style: btn(r.key === s.role),
+      pick: () => { this.killCharts(); this.setState({ role: r.key, screen: r.first, doneOverlay: null, peerName: null, qIndex: this.firstUnanswered('self'), audience: r.key === 'teacher' ? s.audience : 'students' }); }
+    }));
+
+    const navItems = roleDef.nav.map(([key, label, icon]) => ({
+      label, icon,
+      style: 'display:flex;align-items:center;gap:10px;padding:10px 22px;font-size:12.5px;font-family:Onest,sans-serif;text-align:left;width:100%;border:none;border-left:3px solid ' + (s.screen === key ? '#D9EE8E' : 'transparent') + ';background:' + (s.screen === key ? 'rgba(255,255,255,.07)' : 'transparent') + ';color:' + (s.screen === key ? '#fff' : 'rgba(255,255,255,.5)') + ';font-weight:' + (s.screen === key ? 500 : 400) + ';cursor:pointer',
+      pick: () => { const p = key === 'survey' ? s.peerName : null; this.setState({ screen: key, doneOverlay: null, peerName: p, qIndex: key === 'survey' ? this.firstUnanswered(p || 'self') : s.qIndex }); }
+    }));
+
+    // survey chapters
+    const chapterAnswered = (ci) => C[ci].qs.filter((q, qi) => A(C[ci].code + '_' + qi)).length;
+    const chapters = C.map((c, ci) => {
+      const a = chapterAnswered(ci), done = a === c.qs.length;
+      const active = ci === (variant === 'dense' ? s.chapterIdx : cur.ci);
+      return {
+        num: ci + 1, name: c.name, short: c.short, icon: c.icon,
+        countLabel: a + ' из ' + c.qs.length,
+        ringLabel: done ? '' : String(a),
+        pillStyle: 'display:flex;align-items:center;gap:5px;font-family:Onest,sans-serif;font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:999px;cursor:pointer;border:1px solid ' + (active ? '#3C8FED' : done ? 'rgba(126,154,46,.3)' : 'rgba(46,42,43,.12)') + ';background:' + (active ? '#3C8FED' : done ? '#F4FAE2' : '#fff') + ';color:' + (active ? '#fff' : done ? '#7E9A2E' : '#A6A2A3'),
+        railStyle: 'display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;border:none;cursor:pointer;width:100%;font-family:Onest,sans-serif;background:' + (active ? '#E9F2FE' : 'transparent') + ';color:' + (active ? '#1F66C4' : '#2E2A2B'),
+        ringStyle: 'width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:600;font-family:Unbounded,sans-serif;border:2px solid ' + (done ? '#7E9A2E' : active ? '#3C8FED' : 'rgba(46,42,43,.14)') + ';background:' + (done ? '#7E9A2E' : 'transparent') + ';color:' + (done ? '#fff' : active ? '#1F66C4' : '#A6A2A3'),
+        medalCardStyle: 'width:104px;padding:14px 10px;border-radius:11px;display:flex;flex-direction:column;align-items:center;gap:9px;border:1px solid ' + (done ? 'rgba(126,154,46,.28)' : 'rgba(46,42,43,.09)') + ';background:' + (done ? '#F4FAE2' : '#fff') + ';color:' + (done ? '#2E2A2B' : '#A6A2A3'),
+        medalStyle: 'width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:' + (done ? 'linear-gradient(135deg,#D9EE8E,#9BD2C9)' : 'rgba(46,42,43,.05)'),
+        medalInnerStyle: 'width:15px;height:15px;transform:rotate(45deg);border-radius:3px;background:' + (done ? '#fff' : 'rgba(46,42,43,.14)'),
+        pick: () => this.setState(variant === 'dense' ? { chapterIdx: ci } : { qIndex: list.findIndex(q => q.ci === ci), doneOverlay: null })
+      };
+    });
+
+    const scaleFor = (id) => SCALE.map(o => {
+      const sel = A(id) === o.v;
+      return {
+        v: o.v, label: o.label,
+        style: 'flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:20px 8px;border-radius:12px;cursor:pointer;font-family:Onest,sans-serif;transition:transform .14s ease,box-shadow .14s ease,background .14s ease;border:1.5px solid ' + (sel ? '#3C8FED' : 'rgba(46,42,43,.14)') + ';background:' + (sel ? '#E9F2FE' : '#fff') + ';box-shadow:' + (sel ? '0 6px 18px -6px rgba(60,143,237,.5)' : 'none') + ';transform:' + (sel ? 'translateY(-2px)' : 'none'),
+        numStyle: 'font-family:Unbounded,sans-serif;font-size:26px;font-weight:600;line-height:1;color:' + (sel ? '#1F66C4' : '#2E2A2B'),
+        labelStyle: 'font-size:11.5px;text-align:center;line-height:1.35;color:' + (sel ? '#1F66C4' : '#6E6A6B'),
+        denseStyle: 'width:34px;height:34px;border-radius:8px;cursor:pointer;font-family:Unbounded,sans-serif;font-size:12.5px;font-weight:600;border:1px solid ' + (sel ? '#3C8FED' : 'rgba(46,42,43,.14)') + ';background:' + (sel ? '#3C8FED' : '#fff') + ';color:' + (sel ? '#fff' : '#A6A2A3'),
+        pick: () => { if (id === cur.id && variant !== 'dense') this.answer(o.v); else this.setState({ answers: Object.assign({}, s.answers, { [subj + '|' + id]: o.v }), xp: s.xp + (A(id) || subj !== 'self' ? 0 : 10) }); }
+      };
+    });
+
+    const selfForm = this.isSelfForm();
+    const chIdx = variant === 'dense' ? s.chapterIdx : cur.ci;
+    const denseQs = chapter.qs.map((q0, qi) => {
+      const cond = this.qCond(chIdx, qi);
+      const id = chapter.code + '_' + qi;
+      return {
+        text: this.qText(chIdx, qi, selfForm),
+        condLabel: cond ? '9–11 класс' : '',
+        condStyle: cond ? 'margin-left:8px;font-size:10px;font-weight:500;padding:2px 8px;border-radius:999px;background:#E9F4F3;color:#3F7E79;white-space:nowrap' : 'display:none',
+        rowStyle: 'display:flex;align-items:center;padding:14px 0;border-bottom:1px solid ' + (qi === chapter.qs.length - 1 ? 'transparent' : 'rgba(46,42,43,.09)'),
+        scale: scaleFor(id)
+      };
+    });
+
+    const totalCount = list.length;
+    const pct = Math.round(answeredCount / totalCount * 100);
+    const chDone = chapters.filter(c => c.ringLabel === '').length;
+    const overlayCi = s.doneOverlay;
+
+    const sv = {
+      isFocus: variant === 'focus', isDense: variant === 'dense',
+      focusTabStyle: 'font-family:Onest,sans-serif;font-size:11.5px;font-weight:500;padding:7px 14px;border-radius:999px;border:none;cursor:pointer;background:' + (variant === 'focus' ? '#2E2A2B' : 'transparent') + ';color:' + (variant === 'focus' ? '#fff' : '#6E6A6B'),
+      denseTabStyle: 'font-family:Onest,sans-serif;font-size:11.5px;font-weight:500;padding:7px 14px;border-radius:999px;border:none;cursor:pointer;background:' + (variant === 'dense' ? '#2E2A2B' : 'transparent') + ';color:' + (variant === 'dense' ? '#fff' : '#6E6A6B'),
+      pickFocus: () => this.setState({ variant: 'focus' }),
+      pickDense: () => this.setState({ variant: 'dense', chapterIdx: cur.ci }),
+      subjectLine: s.peerName ? (s.role === 'student' ? 'Вы оцениваете одноклассника: ' + s.peerName + ', 10А' : 'Вы оцениваете ученика: ' + s.peerName + ', 10А') : s.audience === 'teachers' && s.role === 'teacher' ? 'Самооценка · Козлов Р.С., классный руководитель 10А' : s.role === 'student' ? 'Самооценка · Иванова Полина, 10А' : s.role === 'parent' ? 'Вы оцениваете: Иванова Полина, 10А (ваша дочь)' : 'Вы оцениваете: Иванова Полина, 10А',
+      isPeerSubject: !!s.peerName && s.role === 'student',
+      aboutLine: s.peerName ? 'Насколько это про ' + accName(s.peerName) : (s.audience === 'teachers' ? s.role === 'teacher' : s.role === 'student') ? 'Насколько это про меня' : 'Насколько это про Полину',
+      noteValue: s.notes[subj + '|' + (variant === 'dense' ? s.chapterIdx : cur.ci)] || '',
+      onNote: (e) => { const ci = variant === 'dense' ? s.chapterIdx : cur.ci; this.setState({ notes: Object.assign({}, s.notes, { [subj + '|' + ci]: e.target.value }) }); },
+      notePlaceholder: s.peerName || s.role !== 'student' ? 'Например: на защите проекта в мае спокойно принял критику и переделал раздел' : 'Например: в мае переделал раздел проекта после замечаний, хотя было обидно',
+      chapterNum: (variant === 'dense' ? s.chapterIdx : cur.ci) + 1,
+      chapterName: chapter.name,
+      chapterAnsweredLabel: chapterAnswered(variant === 'dense' ? s.chapterIdx : cur.ci) + ' из ' + chapter.qs.length + ' отвечено',
+      chapterHeadStyle: 'display:flex;align-items:center;gap:11px;padding:14px 22px;border-bottom:1px solid rgba(46,42,43,.09);background:#fff;flex-wrap:wrap',
+      chapterBadgeStyle: 'font-size:11px;font-weight:500;padding:4px 12px;border-radius:999px;background:#E9F4F3;color:#3F7E79;white-space:nowrap',
+      qNumInChapter: cur.qi + 1, qTotalInChapter: cur.chapterLen,
+      qText: cur.text, qKey: cur.id,
+      scale: scaleFor(cur.id),
+      chapterQuestions: denseQs,
+      chapters,
+      answeredCount, totalCount, chaptersDone: chDone,
+      barStyle: 'height:100%;border-radius:3px;background:#3C8FED;width:' + pct + '%;transition:width .3s ease',
+      minutesLeft: Math.max(1, Math.round((totalCount - answeredCount) * 0.28)),
+      statusLabel: answeredCount === 0 ? 'не начата' : answeredCount === totalCount ? 'завершена' : 'черновик сохранён',
+      ctaLabel: answeredCount === 0 ? 'Начать' : 'Продолжить',
+      showChapterDone: game && overlayCi !== null,
+      doneChapterName: overlayCi !== null ? C[overlayCi].name : '',
+      showDoneXp: subj === 'self',
+      doneXp: 20,
+      doneProgressLine: 'Пройдено ' + chDone + ' из 8 глав · ' + answeredCount + ' из ' + totalCount + ' вопросов',
+      continueLabel: overlayCi !== null && overlayCi < 7 ? 'Следующая глава' : 'Завершить анкету',
+      medalStyle: 'width:76px;height:76px;border-radius:50%;background:linear-gradient(135deg,#D9EE8E,#9BD2C9 55%,#3C8FED);display:flex;align-items:center;justify-content:center;animation:vkMedal .6s cubic-bezier(.2,.8,.2,1) both',
+      medalInnerStyle: 'width:26px;height:26px;transform:rotate(45deg);border-radius:5px;background:#fff',
+      back: () => this.setState({ qIndex: Math.max(0, s.qIndex - 1), doneOverlay: null }),
+      skip: () => this.setState({ qIndex: Math.min(list.length - 1, s.qIndex + 1) }),
+      continue: () => { this.setState({ doneOverlay: null, xp: s.xp + (subj === 'self' ? 20 : 0), qIndex: this.firstUnanswered(subj) }); },
+      prevChapter: () => this.setState({ chapterIdx: Math.max(0, s.chapterIdx - 1) }),
+      nextChapter: () => this.setState({ chapterIdx: Math.min(7, s.chapterIdx + 1) })
+    };
+
+    const peerN = this.peerN(), peersOk = this.peersOk();
+    const others = this.othersAvg();
+    const avg = this.totalAvg();
+
+    const gapRows = [0, 4, 2, 6].map(i => {
+      const d = +(SELF[i] - others[i]).toFixed(1);
+      return {
+        name: C[i].name,
+        deltaLabel: (d > 0 ? 'себя выше на ' : d < 0 ? 'себя ниже на ' : 'совпадает ') + (d === 0 ? '' : Math.abs(d).toFixed(1)),
+        deltaStyle: 'font-size:11px;font-weight:500;white-space:nowrap;color:' + (Math.abs(d) >= 0.4 ? '#3F7E79' : '#A6A2A3'),
+        selfBarStyle: 'position:absolute;left:0;top:0;height:100%;border-radius:3px;background:#3C8FED;width:' + (SELF[i] / 5 * 100) + '%',
+        othersMarkStyle: 'position:absolute;top:-3px;width:2px;height:12px;background:#2E2A2B;left:' + (others[i] / 5 * 100) + '%'
+      };
+    });
+
+    const growthZones = ZONES.map(z => ({ name: C[z.i].name, step: z.step, parentStep: z.parentStep }));
+
+    const radarLegend = [
+      { label: 'Самооценка', dotStyle: 'width:9px;height:9px;border-radius:50%;background:#3C8FED;display:inline-block' },
+      peersOk
+        ? { label: 'Одноклассники', dotStyle: 'width:9px;height:9px;border-radius:50%;background:#3F7E79;display:inline-block' }
+        : { label: 'Одноклассники · данных мало', dotStyle: 'width:9px;height:9px;border-radius:50%;border:1.5px dashed #A6A2A3;display:inline-block;box-sizing:border-box' },
+      { label: 'Учителя', dotStyle: 'width:9px;height:9px;border-radius:50%;background:#7E9A2E;display:inline-block' },
+      { label: 'Родители', dotStyle: 'width:9px;height:9px;border-radius:50%;background:#A6A2A3;display:inline-block' }
+    ];
+
+    // details grid
+    const th = 'padding:8px 6px;font-size:10px;font-weight:600;color:#A6A2A3;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid rgba(46,42,43,.09);text-align:right;min-width:0;overflow-wrap:anywhere';
+    const td = 'padding:9px 6px;border-bottom:1px solid rgba(46,42,43,.09);text-align:right;color:#6E6A6B;min-width:0;overflow-wrap:anywhere';
+    const detailCells = [];
+    ['Компетенция', 'Сам', 'Одн.', 'Уч.', 'Род.', 'Итог', 'Дин.'].forEach((t, i) => detailCells.push({ text: t, style: th + (i === 0 ? ';text-align:left' : '') }));
+    C.forEach((c, i) => {
+      const d = +(avg[i] - PREV[i]).toFixed(1);
+      detailCells.push({ text: c.short, style: td + ';text-align:left;color:#2E2A2B' });
+      detailCells.push({ text: SELF[i].toFixed(1), style: td });
+      detailCells.push({ text: peersOk ? PEERS[i].toFixed(1) : '—', style: td + (peersOk ? '' : ';color:#A6A2A3') });
+      detailCells.push({ text: TEACH[i].toFixed(1), style: td });
+      detailCells.push({ text: PARENT[i].toFixed(1), style: td });
+      detailCells.push({ text: avg[i].toFixed(1), style: td + ';font-weight:600;color:' + (avg[i] >= 3.5 ? '#7E9A2E' : avg[i] >= 3 ? '#1F66C4' : growth) });
+      detailCells.push({ text: (d > 0 ? '+' : '') + d.toFixed(1), style: td + ';color:' + (d > 0 ? '#7E9A2E' : '#A6A2A3') });
+    });
+
+    // teacher roster
+    const tf = ['Все · 24', 'Не начали · 6', 'Есть зоны роста · 9'];
+    const teacherFilters = tf.map((label, i) => ({
+      label, pick: () => this.setState({ filter: i }),
+      style: 'font-family:Onest,sans-serif;font-size:11.5px;font-weight:500;padding:6px 12px;border-radius:999px;cursor:pointer;border:1px solid ' + (s.filter === i ? '#2E2A2B' : 'rgba(46,42,43,.16)') + ';background:' + (s.filter === i ? '#2E2A2B' : '#fff') + ';color:' + (s.filter === i ? '#fff' : '#6E6A6B')
+    }));
+    const rows = s.filter === 1 ? ROSTER.filter(r => r.self === 'Не начата') : s.filter === 2 ? ROSTER.filter(r => r.avg !== '—' && parseFloat(r.avg) < 3.4) : ROSTER;
+    const tcell = 'padding:11px 12px;border-bottom:1px solid rgba(46,42,43,.07);display:flex;align-items:center';
+    const teacherRosterCells = [];
+    ['Ученик', 'Самооценка', 'Собрано', 'Балл', 'Дин.', ''].forEach(t => teacherRosterCells.push({ text: t, isText: true, isBtn: false, style: tcell + ';border-bottom:1px solid rgba(46,42,43,.09)', textStyle: 'font-size:10px;font-weight:600;color:#A6A2A3;text-transform:uppercase;letter-spacing:.05em' }));
+    rows.forEach(r => {
+      const statusColor = r.self === 'Завершена' ? '#7E9A2E' : r.self === 'В процессе' ? '#1F66C4' : '#A6A2A3';
+      teacherRosterCells.push({ text: r.name, isText: true, isBtn: false, style: tcell, textStyle: 'font-size:12.5px;font-weight:500' });
+      teacherRosterCells.push({ text: r.self, isText: true, isBtn: false, style: tcell, textStyle: 'font-size:11px;font-weight:500;padding:3px 10px;border-radius:999px;background:' + (r.self === 'Завершена' ? '#F4FAE2' : r.self === 'В процессе' ? '#E9F2FE' : 'rgba(46,42,43,.06)') + ';color:' + statusColor });
+      teacherRosterCells.push({ text: r.got, isText: true, isBtn: false, style: tcell, textStyle: 'font-size:12px;color:#6E6A6B' });
+      teacherRosterCells.push({ text: r.avg, isText: true, isBtn: false, style: tcell, textStyle: 'font-family:Unbounded,sans-serif;font-size:13px;font-weight:600;color:' + (r.avg === '—' ? '#A6A2A3' : parseFloat(r.avg) < 3.2 ? growth : '#2E2A2B') });
+      teacherRosterCells.push({ text: r.d, isText: true, isBtn: false, style: tcell, textStyle: 'font-size:11.5px;color:' + (r.d.charAt(0) === '+' && r.d !== '+0.0' ? '#7E9A2E' : '#A6A2A3') });
+      teacherRosterCells.push({ text: 'Оценить', isText: false, isBtn: true, style: tcell + ';justify-content:flex-end', action: () => this.setState({ screen: 'survey', peerName: r.name, doneOverlay: null, qIndex: this.firstUnanswered(r.name) }), btnStyle: 'font-family:Onest,sans-serif;font-size:11.5px;font-weight:500;padding:6px 13px;border-radius:7px;border:1px solid rgba(46,42,43,.18);background:#fff;color:#2E2A2B;cursor:pointer;white-space:nowrap' });
+    });
+
+    const teacherMetrics = [
+      { val: '24', label: 'Учеников в 10А', valStyle: 'font-family:Unbounded,sans-serif;font-size:25px;font-weight:600;line-height:1.1' },
+      { val: '71%', label: 'Анкет заполнено', valStyle: 'font-family:Unbounded,sans-serif;font-size:25px;font-weight:600;line-height:1.1;color:#3C8FED' },
+      { val: '3.4', label: 'Средний балл класса', valStyle: 'font-family:Unbounded,sans-serif;font-size:25px;font-weight:600;line-height:1.1' },
+      { val: '+0.2', label: 'Динамика за год', valStyle: 'font-family:Unbounded,sans-serif;font-size:25px;font-weight:600;line-height:1.1;color:#7E9A2E' }
+    ];
+
+    const teacherClasses = [['10А', 'кл. рук.'], ['8А', 'предмет'], ['9Б', 'предмет']].map(([label, tag], i) => ({
+      label, tag,
+      pick: () => this.setState({ tclass: i }),
+      chipStyle: 'display:flex;align-items:center;gap:7px;font-family:Unbounded,sans-serif;font-size:13px;font-weight:600;padding:7px 14px;border-radius:999px;cursor:pointer;border:1px solid ' + (s.tclass === i ? '#3C8FED' : 'rgba(46,42,43,.14)') + ';background:' + (s.tclass === i ? '#E9F2FE' : '#fff') + ';color:' + (s.tclass === i ? '#1F66C4' : '#2E2A2B'),
+      chipTagStyle: 'font-family:Onest,sans-serif;font-size:10px;font-weight:500;color:#A6A2A3'
+    }));
+
+    const classGrowth = [2, 6, 1].map(i => ({ name: C[i].name, score: CLASSAVG[i].toFixed(1), count: (i === 2 ? 11 : i === 6 ? 9 : 7) + ' учеников' }));
+
+    // admin
+    const adminClassesData = [['9А', 23, 'Орлова И.П.', 74], ['9Б', 21, 'Фёдорова Н.С.', 52], ['10А', 24, 'Козлов Р.С.', 71], ['10Б', 22, 'Белова Т.Г.', 88], ['11А', 19, 'Морозов Д.В.', 96], ['11Б', 20, 'Титова Л.А.', 41]];
+    const adminClasses = adminClassesData.map(([label, n, hr, p]) => ({
+      label, pct: p + '%', students: n + ' ученика', homeroom: 'Кл. рук.: ' + hr,
+      pctStyle: 'font-size:11px;font-weight:600;color:' + (p >= 80 ? '#7E9A2E' : p >= 60 ? '#1F66C4' : growth),
+      barStyle: 'height:100%;border-radius:2px;width:' + p + '%;background:' + (p >= 80 ? '#7E9A2E' : p >= 60 ? '#3C8FED' : '#8FC2BE'),
+      cardStyle: 'text-align:left;font-family:Onest,sans-serif;padding:13px 14px;border-radius:11px;cursor:pointer;border:1px solid ' + (s.adminSel === label ? '#3C8FED' : 'rgba(46,42,43,.14)') + ';background:' + (s.adminSel === label ? '#E9F2FE' : '#fff') + ';color:#2E2A2B',
+      pick: () => this.setState({ adminSel: label })
+    }));
+
+    const pickedCount = Object.keys(s.picked).filter(k => s.picked[k]).length;
+    const acell = 'padding:10px 12px;border-bottom:1px solid rgba(46,42,43,.07);display:flex;align-items:center';
+    const adminRosterCells = [];
+    ['', 'Ученик', 'Email', 'Родитель', 'Статус'].forEach(t => adminRosterCells.push({ text: t, isText: true, isCheck: false, style: acell + ';border-bottom:1px solid rgba(46,42,43,.09)', textStyle: 'font-size:10px;font-weight:600;color:#A6A2A3;text-transform:uppercase;letter-spacing:.05em' }));
+    ROSTER.forEach((r, i) => {
+      const on = !!s.picked[i];
+      adminRosterCells.push({ isCheck: true, isText: false, text: '', style: acell, boxIcon: on ? 'ti ti-check' : 'ti ti-minus', boxStyle: 'width:18px;height:18px;border-radius:5px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid ' + (on ? '#3C8FED' : 'rgba(46,42,43,.22)') + ';background:' + (on ? '#3C8FED' : '#fff') + ';color:' + (on ? '#fff' : 'transparent'), action: () => this.setState({ picked: Object.assign({}, s.picked, { [i]: !on }) }) });
+      adminRosterCells.push({ isText: true, isCheck: false, text: r.name, style: acell + (on ? ';background:#E9F2FE' : ''), textStyle: 'font-size:12.5px;font-weight:500' });
+      adminRosterCells.push({ isText: true, isCheck: false, text: r.email, style: acell + (on ? ';background:#E9F2FE' : ''), textStyle: 'font-size:11.5px;color:#6E6A6B' });
+      adminRosterCells.push({ isText: true, isCheck: false, text: i % 3 === 0 ? 'Семёнова Е.В.' : i % 3 === 1 ? 'Коваль А.И.' : 'не привязан', style: acell + (on ? ';background:#E9F2FE' : ''), textStyle: 'font-size:11.5px;color:' + (i % 3 === 2 ? growth : '#6E6A6B') });
+      adminRosterCells.push({ isText: true, isCheck: false, text: i === 7 ? 'Неактивен' : 'Активен', style: acell + (on ? ';background:#E9F2FE' : ''), textStyle: 'font-size:11.5px;color:#6E6A6B' });
+    });
+
+    const classTeachers = [['СА', 'Смирнова А.И.', 'Математика'], ['ОИ', 'Орлова И.П.', 'Русский язык'], ['МД', 'Морозов Д.В.', 'История'], ['БТ', 'Белова Т.Г.', 'Физика']].map(([initials, name, subject]) => ({
+      initials, name, subject,
+      avStyle: 'width:28px;height:28px;border-radius:50%;background:#8FC2BE;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;font-family:Unbounded,sans-serif;flex-shrink:0'
+    }));
+
+    const campaigns = [
+      { status: 'Активна', aud: 'Ученики', title: '360-диагностика · июнь 2026', period: 'до 20.06', meta: 'Все классы · 33 вопроса · версия формулировок 1 · выборка одноклассников включена', p: 68, progressLabel: '669 из 988 анкет' },
+      { status: 'Прогон', aud: 'Учителя', title: 'Тестовый прогон на учителях · август 2026', period: 'до 28.08', meta: 'Самооценка учителя + 2–3 ученика прошлого класса · взрослые формулировки · в статистику школы не идёт', p: 24, progressLabel: '11 из 46 анкет' },
+      { status: 'Завершена', aud: 'Ученики', title: '360-диагностика · декабрь 2025', period: '20.12.2025', meta: 'Все классы · 30 вопросов · историчная шкала 1–3, приведена к 1–5', p: 100, progressLabel: '941 из 941 анкеты' }
+    ].map(c => ({
+      status: c.status, title: c.title, period: c.period, meta: c.meta, progressLabel: c.progressLabel, aud: c.aud,
+      audStyle: 'font-size:10px;font-weight:500;padding:3px 9px;border-radius:999px;white-space:nowrap;background:' + (c.aud === 'Учителя' ? '#F4FAE2' : 'rgba(46,42,43,.05)') + ';color:' + (c.aud === 'Учителя' ? '#7E9A2E' : '#6E6A6B'),
+      cardStyle: 'background:#fff;border:1px solid ' + (c.status === 'Активна' ? 'rgba(60,143,237,.3)' : c.status === 'Прогон' ? 'rgba(126,154,46,.35)' : 'rgba(46,42,43,.09)') + ';border-radius:11px;padding:15px 17px',
+      badgeStyle: 'font-size:10.5px;font-weight:500;padding:3px 10px;border-radius:999px;background:' + (c.status === 'Активна' ? '#E9F2FE' : c.status === 'Прогон' ? '#F4FAE2' : 'rgba(46,42,43,.06)') + ';color:' + (c.status === 'Активна' ? '#1F66C4' : c.status === 'Прогон' ? '#7E9A2E' : '#6E6A6B'),
+      barStyle: 'height:100%;border-radius:3px;width:' + c.p + '%;background:' + (c.status === 'Завершена' ? '#7E9A2E' : '#3C8FED')
+    }));
+
+    const coverage = adminClassesData.map(([label, n, hr, p]) => ({
+      label, pct: p + '%', counts: Math.round(n * 4.1 * p / 100) + ' из ' + Math.round(n * 4.1) + ' анкет',
+      barStyle: 'height:100%;border-radius:4px;width:' + p + '%;background:' + (p >= 80 ? '#7E9A2E' : p >= 60 ? '#3C8FED' : '#8FC2BE')
+    }));
+
+    const pairRules = [
+      { key: 'self', label: 'Самооценка', note: 'Каждый ученик оценивает себя', icon: 'ti ti-user', on: true, fixed: true },
+      { key: 'teach', label: 'Учителя класса', note: 'Все привязанные учителя', icon: 'ti ti-school', on: true, fixed: true },
+      { key: 'par', label: 'Родители', note: 'Только своих детей', icon: 'ti ti-heart', on: true, fixed: true },
+      { key: 'peers', label: 'Одноклассники', note: 'Выборка по 3 человека на ученика', icon: 'ti ti-users-group', on: s.peers, fixed: false }
+    ].map(r => ({
+      label: r.label, note: r.note, icon: r.icon,
+      iconStyle: 'width:30px;height:30px;border-radius:8px;background:#F4FAE2;color:#7E9A2E;display:flex;align-items:center;justify-content:center;flex-shrink:0',
+      switchStyle: 'width:38px;height:22px;border-radius:999px;border:none;padding:2px;display:flex;align-items:center;justify-content:' + (r.on ? 'flex-end' : 'flex-start') + ';background:' + (r.on ? '#3C8FED' : 'rgba(46,42,43,.16)') + ';cursor:' + (r.fixed ? 'not-allowed' : 'pointer') + ';opacity:' + (r.fixed ? .55 : 1),
+      knobStyle: 'width:18px;height:18px;border-radius:50%;background:#fff;display:block',
+      toggle: () => { if (!r.fixed) this.setState({ peers: !s.peers }); }
+    }));
+
+    const peerDone = (name) => Object.keys(s.answers).filter(k => k.indexOf(name + '|') === 0).length;
+    const peersToRate = [['КМ', 'Коваль Максим', 0], ['СА', 'Смирнова Алина', 1], ['ДЕ', 'Дроздов Егор', 2]].map(([initials, name, i]) => {
+      const n = peerDone(name), started = n > 0, complete = n >= list.length;
+      return {
+        initials, name,
+        status: complete ? 'Заполнена · ' + n + ' из ' + list.length : started ? 'Черновик · ' + n + ' из ' + list.length : 'Не начата',
+        avStyle: 'width:34px;height:34px;border-radius:50%;background:' + ['#8FC2BE', '#3C8FED', '#2E2A2B'][i] + ';color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;font-family:Unbounded,sans-serif;flex-shrink:0',
+        rate: () => this.setState({ screen: 'survey', peerName: name, qIndex: this.firstUnanswered(name), doneOverlay: null }),
+        btnLabel: complete ? 'Изменить' : started ? 'Продолжить' : 'Оценить',
+        btnStyle: 'font-family:Onest,sans-serif;font-size:11.5px;font-weight:500;padding:7px 14px;border-radius:7px;cursor:pointer;white-space:nowrap;border:1px solid ' + (started && !complete ? '#3C8FED' : 'rgba(46,42,43,.18)') + ';background:' + (started && !complete ? '#3C8FED' : '#fff') + ';color:' + (started && !complete ? '#fff' : '#2E2A2B')
+      };
+    });
+
+    const children = [['ИП', 'Полина'], ['ИМ', 'Матвей']].map(([initials, name], i) => ({
+      initials, name,
+      pick: () => this.setState({ child: i }),
+      chipStyle: 'display:flex;align-items:center;gap:8px;font-family:Onest,sans-serif;font-size:12.5px;font-weight:500;padding:6px 14px 6px 6px;border-radius:999px;cursor:pointer;border:1px solid ' + (s.child === i ? '#3C8FED' : 'rgba(46,42,43,.14)') + ';background:' + (s.child === i ? '#E9F2FE' : '#fff') + ';color:#2E2A2B',
+      avStyle: 'width:24px;height:24px;border-radius:50%;background:' + (i === 0 ? '#3C8FED' : '#8FC2BE') + ';color:#fff;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:600;font-family:Unbounded,sans-serif'
+    }));
+
+    const parentCompare = C.map((c, i) => ({
+      name: c.name,
+      label: avg[i].toFixed(1) + ' · ' + CLASSAVG[i].toFixed(1),
+      barStyle: 'position:absolute;left:0;top:0;height:100%;border-radius:4px;background:#3C8FED;width:' + (avg[i] / 5 * 100) + '%',
+      markStyle: 'position:absolute;top:-3px;width:2px;height:14px;background:#2E2A2B;left:' + (CLASSAVG[i] / 5 * 100) + '%'
+    }));
+
+    const audTab = (on) => 'font-family:Onest,sans-serif;font-size:11.5px;font-weight:500;padding:7px 14px;border-radius:999px;border:none;cursor:pointer;background:' + (on ? '#2E2A2B' : 'transparent') + ';color:' + (on ? '#fff' : '#6E6A6B');
+    const isTeachAud = s.audience === 'teachers';
+    const eAud = s.editorAud, eTeach = eAud === 'teachers';
+    const editedKeys = Object.keys(s.qtext);
+    const editorComp = C[s.editorComp];
+
+    const formComps = C.map((c, ci) => {
+      const n = c.qs.filter((q, qi) => s.qtext[eAud + '|' + c.code + '_' + qi + '|about'] !== undefined || s.qtext[eAud + '|' + c.code + '_' + qi + '|self'] !== undefined).length;
+      const on = ci === s.editorComp;
+      return {
+        name: c.name, icon: c.icon, count: c.qs.length + ' вопр.',
+        editedLabel: n ? n + ' изменено' : '',
+        editedStyle: n ? 'font-size:10px;font-weight:500;padding:2px 8px;border-radius:999px;background:#E9F2FE;color:#1F66C4;white-space:nowrap' : 'display:none',
+        railStyle: 'display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;border:none;cursor:pointer;width:100%;text-align:left;font-family:Onest,sans-serif;background:' + (on ? '#E9F2FE' : 'transparent') + ';color:' + (on ? '#1F66C4' : '#2E2A2B'),
+        pick: () => this.setState({ editorComp: ci })
+      };
+    });
+
+    const formRows = editorComp.qs.map((q0, qi) => {
+      const kA = eAud + '|' + editorComp.code + '_' + qi + '|about';
+      const kS = eAud + '|' + editorComp.code + '_' + qi + '|self';
+      const set = (k) => (e) => this.setState({ qtext: Object.assign({}, s.qtext, { [k]: e.target.value }), saveNote: '' });
+      const reset = () => { const t = Object.assign({}, s.qtext); delete t[kA]; delete t[kS]; this.setState({ qtext: t, saveNote: '' }); };
+      const edited = s.qtext[kA] !== undefined || s.qtext[kS] !== undefined;
+      const inp = (dirty) => 'width:100%;box-sizing:border-box;resize:vertical;padding:9px 12px;border-radius:8px;font-size:12.5px;line-height:1.5;font-family:Onest,sans-serif;color:#2E2A2B;background:' + (dirty ? '#E9F2FE' : '#FAF9F7') + ';border:1px solid ' + (dirty ? '#3C8FED' : 'rgba(46,42,43,.16)');
+      return {
+        num: 'Вопрос ' + (qi + 1),
+        about: this.qText(s.editorComp, qi, false, eAud),
+        self: this.qText(s.editorComp, qi, true, eAud),
+        selfLabel: eTeach ? 'От первого лица — самооценка учителя' : 'От первого лица — самооценка ученика',
+        aboutStyle: inp(s.qtext[kA] !== undefined),
+        selfStyle: inp(s.qtext[kS] !== undefined),
+        onAbout: set(kA), onSelf: set(kS), reset,
+        resetStyle: edited ? 'font-family:Onest,sans-serif;font-size:11px;font-weight:500;padding:5px 10px;border-radius:7px;border:1px solid rgba(46,42,43,.18);background:#fff;color:#6E6A6B;cursor:pointer;white-space:nowrap' : 'display:none',
+        condLabel: this.qCond(s.editorComp, qi) ? 'только 9–11 класс' : 'все классы',
+        condStyle: 'font-size:10px;font-weight:500;padding:3px 9px;border-radius:999px;white-space:nowrap;background:' + (this.qCond(s.editorComp, qi) ? '#E9F4F3' : 'rgba(46,42,43,.05)') + ';color:' + (this.qCond(s.editorComp, qi) ? '#3F7E79' : '#A6A2A3')
+      };
+    });
+
+    return {
+      roles, navItems, chromeHint: 'Прототип · данные демонстрационные',
+      audStudentsStyle: audTab(!isTeachAud), audTeachersStyle: audTab(isTeachAud),
+      pickAudStudents: () => this.setState({ audience: 'students', doneOverlay: null, peerName: null, qIndex: 0 }),
+      pickAudTeachers: () => { this.killCharts(); this.setState({ audience: 'teachers', role: 'teacher', screen: s.screen === 'login' ? 'login' : 'survey', doneOverlay: null, peerName: null, qIndex: 0 }); },
+      isPilot: isTeachAud,
+      audienceLabel: isTeachAud ? 'Прогон на учителях · август 2026' : 'Кампания для учеников · июнь 2026',
+      pickEditorStudents: () => this.setState({ editorAud: 'students' }),
+      pickEditorTeachers: () => this.setState({ editorAud: 'teachers' }),
+      editorAudStudentsStyle: audTab(!eTeach), editorAudTeachersStyle: audTab(eTeach),
+      editorAudienceLabel: eTeach ? 'Тексты для прогона на учителях · август 2026' : 'Тексты для кампании учеников · июнь 2026',
+      campaignTitle: isTeachAud ? 'Тестовый прогон · август 2026' : '360-диагностика · июнь 2026',
+      selfBadge: isTeachAud ? 'Самооценка · прогон · август 2026' : 'Самооценка · 360 · июнь 2026',
+      peerBadge: isTeachAud ? 'Ученики прошлого класса · прогон · август 2026' : 'Одноклассники · 360 · июнь 2026',
+      formComps, formRows, editorCompName: editorComp.name,
+      formVersionLabel: editedKeys.length ? 'Версия ' + (s.published + 1) + ' · черновик' : 'Версия ' + s.published + ' · опубликована',
+      formVersionStyle: 'font-size:11px;font-weight:500;padding:4px 11px;border-radius:999px;background:' + (editedKeys.length ? '#E9F2FE' : '#F4FAE2') + ';color:' + (editedKeys.length ? '#1F66C4' : '#7E9A2E'),
+      editedCount: editedKeys.length,
+      publishedVersion: s.published,
+      nextVersion: s.published + 1,
+      saveBarStyle: editedKeys.length ? 'display:flex;align-items:center;gap:12px;padding:12px 18px;background:#E9F2FE;border-top:1px solid rgba(60,143,237,.22);flex-wrap:wrap' : 'display:none',
+      saveLabel: 'Изменено формулировок: ' + editedKeys.length,
+      saveDraft: () => this.setState({ saveNote: 'Черновик версии ' + (s.published + 1) + ' сохранён' }),
+      publish: () => this.setState({ published: s.published + 1, qbase: Object.assign({}, s.qbase, s.qtext), qtext: {}, saveNote: 'Версия ' + (s.published + 1) + ' опубликована — новые ответы пойдут в неё' }),
+      saveNote: s.saveNote,
+      saveNoteStyle: s.saveNote ? 'display:flex;align-items:center;gap:7px;padding:11px 18px;font-size:11.5px;color:#7E9A2E;background:#F4FAE2;border-top:1px solid rgba(126,154,46,.22)' : 'display:none',
+      isLogin: s.screen === 'login', isTakeoff: s.phase === 1, isApp: s.screen !== 'login',
+      loginEmail: roleDef.key === 'parent' ? 'e.semenova@example.com' : roleDef.key === 'teacher' ? 'kozlov@shkola-vektor.ru' : roleDef.key === 'admin' ? 'novikova@shkola-vektor.ru' : 'polina.ivanova@shkola-vektor.ru',
+      welcomeLine: 'С возвращением, ' + (roleDef.key === 'student' ? 'Полина' : roleDef.key === 'teacher' ? 'Роман Сергеевич' : roleDef.key === 'parent' ? 'Елена Викторовна' : 'Ольга Александровна'),
+      welcomeSub: roleDef.key === 'student' ? 'Вы выросли на +0.2 балла с декабря' : 'Диагностика июня 2026 заполнена на 68%',
+      doLogin: () => { this.setState({ phase: 1 }); clearTimeout(this._t); this._t = setTimeout(() => this.setState({ screen: roleDef.first, phase: 2 }), 2450); },
+      userLine: roleDef.line, userInitials: roleDef.initials,
+      userAvStyle: 'width:30px;height:30px;border-radius:50%;background:' + roleDef.av + ';color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;font-family:Unbounded,sans-serif',
+      showXp: game && s.role === 'student', xpLabel: (s.xp + 260) + ' XP',
+      isStudentHome: s.screen === 'home', isSurvey: s.screen === 'survey', isResults: s.screen === 'results',
+      isMyClass: s.screen === 'myclass', isTeacherClass: s.screen === 'teacherclass', isParentChild: s.screen === 'parentchild',
+      isAdminClasses: s.screen === 'adminclasses', isAdminCampaign: s.screen === 'admincampaign', isAdminForm: s.screen === 'adminform',
+      goSurvey: () => this.setState({ screen: 'survey', peerName: null, doneOverlay: null, qIndex: this.firstUnanswered('self') }),
+      goMyClass: () => this.setState({ screen: 'myclass' }),
+      peerCardLine: peersToRate.filter(p => p.status.indexOf('Заполнена') === 0).length + ' из 3 заполнено · выборка назначена автоматически',
+      peerCardBarStyle: 'height:100%;border-radius:3px;background:#8FC2BE;transition:width .3s ease;width:' + Math.round(peersToRate.filter(p => p.status.indexOf('Заполнена') === 0).length / 3 * 100) + '%',
+      peersShort: !peersOk,
+      resultsSubline: '10А · 360-диагностика, июнь 2026 · собрано оценок: ' + (peerN + 24) + ' — самооценка, ' + peerN + ' от одноклассников, 4 от учителей, 2 от родителей',
+      peerCountLine: 'Получено ' + peerN + ' из 3 минимально необходимых ответов',
+      sv, growthZones, gapRows, radarLegend, detailCells,
+      teacherFilters, teacherRosterCells, teacherMetrics, teacherClasses, classGrowth,
+      adminClasses, adminSelected: s.adminSel, adminRosterCells, classTeachers,
+      bulkLabel: 'Выбрано ' + pickedCount + ' · применить одним действием',
+      bulkBarStyle: pickedCount ? 'display:flex;align-items:center;gap:10px;padding:10px 18px;background:#E9F2FE;border-bottom:1px solid rgba(60,143,237,.22);flex-wrap:wrap' : 'display:none',
+      warnValStyle: 'font-weight:600;color:' + growth,
+      campaigns, coverage, pairRules, peersToRate, children, parentCompare
+    };
+  }
+}
+
+</script>
+</body>
+</html>
