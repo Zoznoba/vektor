@@ -1,19 +1,25 @@
 # Юнит-тесты чистого доменного ядра build_pairs — матрица «кто кого оценивает»
 # для одного класса. Без БД: гоняем на голых id.
 #
+# build_pairs возвращает dict {(respondent, subject): RaterRole} — роль нужна
+# дальше, она сохраняется в Assessment.rater_role при генерации. Структурные
+# проверки поэтому идут по .keys().
+#
 # generate_assessments (оркестрация с БД) покрывается отдельно интеграционными
 # тестами — тут только доменные правила.
 
 import pytest
 from httpx import AsyncClient
 
-from vektor.modules.assessments.service import build_pairs
+from vektor.modules.assessments.service import build_pairs, merge_pairs
+from vektor.shared.enums import RaterRole
 
 
 def test_self_assessment_always_present() -> None:
     # Самооценка (s, s) есть у каждого ученика — даже без родителей/учителей/пиров.
     pairs = build_pairs(student_ids=[1, 2, 3], parent_ids_by_student={}, teacher_ids=[])
-    assert pairs == {(1, 1), (2, 2), (3, 3)}
+    assert pairs.keys() == {(1, 1), (2, 2), (3, 3)}
+    assert all(role == RaterRole.SELF for role in pairs.values())
 
 
 def test_parent_evaluates_only_own_child() -> None:
@@ -24,8 +30,8 @@ def test_parent_evaluates_only_own_child() -> None:
         parent_ids_by_student={1: [10], 2: [20]},
         teacher_ids=[],
     )
-    assert (10, 1) in pairs
-    assert (20, 2) in pairs
+    assert pairs[(10, 1)] == RaterRole.PARENT
+    assert pairs[(20, 2)] == RaterRole.PARENT
     assert (10, 2) not in pairs  # чужому ребёнку — нет
     assert (20, 1) not in pairs
 
@@ -33,8 +39,8 @@ def test_parent_evaluates_only_own_child() -> None:
 def test_teacher_evaluates_every_student() -> None:
     # Учитель класса оценивает каждого ученика.
     pairs = build_pairs(student_ids=[1, 2], parent_ids_by_student={}, teacher_ids=[100])
-    assert (100, 1) in pairs
-    assert (100, 2) in pairs
+    assert pairs[(100, 1)] == RaterRole.TEACHER
+    assert pairs[(100, 2)] == RaterRole.TEACHER
 
 
 def test_no_peers_by_default() -> None:
@@ -43,7 +49,7 @@ def test_no_peers_by_default() -> None:
     students = [1, 2, 3]
     pairs = build_pairs(student_ids=students, parent_ids_by_student={}, teacher_ids=[])
     peer_pairs = {(r, s) for r in students for s in students if r != s}
-    assert pairs & peer_pairs == set()
+    assert pairs.keys() & peer_pairs == set()
 
 
 def test_peers_added_and_symmetric_when_flag_on() -> None:
@@ -53,10 +59,11 @@ def test_peers_added_and_symmetric_when_flag_on() -> None:
         student_ids=students, parent_ids_by_student={}, teacher_ids=[], include_peers=True
     )
     expected_peers = {(r, s) for r in students for s in students if r != s}
-    assert expected_peers <= pairs
+    assert expected_peers <= pairs.keys()
     # Симметрия: если есть (1, 2), есть и (2, 1).
     for r, s in expected_peers:
         assert (s, r) in pairs
+        assert pairs[(r, s)] == RaterRole.PEER
 
 
 def test_peers_flag_only_adds_peers_nothing_else_changes() -> None:
@@ -64,7 +71,7 @@ def test_peers_flag_only_adds_peers_nothing_else_changes() -> None:
     students = [1, 2]
     base = build_pairs(students, {1: [10]}, [20], include_peers=False)
     with_peers = build_pairs(students, {1: [10]}, [20], include_peers=True)
-    assert with_peers - base == {(1, 2), (2, 1)}
+    assert with_peers.keys() - base.keys() == {(1, 2), (2, 1)}
 
 
 def test_student_without_parents_does_not_crash() -> None:
@@ -75,16 +82,32 @@ def test_student_without_parents_does_not_crash() -> None:
     assert {(resp, subj) for resp, subj in pairs if subj == 2} == {(2, 2)}
 
 
-def test_duplicate_collapses_via_set() -> None:
+def test_duplicate_collapses_by_key() -> None:
     # Один и тот же человек — и родитель ученика 1, и учитель класса (id=10).
-    # Пара (10, 1) должна встретиться один раз (set схлопывает дубль).
+    # Пара (10, 1) должна встретиться один раз, роль — более специфичная.
     pairs = build_pairs(student_ids=[1], parent_ids_by_student={1: [10]}, teacher_ids=[10])
-    assert pairs == {(1, 1), (10, 1)}
+    assert pairs.keys() == {(1, 1), (10, 1)}
+    assert pairs[(10, 1)] == RaterRole.TEACHER
+
+
+def test_role_priority_is_order_independent() -> None:
+    # Роль при коллизии не должна зависеть от порядка циклов внутри build_pairs:
+    # человек 10 и родитель, и учитель — teacher выигрывает в любом случае.
+    as_parent_first = build_pairs([1], {1: [10]}, [10])
+    as_teacher_only = build_pairs([1], {}, [10])
+    assert as_parent_first[(10, 1)] == as_teacher_only[(10, 1)] == RaterRole.TEACHER
+
+
+def test_self_wins_over_peer_for_same_student() -> None:
+    # Самооценка не должна быть перетёрта пиром при include_peers.
+    pairs = build_pairs([1, 2], {}, [], include_peers=True)
+    assert pairs[(1, 1)] == RaterRole.SELF
+    assert pairs[(2, 2)] == RaterRole.SELF
 
 
 def test_empty_class_gives_empty_matrix() -> None:
     # Нет учеников — нет субъектов — пустая матрица (учителя без учеников не с кем).
-    assert build_pairs(student_ids=[], parent_ids_by_student={}, teacher_ids=[42]) == set()
+    assert build_pairs(student_ids=[], parent_ids_by_student={}, teacher_ids=[42]) == {}
 
 
 @pytest.mark.parametrize("include_peers", [False, True])
@@ -98,7 +121,24 @@ def test_full_scenario_exact_set(include_peers: bool) -> None:
         teacher_ids=[20],
         include_peers=include_peers,
     )
-    assert pairs == expected
+    assert pairs.keys() == expected
+
+
+def test_merge_pairs_keeps_most_specific_role() -> None:
+    # Человек 10 — учитель в одном классе кампании и родитель ученика в другом.
+    # Слепой dict.update() дал бы роль, зависящую от порядка обхода классов.
+    first = build_pairs([1], {}, [10])  # (10, 1) -> teacher
+    second = build_pairs([1], {1: [10]}, [])  # (10, 1) -> parent
+
+    merged_one_way: dict = {}
+    merge_pairs(merged_one_way, first)
+    merge_pairs(merged_one_way, second)
+
+    merged_other_way: dict = {}
+    merge_pairs(merged_other_way, second)
+    merge_pairs(merged_other_way, first)
+
+    assert merged_one_way[(10, 1)] == merged_other_way[(10, 1)] == RaterRole.TEACHER
 
 
 # --- Интеграционные тесты эндпоинтов (оркестрация generate_assessments) ---

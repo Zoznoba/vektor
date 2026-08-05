@@ -18,7 +18,7 @@ from sqlalchemy import CheckConstraint, Enum, ForeignKey, String, UniqueConstrai
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vektor.core.database import Base
-from vektor.shared.enums import AssessmentStatus, CampaignStatus
+from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole
 
 if TYPE_CHECKING:
     from vektor.modules.competencies.models import Question
@@ -75,6 +75,15 @@ class Assessment(Base):
     Уникальна по тройке (кампания, респондент, субъект): один респондент
     оценивает одного субъекта в кампании ровно один раз. Собственно ответы
     лежат в Answer и удаляются вместе с анкетой (cascade). Таблица: `assessments`.
+
+    rater_role фиксируется В МОМЕНТ ГЕНЕРАЦИИ и больше не пересчитывается.
+    Это принципиально: состав класса и привязка родителей меняются (перевод
+    в следующий класс — штатное событие каждый год), а результаты прошлой
+    кампании обязаны остаться теми же. Если выводить роль при чтении из
+    ТЕКУЩИХ связей, учитель прошлого года после перевода ученика молча
+    станет «одноклассником»: его оценка исчезнет из слоя teacher и попадёт
+    в пул анонимности peer. Роль уже известна в build_pairs — здесь мы её
+    просто не выбрасываем.
     """
 
     __tablename__ = "assessments"
@@ -93,6 +102,8 @@ class Assessment(Base):
     status: Mapped[AssessmentStatus] = mapped_column(
         _enum_col(AssessmentStatus), default=AssessmentStatus.NOT_STARTED
     )
+
+    rater_role: Mapped[RaterRole] = mapped_column(_enum_col(RaterRole))
 
     answers: Mapped[list["Answer"]] = relationship(
         back_populates="assessment", cascade="all, delete-orphan"

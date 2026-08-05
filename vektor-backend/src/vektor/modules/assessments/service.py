@@ -14,7 +14,7 @@ from vektor.modules.assessments.models import Answer, Assessment, Campaign
 from vektor.modules.classes.models import SchoolClass
 from vektor.modules.competencies.models import Question
 from vektor.modules.users.models import User
-from vektor.shared.enums import AssessmentStatus, CampaignStatus
+from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole
 
 
 class CampaignNotFound(Exception):
@@ -57,14 +57,25 @@ async def create_campaign(
     return campaign
 
 
+# Приоритет ролей при коллизии: один человек может быть и родителем ученика,
+# и учителем его класса. Роль должна быть ОДНА и выбираться детерминированно,
+# иначе она зависела бы от порядка циклов ниже.
+_RATER_ROLE_PRIORITY = {
+    RaterRole.SELF: 0,
+    RaterRole.TEACHER: 1,
+    RaterRole.PARENT: 2,
+    RaterRole.PEER: 3,
+}
+
+
 def build_pairs(
     student_ids: list[int],
     parent_ids_by_student: dict[int, list[int]],
     teacher_ids: list[int],
     include_peers: bool = False,
-) -> set[tuple[int, int]]:
-    """Чистое доменное ядро: строит множество пар (respondent_id, subject_id)
-    для ОДНОГО класса. Без БД — юнит-тестируется на голых числах (срез 4d).
+) -> dict[tuple[int, int], RaterRole]:
+    """Чистое доменное ядро: строит пары (respondent_id, subject_id) → роль
+    для ОДНОГО класса. Без БД — юнит-тестируется на голых числах.
 
     Правила (субъект всегда student):
       • самооценка:    (s, s)                 ВСЕГДА, для каждого ученика s
@@ -72,25 +83,50 @@ def build_pairs(
       • учителя:       (teacher, s)           для каждого учителя класса
       • одноклассники: (other, s)             ТОЛЬКО если include_peers=True
 
-    Возвращаем set — дубли (напр. родитель, который заодно учитель) схлопнутся
-    сами, а вызывающий код объединяет пары нескольких классов через |=.
+    Возвращаем dict, а не set: роль оценивающего нужна дальше — она
+    сохраняется в Assessment.rater_role и потом читается результатами
+    (Этап 5) вместо пересчёта по текущим связям. Дубли схлопываются по
+    ключу, при коллизии ролей выигрывает более специфичная
+    (_RATER_ROLE_PRIORITY). Вызывающий код объединяет несколько классов
+    через merge_pairs.
     """
-    pairs: set[tuple[int, int]] = set()
+    pairs: dict[tuple[int, int], RaterRole] = {}
+
+    def put(respondent: int, subject: int, role: RaterRole) -> None:
+        current = pairs.get((respondent, subject))
+        if current is None or _RATER_ROLE_PRIORITY[role] < _RATER_ROLE_PRIORITY[current]:
+            pairs[(respondent, subject)] = role
 
     for s in student_ids:
-        pairs.add((s, s))
+        put(s, s, RaterRole.SELF)
         for p in parent_ids_by_student.get(s, []):
-            pairs.add((p, s))
+            put(p, s, RaterRole.PARENT)
         for t in teacher_ids:
-            pairs.add((t, s))
+            put(t, s, RaterRole.TEACHER)
 
     if include_peers:
         for i, r in enumerate(student_ids):
             for s in student_ids[i + 1 :]:
-                pairs.add((r, s))
-                pairs.add((s, r))
+                put(r, s, RaterRole.PEER)
+                put(s, r, RaterRole.PEER)
 
     return pairs
+
+
+def merge_pairs(
+    target: dict[tuple[int, int], RaterRole],
+    extra: dict[tuple[int, int], RaterRole],
+) -> None:
+    """Влить пары одного класса в общий свод, уважая приоритет ролей.
+
+    Простой `target |= extra` не годится: один и тот же человек может быть
+    учителем в одном классе кампании и родителем ученика в другом — при
+    слепом обновлении роль зависела бы от порядка обхода классов.
+    """
+    for pair, role in extra.items():
+        current = target.get(pair)
+        if current is None or _RATER_ROLE_PRIORITY[role] < _RATER_ROLE_PRIORITY[current]:
+            target[pair] = role
 
 
 async def generate_assessments(
@@ -113,14 +149,17 @@ async def generate_assessments(
         )
     )
 
-    all_pairs: set[tuple[int, int]] = set()
+    all_pairs: dict[tuple[int, int], RaterRole] = {}
 
     for cls in classes_sample.scalars():
         student_ids = [s.id for s in cls.students]
         parent_ids_by_student = {s.id: [p.id for p in s.parents] for s in cls.students}
         teacher_ids = [t.id for t in cls.teachers]
 
-        all_pairs |= build_pairs(student_ids, parent_ids_by_student, teacher_ids, include_peers)
+        merge_pairs(
+            all_pairs,
+            build_pairs(student_ids, parent_ids_by_student, teacher_ids, include_peers),
+        )
 
     existing_pairs = await db.execute(
         select(Assessment.respondent_id, Assessment.subject_id).where(
@@ -128,9 +167,13 @@ async def generate_assessments(
         )
     )
 
-    new_pairs = all_pairs - set(existing_pairs.all())
+    already_generated = set(existing_pairs.all())
+    new_pairs = {pair: role for pair, role in all_pairs.items() if pair not in already_generated}
     db.add_all(
-        [Assessment(campaign_id=campaign_id, respondent_id=r, subject_id=s) for r, s in new_pairs]
+        [
+            Assessment(campaign_id=campaign_id, respondent_id=r, subject_id=s, rater_role=role)
+            for (r, s), role in new_pairs.items()
+        ]
     )
 
     campaign.status = CampaignStatus.ACTIVE
