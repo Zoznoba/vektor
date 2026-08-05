@@ -11,6 +11,11 @@ export interface User {
   full_name: string;
   role: UserRole;
   is_active: boolean;
+  /**
+   * «8-1» — только у ученика; у учителя, родителя и админа класса нет.
+   * Приходит из /users/me; в списках пользователей поля нет.
+   */
+  class_label?: string | null;
 }
 
 export interface TokenResponse {
