@@ -14,7 +14,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from vektor.modules.assessments.models import Assessment
-from vektor.modules.competencies.models import Competency, Question
+from vektor.modules.competencies.models import (
+    Competency,
+    OutcomeArea,
+    Question,
+    QuestionnaireVersion,
+)
 from vektor.modules.results.service import (
     ScoredAnswer,
     aggregate_by_competency_and_rater,
@@ -241,10 +246,23 @@ async def db_session(db_engine):
 async def _seed_competency(db_session, code: str, order: int) -> int:
     """Компетенция с одним вопросом — среднее считается по единственному
     числу, результат легко проверить руками."""
-    comp = Competency(code=code, name=f"Компетенция {code}", order=order)
+    area_id = (await db_session.execute(select(OutcomeArea.id))).scalars().first()
+    comp = Competency(code=code, name=f"Компетенция {code}", order=order, outcome_area_id=area_id)
     db_session.add(comp)
     await db_session.flush()
-    db_session.add(Question(competency_id=comp.id, text="вопрос", is_conditional=False, order=1))
+    version_id = (
+        await db_session.execute(
+            select(QuestionnaireVersion.id).where(QuestionnaireVersion.is_current.is_(True))
+        )
+    ).scalar_one()
+    db_session.add(
+        Question(
+            competency_id=comp.id,
+            text="вопрос",
+            order=0,
+            version_id=version_id,
+        )
+    )
     await db_session.commit()
     return comp.id
 

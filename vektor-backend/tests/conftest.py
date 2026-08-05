@@ -10,12 +10,13 @@ import asyncio
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from sqlalchemy import insert, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from vektor.core.config import settings
 from vektor.core.database import Base, get_db
 from vektor.main import app
+from vektor.modules.competencies.models import OutcomeArea, QuestionnaireVersion
 
 TEST_DB_NAME = "vektor_test"
 TEST_DATABASE_URL = settings.database_url.rsplit("/", 1)[0] + f"/{TEST_DB_NAME}"
@@ -58,6 +59,19 @@ async def db_engine():
     engine = create_async_engine(TEST_DATABASE_URL)  # echo не нужен: шумно в тестах
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Действующая редакция анкеты — то, что в проде ставит миграция
+        # c3f81ad0e7b5. Без неё create_campaign не сможет выбрать версию, а
+        # вопросы не к чему привязать (Question.version_id NOT NULL).
+        await conn.execute(
+            insert(QuestionnaireVersion.__table__).values(
+                code="test-current", title="Тестовая редакция", is_current=True
+            )
+        )
+        # «ОР / навык» верхнего уровня: Competency.outcome_area_id — NOT NULL,
+        # поэтому хотя бы одна область нужна любому тесту, создающему критерий.
+        await conn.execute(
+            insert(OutcomeArea.__table__).values(code="test-area", name="Тестовая область", order=0)
+        )
     yield engine
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
