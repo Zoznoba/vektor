@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from vektor.modules.assessments.models import Answer, Assessment, Campaign
 from vektor.modules.classes.models import SchoolClass
-from vektor.modules.competencies.models import Question
+from vektor.modules.competencies.models import Question, QuestionnaireVersion
 from vektor.modules.users.models import User
 from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole
 
@@ -37,6 +37,12 @@ class QuestionNotAllowed(Exception):
     """Ответ на вопрос, которого нет в видимом наборе этой анкеты."""
 
 
+class NoCurrentQuestionnaireVersion(Exception):
+    """Ни одна редакция анкеты не помечена действующей — не по чему создавать
+    кампанию. В норме недостижимо: миграция c3f81ad0e7b5 ставит флаг, а
+    частичный уникальный индекс не даёт завести вторую действующую."""
+
+
 async def create_campaign(
     db: AsyncSession,
     title: str,
@@ -44,12 +50,21 @@ async def create_campaign(
     opens_at: datetime | None,
     closes_at: datetime | None,
 ) -> Campaign:
+    # Новая кампания всегда идёт по ДЕЙСТВУЮЩЕЙ редакции анкеты. Архивные
+    # редакции сюда не попадают никогда — их назначает только импорт.
+    current_version = await db.execute(
+        select(QuestionnaireVersion.id).where(QuestionnaireVersion.is_current.is_(True))
+    )
+    version_id = current_version.scalar_one_or_none()
+    if version_id is None:
+        raise NoCurrentQuestionnaireVersion()
 
     campaign = Campaign(
         title=title,
         period=period,
         opens_at=opens_at,
         closes_at=closes_at,
+        questionnaire_version_id=version_id,
     )
     db.add(campaign)
     await db.commit()
@@ -150,11 +165,19 @@ async def generate_assessments(
     )
 
     all_pairs: dict[tuple[int, int], RaterRole] = {}
+    # Класс субъекта на момент генерации — снапшот, см. Assessment.subject_class_id.
+    # Собираем здесь, в оркестрации, а не в build_pairs: та остаётся чистой
+    # функцией на голых числах, класс ей для матрицы «кто кого» не нужен.
+    # Коллизий нет: у ученика ровно один класс (FK), в двух классах кампании
+    # он оказаться не может.
+    class_id_by_subject: dict[int, int] = {}
 
     for cls in classes_sample.scalars():
         student_ids = [s.id for s in cls.students]
         parent_ids_by_student = {s.id: [p.id for p in s.parents] for s in cls.students}
         teacher_ids = [t.id for t in cls.teachers]
+
+        class_id_by_subject.update({s.id: cls.id for s in cls.students})
 
         merge_pairs(
             all_pairs,
@@ -171,7 +194,13 @@ async def generate_assessments(
     new_pairs = {pair: role for pair, role in all_pairs.items() if pair not in already_generated}
     db.add_all(
         [
-            Assessment(campaign_id=campaign_id, respondent_id=r, subject_id=s, rater_role=role)
+            Assessment(
+                campaign_id=campaign_id,
+                respondent_id=r,
+                subject_id=s,
+                rater_role=role,
+                subject_class_id=class_id_by_subject.get(s),
+            )
             for (r, s), role in new_pairs.items()
         ]
     )
@@ -183,30 +212,62 @@ async def generate_assessments(
     return campaign, len(new_pairs)
 
 
-def is_question_visible(is_conditional: bool, subject_grade: int | None) -> bool:
+def is_question_visible(
+    min_grade: int | None, max_grade: int | None, subject_grade: int | None
+) -> bool:
     """Чистое доменное правило: показывать ли вопрос в анкете про субъекта.
 
-    Базовые вопросы (is_conditional=False) — всегда. Условные — только если
-    класс субъекта 9–11. Если класс неизвестен (subject_grade=None) — прячем.
+    Возраст — свойство КРИТЕРИЯ, а не вопроса: границы приходят из
+    Competency.min_grade/max_grade, поэтому критерий либо показывается целиком
+    (все три вопроса), либо не показывается вовсе. Раньше признак жил на
+    вопросе (is_conditional), и критерий мог посчитаться по неполному набору —
+    средний балл прыгал при переходе из класса в класс сам по себе.
+
+    Границы не заданы — вопрос виден всегда. Если границы есть, а класс
+    субъекта неизвестен (None) — прячем: не раскрыть лишнего безопаснее.
     Юнит-тестируется без БД.
     """
-    if not is_conditional:
+    if min_grade is None and max_grade is None:
         return True
-    return subject_grade is not None and 9 <= subject_grade <= 11
+    if subject_grade is None:
+        return False
+    if min_grade is not None and subject_grade < min_grade:
+        return False
+    return max_grade is None or subject_grade <= max_grade
 
 
-async def get_visible_questions_for_subject(db: AsyncSession, subject: User) -> list[Question]:
-    """Все вопросы (упорядоченные по competency_id, order), видимые для анкеты
-    про данного субъекта — с учётом его класса (is_question_visible)."""
-    subject_grade = subject.school_class.grade if subject.school_class else None
+async def get_visible_questions_for_assessment(
+    db: AsyncSession, assessment: Assessment
+) -> list[Question]:
+    """Все вопросы (упорядоченные по competency_id, order), видимые в этой
+    анкете — с учётом класса субъекта (is_question_visible).
 
+    Набор вопросов ограничен РЕДАКЦИЕЙ анкеты этой кампании. Без этого
+    фильтра выборка склеила бы все редакции сразу: после появления архивной
+    редакции (миграция c3f81ad0e7b5) действующая кампания начала бы отдавать
+    66 вопросов вместо 33.
+
+    Класс берём из СНАПШОТА assessment.subject_class, а не из текущего
+    User.school_class: иначе перевод ученика в 9-й класс задним числом
+    открывал бы условные вопросы в прошлогодних анкетах (см. комментарий у
+    Assessment.subject_class_id). Требует selectinload на subject_class и
+    campaign у вызывающего.
+    """
+    subject_grade = assessment.subject_class.grade if assessment.subject_class else None
+
+    # Возрастные границы лежат на компетенции, поэтому её грузим сразу:
+    # без selectinload обращение к q.competency в фильтре ниже дало бы
+    # MissingGreenlet (ленивая подгрузка внутри async-контекста).
     q_ordered_questions = await db.execute(
-        select(Question).order_by(Question.competency_id, Question.order)
+        select(Question)
+        .where(Question.version_id == assessment.campaign.questionnaire_version_id)
+        .options(selectinload(Question.competency))
+        .order_by(Question.competency_id, Question.order)
     )
     return [
         q
         for q in q_ordered_questions.scalars()
-        if is_question_visible(q.is_conditional, subject_grade)
+        if is_question_visible(q.competency.min_grade, q.competency.max_grade, subject_grade)
     ]
 
 
@@ -218,7 +279,9 @@ async def get_assessment_detail(db: AsyncSession, assessment_id: int, current_us
         select(Assessment)
         .where(Assessment.id == assessment_id)
         .options(
+            selectinload(Assessment.campaign),
             selectinload(Assessment.subject).selectinload(User.school_class),
+            selectinload(Assessment.subject_class),
             selectinload(Assessment.answers),
         )
     )
@@ -229,7 +292,7 @@ async def get_assessment_detail(db: AsyncSession, assessment_id: int, current_us
     if assessment.respondent_id != current_user_id:
         raise NotAssessmentOwner()
 
-    visible_questions = await get_visible_questions_for_subject(db, assessment.subject)
+    visible_questions = await get_visible_questions_for_assessment(db, assessment)
     already_answered = {answer.question_id: answer.value for answer in assessment.answers}
 
     questions = [
@@ -238,7 +301,10 @@ async def get_assessment_detail(db: AsyncSession, assessment_id: int, current_us
             "competency_id": q.competency_id,
             "text": q.text,
             "order": q.order,
-            "is_conditional": q.is_conditional,
+            # Контракт наружу не меняем: фронту по-прежнему нужен признак
+            # «вопрос показывается не всем», просто источник теперь критерий.
+            "is_conditional": q.competency.min_grade is not None
+            or q.competency.max_grade is not None,
             "value": already_answered.get(q.id),
         }
         for q in visible_questions
@@ -279,6 +345,7 @@ async def list_my_assessments(
         .options(
             selectinload(Assessment.campaign),
             selectinload(Assessment.subject).selectinload(User.school_class),
+            selectinload(Assessment.subject_class),
             selectinload(Assessment.answers),
         )
     )
@@ -289,7 +356,7 @@ async def list_my_assessments(
 
     items = []
     for assessment in result.scalars():
-        visible_questions = await get_visible_questions_for_subject(db, assessment.subject)
+        visible_questions = await get_visible_questions_for_assessment(db, assessment)
         visible_ids = {q.id for q in visible_questions}
         answered = {a.question_id for a in assessment.answers} & visible_ids
         items.append(
@@ -323,6 +390,7 @@ async def submit_answers(
         .options(
             selectinload(Assessment.campaign),
             selectinload(Assessment.subject).selectinload(User.school_class),
+            selectinload(Assessment.subject_class),
             selectinload(Assessment.answers),
         )
     )
@@ -336,7 +404,7 @@ async def submit_answers(
     if assessment.campaign.status != CampaignStatus.ACTIVE:
         raise CampaignNotActive()
 
-    visible_questions = await get_visible_questions_for_subject(db, assessment.subject)
+    visible_questions = await get_visible_questions_for_assessment(db, assessment)
     visible_ids = {q.id for q in visible_questions}
 
     existing_answers = {a.question_id: a for a in assessment.answers}
