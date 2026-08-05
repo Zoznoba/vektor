@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { AppShell } from '../../components/layout/AppShell';
 import { STUDENT_NAV_ITEMS } from '../../data/navigation';
 import { InfoBanner } from '../../components/dashboard/InfoBanner';
@@ -6,11 +7,11 @@ import { SurveyTaskCard } from '../../components/dashboard/SurveyTaskCard';
 import { ResultCard } from '../../components/dashboard/ResultCard';
 import { useAuth } from '../../auth/AuthContext';
 import { ROLE_LABELS } from '../../types/auth';
-import {
-  mockCompletedResults,
-  mockPendingSurveys,
-  mockStudent,
-} from '../../data/mockStudentDashboard';
+import { useApi } from '../../hooks/useApi';
+import { fetchMyAssessments } from '../../api/assessments';
+import type { AssessmentListItem } from '../../types/assessment';
+import type { PendingSurvey } from '../../types/dashboard';
+import { mockCompletedResults, mockStudent } from '../../data/mockStudentDashboard';
 
 /** «Иванова Полина» → «Полина»; если слово одно — оно и есть имя. */
 function firstNameOf(fullName: string): string {
@@ -19,17 +20,41 @@ function firstNameOf(fullName: string): string {
 }
 
 /**
+ * Анкета → карточка на дашборде. Бэк отдаёт сырые данные (is_self, субъект,
+ * кампания) — текст под UI (бейдж/заголовок) собираем здесь, а не на бэке:
+ * это вопрос представления, не домена.
+ */
+function toPendingSurvey(item: AssessmentListItem): PendingSurvey {
+  return {
+    id: String(item.id),
+    badgeLabel: item.is_self
+      ? `Самооценка · ${item.campaign_title}`
+      : `Оценить одноклассника · ${item.campaign_title}`,
+    title: item.is_self ? 'Самооценка' : `Опрос: ${item.subject.full_name}`,
+    totalQuestions: item.total_questions,
+    answeredQuestions: item.answered_questions,
+    // completed сюда не попадает — отфильтровано до вызова маппера.
+    status: item.status as 'not_started' | 'in_progress',
+  };
+}
+
+/**
  * Экран 1 из ТЗ (п. 4.7) — «Личный кабинет ученика».
- * Пользователь — реальный (/users/me). Данные дашборда (анкеты, результаты)
- * пока на моках: их API появится на этапах 4–5 бэкенда; класс и учебный год
- * тоже мок — /users/me их пока не отдаёт.
+ * Пользователь и анкеты — реальные (/users/me, /assessments). Результаты
+ * («Мои результаты») пока на моках — их API появится на Этапе 5 бэкенда;
+ * класс и учебный год тоже мок — /users/me их пока не отдаёт.
  */
 export function StudentHome() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const assessments = useApi(fetchMyAssessments);
   if (!user) return null; // под RequireAuth недостижимо, но успокаивает типы
 
-  const pendingCount = mockPendingSurveys.length;
-  const nearestDeadlineLabel = '20 июня'; // TODO: брать минимальный deadline из реальных tests_360
+  const pending = (assessments.data ?? [])
+    .filter((a) => a.status !== 'completed')
+    .map(toPendingSurvey);
+  const pendingCount = pending.length;
+  const nearestDeadlineLabel = '20 июня'; // TODO: брать минимальный deadline из реальных campaign.closes_at
 
   const handleNavigate = (key: string) => {
     if (key === 'home') return;
@@ -38,7 +63,7 @@ export function StudentHome() {
   };
 
   const handleFillSurvey = (id: string) => {
-    console.info(`Открыть прохождение анкеты: ${id}`);
+    navigate(`/assessments/${id}`);
   };
 
   const handleViewResult = (id: string) => {
@@ -60,16 +85,23 @@ export function StudentHome() {
       </div>
 
       {pendingCount > 0 && (
-        <InfoBanner actionLabel="Заполнить" onAction={() => handleFillSurvey(mockPendingSurveys[0].id)}>
+        <InfoBanner actionLabel="Заполнить" onAction={() => handleFillSurvey(pending[0].id)}>
           Ждут заполнения {pendingCount} {pendingCount === 1 ? 'анкета' : 'анкеты'} — дедлайн{' '}
           {nearestDeadlineLabel}
         </InfoBanner>
       )}
 
       <Panel title="Анкеты для заполнения">
-        {mockPendingSurveys.map((survey) => (
-          <SurveyTaskCard key={survey.id} survey={survey} onAction={handleFillSurvey} />
-        ))}
+        {assessments.error && <div className="form-error">{assessments.error}</div>}
+        {assessments.loading ? (
+          <div className="app-main__sub">Загрузка…</div>
+        ) : pending.length === 0 ? (
+          <div className="app-main__sub">Анкет, ожидающих заполнения, нет</div>
+        ) : (
+          pending.map((survey) => (
+            <SurveyTaskCard key={survey.id} survey={survey} onAction={handleFillSurvey} />
+          ))
+        )}
       </Panel>
 
       <Panel title="Мои результаты">

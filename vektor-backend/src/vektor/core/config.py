@@ -24,5 +24,10 @@ class Settings(BaseSettings):
     admin_email: str | None = None
     admin_password: str | None = None
 
+    # ВРЕМЕННО (Этап 3.7): единый пароль для всех, кого заводим массово.
+    # Позже заменится авто-генерацией + рассылкой. Держим в настройках,
+    # чтобы не хардкодить в коде и переопределять через .env.
+    bulk_default_password: str = "somepassword_to_copy"
+
 
 settings = Settings()

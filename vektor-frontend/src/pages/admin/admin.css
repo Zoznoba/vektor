@@ -296,6 +296,97 @@
   margin-left: auto;
 }
 
+/* --- мастер «Новый класс»: вставка ростера учеников --- */
+.roster-hint {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.roster-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-m, monospace);
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  resize: vertical;
+  outline: none;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.roster-input:focus {
+  border-color: var(--blue);
+}
+
+.roster-summary {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin: 12px 2px 6px;
+}
+
+.roster-summary__ok {
+  color: var(--lime-ink);
+  font-weight: 600;
+}
+
+.roster-summary__err {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.roster-preview {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+
+.roster-preview .admin-table {
+  font-size: 13px;
+}
+
+.roster-preview .admin-table th,
+.roster-preview .admin-table td {
+  padding: 8px 12px;
+}
+
+.roster-preview tbody tr {
+  cursor: default;
+}
+
+.roster-preview tbody tr:hover td {
+  background: transparent;
+}
+
+.roster-row--error td {
+  background: var(--red-tint);
+}
+
+.roster-row--error:hover td {
+  background: var(--red-tint);
+}
+
+.roster-cell--empty {
+  color: var(--ink-faint);
+}
+
+.roster-status--ok {
+  color: var(--lime-ink);
+  font-weight: 600;
+}
+
+.roster-status--err {
+  color: var(--red-ink);
+  font-size: 12px;
+}
+
 /* --- метрики сводки --- */
 .metric-grid {
   display: grid;
