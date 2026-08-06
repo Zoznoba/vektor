@@ -245,6 +245,26 @@ async def _load_scored_answers(
     ]
 
 
+async def latest_campaign_id_for_subject(db: AsyncSession, subject_id: int) -> int | None:
+    """Самая свежая кампания, в которой у субъекта есть анкеты. None — их нет.
+
+    Нужна дашборду: он показывает «мои результаты», не зная про кампании.
+
+    Сортируем по `period`, а НЕ по id: порядок создания кампаний не равен
+    хронологии. Архив прошлого года импортируется после текущего, получает
+    больший id — и «последняя по id» кампания оказывается прошлогодней.
+    Ровно это и произошло при первом импорте.
+    """
+    row = await db.execute(
+        select(Assessment.campaign_id)
+        .join(Campaign, Campaign.id == Assessment.campaign_id)
+        .where(Assessment.subject_id == subject_id)
+        .order_by(Campaign.period.desc(), Campaign.id.desc())
+        .limit(1)
+    )
+    return row.scalar_one_or_none()
+
+
 async def get_subject_results(
     db: AsyncSession,
     subject_id: int,

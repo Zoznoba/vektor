@@ -13,10 +13,21 @@ router = APIRouter(prefix="/results", tags=["results"])
 @router.get("/{subject_id}", response_model=ResultsOut)
 async def get_results(
     subject_id: int,
-    campaign_id: int,
+    campaign_id: int | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ResultsOut:
+    # campaign_id опционален: дашборд ученика показывает «мои результаты» и
+    # про кампании не знает. Без него берём последнюю, где у субъекта есть
+    # анкеты. Нет ни одной — 404, а не пустой ответ: «результатов ещё нет» и
+    # «такого субъекта нет» фронт различает по detail.
+    if campaign_id is None:
+        campaign_id = await service.latest_campaign_id_for_subject(db, subject_id)
+        if campaign_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="У пользователя пока нет результатов",
+            )
     try:
         return await service.get_subject_results(db, subject_id, campaign_id, user)
     except service.CampaignNotFound as err:
