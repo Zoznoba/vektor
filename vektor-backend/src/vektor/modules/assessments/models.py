@@ -18,10 +18,11 @@ from sqlalchemy import CheckConstraint, Enum, ForeignKey, String, UniqueConstrai
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vektor.core.database import Base
-from vektor.shared.enums import AssessmentStatus, CampaignStatus
+from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole
 
 if TYPE_CHECKING:
-    from vektor.modules.competencies.models import Question
+    from vektor.modules.classes.models import SchoolClass
+    from vektor.modules.competencies.models import Question, QuestionnaireVersion
     from vektor.modules.users.models import User
 
 
@@ -62,6 +63,13 @@ class Campaign(Base):
 
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
+    # Редакция анкеты, по которой идёт кампания. Фиксируется при создании и
+    # определяет набор вопросов: новая кампания получает действующую редакцию,
+    # импортированная — архивную. Третий снапшот в этой таблице после
+    # rater_role и subject_class_id, по той же причине — прошлое неизменно.
+    questionnaire_version_id: Mapped[int] = mapped_column(ForeignKey("questionnaire_versions.id"))
+    questionnaire_version: Mapped["QuestionnaireVersion"] = relationship()
+
     assessments: Mapped[list["Assessment"]] = relationship(back_populates="campaign")
 
     def __repr__(self) -> str:
@@ -75,6 +83,15 @@ class Assessment(Base):
     Уникальна по тройке (кампания, респондент, субъект): один респондент
     оценивает одного субъекта в кампании ровно один раз. Собственно ответы
     лежат в Answer и удаляются вместе с анкетой (cascade). Таблица: `assessments`.
+
+    rater_role фиксируется В МОМЕНТ ГЕНЕРАЦИИ и больше не пересчитывается.
+    Это принципиально: состав класса и привязка родителей меняются (перевод
+    в следующий класс — штатное событие каждый год), а результаты прошлой
+    кампании обязаны остаться теми же. Если выводить роль при чтении из
+    ТЕКУЩИХ связей, учитель прошлого года после перевода ученика молча
+    станет «одноклассником»: его оценка исчезнет из слоя teacher и попадёт
+    в пул анонимности peer. Роль уже известна в build_pairs — здесь мы её
+    просто не выбрасываем.
     """
 
     __tablename__ = "assessments"
@@ -94,6 +111,8 @@ class Assessment(Base):
         _enum_col(AssessmentStatus), default=AssessmentStatus.NOT_STARTED
     )
 
+    rater_role: Mapped[RaterRole] = mapped_column(_enum_col(RaterRole))
+
     answers: Mapped[list["Answer"]] = relationship(
         back_populates="assessment", cascade="all, delete-orphan"
     )
@@ -106,6 +125,17 @@ class Assessment(Base):
 
     subject_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     subject: Mapped["User"] = relationship(foreign_keys=[subject_id])
+
+    # Класс субъекта НА МОМЕНТ ГЕНЕРАЦИИ — по той же причине, что и rater_role
+    # выше: перевод ученика в следующий класс не должен переписывать прошлое.
+    # Здесь это влияет на видимость условных вопросов (они только для 9–11):
+    # если читать класс из User.school_class, то после перевода из 8-го в 9-й
+    # в прошлогодней анкете задним числом «появились» бы три вопроса, на
+    # которые никто не отвечал, и она перестала бы быть completed.
+    # Nullable: у субъекта может не быть класса (учитель в пилотной кампании,
+    # ученик вне класса) — тогда условные вопросы просто скрыты.
+    subject_class_id: Mapped[int | None] = mapped_column(ForeignKey("school_classes.id"))
+    subject_class: Mapped["SchoolClass | None"] = relationship()
 
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 

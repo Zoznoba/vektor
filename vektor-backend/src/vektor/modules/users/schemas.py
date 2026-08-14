@@ -60,3 +60,12 @@ class ParentWithChildrenOut(UserOut):
     model_config = ConfigDict(from_attributes=True)
 
     children: list[UserOut]
+
+
+class MeOut(UserOut):
+    """/users/me — то же, что UserOut, плюс класс для шапки дашборда.
+
+    None у class_label — штатно: у учителя, родителя и админа класса нет.
+    """
+
+    class_label: str | None = None

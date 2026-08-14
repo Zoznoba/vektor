@@ -8,12 +8,14 @@ from vektor.core.config import settings
 from vektor.core.database import get_db
 from vektor.modules.auth.dependencies import get_current_user, require_role
 from vektor.modules.auth.schemas import UserOut
+from vektor.modules.classes.models import SchoolClass
 from vektor.modules.users import service
 from vektor.modules.users.models import User
 from vektor.modules.users.schemas import (
     AssignChildrenIn,
     BulkCreateIn,
     BulkCreateOut,
+    MeOut,
     ParentWithChildrenOut,
 )
 from vektor.shared.enums import UserRole
@@ -21,9 +23,24 @@ from vektor.shared.enums import UserRole
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("/me", response_model=UserOut)
-async def read_me(user: User = Depends(get_current_user)) -> UserOut:
-    return user
+@router.get("/me", response_model=MeOut)
+async def read_me(
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> MeOut:
+    # Класс нужен дашборду в шапке («8-1 класс»). Отдельным запросом, а не
+    # relationship на UserOut: UserOut уходит ещё в списки и вложенные схемы,
+    # где класс не нужен, а ленивая подгрузка там дала бы MissingGreenlet.
+    school_class = None
+    if user.school_class_id is not None:
+        school_class = await db.get(SchoolClass, user.school_class_id)
+    return MeOut(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        role=user.role,
+        is_active=user.is_active,
+        class_label=f"{school_class.grade}-{school_class.section}" if school_class else None,
+    )
 
 
 @router.get("", response_model=list[UserOut])

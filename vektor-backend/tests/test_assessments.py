@@ -1,19 +1,25 @@
 # Юнит-тесты чистого доменного ядра build_pairs — матрица «кто кого оценивает»
 # для одного класса. Без БД: гоняем на голых id.
 #
+# build_pairs возвращает dict {(respondent, subject): RaterRole} — роль нужна
+# дальше, она сохраняется в Assessment.rater_role при генерации. Структурные
+# проверки поэтому идут по .keys().
+#
 # generate_assessments (оркестрация с БД) покрывается отдельно интеграционными
 # тестами — тут только доменные правила.
 
 import pytest
 from httpx import AsyncClient
 
-from vektor.modules.assessments.service import build_pairs
+from vektor.modules.assessments.service import build_pairs, merge_pairs
+from vektor.shared.enums import RaterRole
 
 
 def test_self_assessment_always_present() -> None:
     # Самооценка (s, s) есть у каждого ученика — даже без родителей/учителей/пиров.
     pairs = build_pairs(student_ids=[1, 2, 3], parent_ids_by_student={}, teacher_ids=[])
-    assert pairs == {(1, 1), (2, 2), (3, 3)}
+    assert pairs.keys() == {(1, 1), (2, 2), (3, 3)}
+    assert all(role == RaterRole.SELF for role in pairs.values())
 
 
 def test_parent_evaluates_only_own_child() -> None:
@@ -24,8 +30,8 @@ def test_parent_evaluates_only_own_child() -> None:
         parent_ids_by_student={1: [10], 2: [20]},
         teacher_ids=[],
     )
-    assert (10, 1) in pairs
-    assert (20, 2) in pairs
+    assert pairs[(10, 1)] == RaterRole.PARENT
+    assert pairs[(20, 2)] == RaterRole.PARENT
     assert (10, 2) not in pairs  # чужому ребёнку — нет
     assert (20, 1) not in pairs
 
@@ -33,8 +39,8 @@ def test_parent_evaluates_only_own_child() -> None:
 def test_teacher_evaluates_every_student() -> None:
     # Учитель класса оценивает каждого ученика.
     pairs = build_pairs(student_ids=[1, 2], parent_ids_by_student={}, teacher_ids=[100])
-    assert (100, 1) in pairs
-    assert (100, 2) in pairs
+    assert pairs[(100, 1)] == RaterRole.TEACHER
+    assert pairs[(100, 2)] == RaterRole.TEACHER
 
 
 def test_no_peers_by_default() -> None:
@@ -43,7 +49,7 @@ def test_no_peers_by_default() -> None:
     students = [1, 2, 3]
     pairs = build_pairs(student_ids=students, parent_ids_by_student={}, teacher_ids=[])
     peer_pairs = {(r, s) for r in students for s in students if r != s}
-    assert pairs & peer_pairs == set()
+    assert pairs.keys() & peer_pairs == set()
 
 
 def test_peers_added_and_symmetric_when_flag_on() -> None:
@@ -53,10 +59,11 @@ def test_peers_added_and_symmetric_when_flag_on() -> None:
         student_ids=students, parent_ids_by_student={}, teacher_ids=[], include_peers=True
     )
     expected_peers = {(r, s) for r in students for s in students if r != s}
-    assert expected_peers <= pairs
+    assert expected_peers <= pairs.keys()
     # Симметрия: если есть (1, 2), есть и (2, 1).
     for r, s in expected_peers:
         assert (s, r) in pairs
+        assert pairs[(r, s)] == RaterRole.PEER
 
 
 def test_peers_flag_only_adds_peers_nothing_else_changes() -> None:
@@ -64,7 +71,7 @@ def test_peers_flag_only_adds_peers_nothing_else_changes() -> None:
     students = [1, 2]
     base = build_pairs(students, {1: [10]}, [20], include_peers=False)
     with_peers = build_pairs(students, {1: [10]}, [20], include_peers=True)
-    assert with_peers - base == {(1, 2), (2, 1)}
+    assert with_peers.keys() - base.keys() == {(1, 2), (2, 1)}
 
 
 def test_student_without_parents_does_not_crash() -> None:
@@ -75,16 +82,32 @@ def test_student_without_parents_does_not_crash() -> None:
     assert {(resp, subj) for resp, subj in pairs if subj == 2} == {(2, 2)}
 
 
-def test_duplicate_collapses_via_set() -> None:
+def test_duplicate_collapses_by_key() -> None:
     # Один и тот же человек — и родитель ученика 1, и учитель класса (id=10).
-    # Пара (10, 1) должна встретиться один раз (set схлопывает дубль).
+    # Пара (10, 1) должна встретиться один раз, роль — более специфичная.
     pairs = build_pairs(student_ids=[1], parent_ids_by_student={1: [10]}, teacher_ids=[10])
-    assert pairs == {(1, 1), (10, 1)}
+    assert pairs.keys() == {(1, 1), (10, 1)}
+    assert pairs[(10, 1)] == RaterRole.TEACHER
+
+
+def test_role_priority_is_order_independent() -> None:
+    # Роль при коллизии не должна зависеть от порядка циклов внутри build_pairs:
+    # человек 10 и родитель, и учитель — teacher выигрывает в любом случае.
+    as_parent_first = build_pairs([1], {1: [10]}, [10])
+    as_teacher_only = build_pairs([1], {}, [10])
+    assert as_parent_first[(10, 1)] == as_teacher_only[(10, 1)] == RaterRole.TEACHER
+
+
+def test_self_wins_over_peer_for_same_student() -> None:
+    # Самооценка не должна быть перетёрта пиром при include_peers.
+    pairs = build_pairs([1, 2], {}, [], include_peers=True)
+    assert pairs[(1, 1)] == RaterRole.SELF
+    assert pairs[(2, 2)] == RaterRole.SELF
 
 
 def test_empty_class_gives_empty_matrix() -> None:
     # Нет учеников — нет субъектов — пустая матрица (учителя без учеников не с кем).
-    assert build_pairs(student_ids=[], parent_ids_by_student={}, teacher_ids=[42]) == set()
+    assert build_pairs(student_ids=[], parent_ids_by_student={}, teacher_ids=[42]) == {}
 
 
 @pytest.mark.parametrize("include_peers", [False, True])
@@ -98,7 +121,24 @@ def test_full_scenario_exact_set(include_peers: bool) -> None:
         teacher_ids=[20],
         include_peers=include_peers,
     )
-    assert pairs == expected
+    assert pairs.keys() == expected
+
+
+def test_merge_pairs_keeps_most_specific_role() -> None:
+    # Человек 10 — учитель в одном классе кампании и родитель ученика в другом.
+    # Слепой dict.update() дал бы роль, зависящую от порядка обхода классов.
+    first = build_pairs([1], {}, [10])  # (10, 1) -> teacher
+    second = build_pairs([1], {1: [10]}, [])  # (10, 1) -> parent
+
+    merged_one_way: dict = {}
+    merge_pairs(merged_one_way, first)
+    merge_pairs(merged_one_way, second)
+
+    merged_other_way: dict = {}
+    merge_pairs(merged_other_way, second)
+    merge_pairs(merged_other_way, first)
+
+    assert merged_one_way[(10, 1)] == merged_other_way[(10, 1)] == RaterRole.TEACHER
 
 
 # --- Интеграционные тесты эндпоинтов (оркестрация generate_assessments) ---
@@ -236,25 +276,39 @@ from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 
 from vektor.modules.assessments.models import Assessment, Campaign  # noqa: E402
 from vektor.modules.assessments.service import is_question_visible  # noqa: E402
-from vektor.modules.competencies.models import Competency, Question  # noqa: E402
+from vektor.modules.competencies.models import (  # noqa: E402
+    Competency,
+    OutcomeArea,
+    Question,
+    QuestionnaireVersion,
+)
 
 
 @pytest.mark.parametrize(
-    ("is_conditional", "grade", "expected"),
+    ("min_grade", "max_grade", "grade", "expected"),
     [
-        (False, 10, True),  # базовый — всегда виден
-        (False, 7, True),
-        (False, None, True),
-        (True, 9, True),  # условный — границы 9..11 видимы
-        (True, 10, True),
-        (True, 11, True),
-        (True, 8, False),  # ниже 9 — скрыт
-        (True, 12, False),  # 12 класса не бывает, но правило строго 9..11
-        (True, None, False),  # класс неизвестен — скрыт, без падения
+        # Границ нет — критерий виден всегда, класс не важен.
+        (None, None, 10, True),
+        (None, None, 7, True),
+        (None, None, None, True),
+        # Профпробы: 9..11.
+        (9, 11, 9, True),
+        (9, 11, 10, True),
+        (9, 11, 11, True),
+        (9, 11, 8, False),
+        (9, 11, 12, False),
+        (9, 11, None, False),  # класс неизвестен — скрыт, без падения
+        # Односторонние границы: «с 5 класса» и «по 4 класс».
+        (5, None, 11, True),
+        (5, None, 4, False),
+        (None, 4, 3, True),
+        (None, 4, 5, False),
     ],
 )
-def test_is_question_visible(is_conditional: bool, grade: int | None, expected: bool) -> None:
-    assert is_question_visible(is_conditional, grade) is expected
+def test_is_question_visible(
+    min_grade: int | None, max_grade: int | None, grade: int | None, expected: bool
+) -> None:
+    assert is_question_visible(min_grade, max_grade, grade) is expected
 
 
 @pytest.fixture
@@ -264,15 +318,45 @@ async def db_session(db_engine):
         yield session
 
 
+async def _current_version_id(db_session) -> int:
+    """id действующей редакции анкеты (её сидит фикстура db_engine)."""
+    row = await db_session.execute(
+        select(QuestionnaireVersion.id).where(QuestionnaireVersion.is_current.is_(True))
+    )
+    return row.scalar_one()
+
+
+async def _outcome_area_id(db_session) -> int:
+    """id тестовой области «ОР / навык» (её сидит фикстура db_engine)."""
+    row = await db_session.execute(select(OutcomeArea.id))
+    return row.scalars().first()
+
+
 async def _seed_two_questions(db_session) -> None:
-    """1 компетенция, 2 вопроса: базовый + условный (для 9–11)."""
-    comp = Competency(code="C1", name="Компетенция 1", order=1)
-    db_session.add(comp)
+    """2 критерия по одному вопросу: базовый + возрастной (9–11).
+
+    Раньше это была ОДНА компетенция с базовым и условным вопросом. Теперь
+    возраст — свойство критерия, поэтому условный вопрос обязан жить в своём:
+    критерий показывается целиком либо не показывается вовсе.
+    """
+    area_id = await _outcome_area_id(db_session)
+    base = Competency(code="C1", name="Базовый критерий", order=1, outcome_area_id=area_id)
+    # Тот же порог, что у «Исследования профессиональных возможностей».
+    conditional = Competency(
+        code="C2",
+        name="Возрастной критерий",
+        order=2,
+        outcome_area_id=area_id,
+        min_grade=9,
+        max_grade=11,
+    )
+    db_session.add_all([base, conditional])
     await db_session.flush()
+    version_id = await _current_version_id(db_session)
     db_session.add_all(
         [
-            Question(competency_id=comp.id, text="базовый", is_conditional=False, order=1),
-            Question(competency_id=comp.id, text="условный", is_conditional=True, order=2),
+            Question(competency_id=base.id, text="базовый", order=0, version_id=version_id),
+            Question(competency_id=conditional.id, text="условный", order=0, version_id=version_id),
         ]
     )
     await db_session.commit()
@@ -368,6 +452,87 @@ async def test_get_assessment_grade_7_hides_conditional(
     # грейд 7 → условный вопрос скрыт, остаётся только базовый.
     assert len(body["questions"]) == 1
     assert body["questions"][0]["is_conditional"] is False
+
+
+async def test_other_questionnaire_version_does_not_leak_into_campaign(
+    client: AsyncClient, admin_headers, db_session
+) -> None:
+    """РЕГРЕССИЯ: анкета показывает вопросы ТОЛЬКО своей редакции.
+
+    Архивная редакция (миграция c3f81ad0e7b5) добавляет в таблицу questions
+    второй комплект вопросов на те же компетенции. Без фильтра по
+    campaign.questionnaire_version_id действующая кампания начала бы отдавать
+    оба комплекта разом.
+    """
+    await _seed_two_questions(db_session)
+
+    # Архивная редакция со своим вопросом — на ту же компетенцию.
+    archive = QuestionnaireVersion(code="archive-test", title="Архивная редакция")
+    db_session.add(archive)
+    await db_session.flush()
+    competency_id = (await db_session.execute(select(Competency.id))).scalars().first()
+    db_session.add(
+        Question(
+            competency_id=competency_id,
+            text="архивный",
+            order=0,
+            version_id=archive.id,
+        )
+    )
+    await db_session.commit()
+
+    setup = await _setup_scenario(client, admin_headers, grade=10)
+    cid = await _create_campaign(client, admin_headers)
+    await client.post(
+        f"/campaigns/{cid}/generate", json={"class_ids": [setup["class_id"]]}, headers=admin_headers
+    )
+    aid = await _self_assessment_id(db_session, setup["s1"])
+
+    headers = await _login(client, setup["s1_email"])
+    body = (await client.get(f"/assessments/{aid}", headers=headers)).json()
+
+    # Ровно 2 вопроса действующей редакции, архивного среди них нет.
+    assert len(body["questions"]) == 2
+    assert all(q["text"] != "архивный" for q in body["questions"])
+
+
+async def test_conditional_questions_survive_class_transfer(
+    client: AsyncClient, admin_headers, db_session
+) -> None:
+    """РЕГРЕССИЯ: видимость вопросов считается по классу НА МОМЕНТ ГЕНЕРАЦИИ.
+
+    Перевод ученика из 8-го в 9-й — штатное ежегодное событие. Раньше класс
+    брался из текущего User.school_class, и после перевода в прошлогодней
+    анкете задним числом «появлялся» условный вопрос: она переставала быть
+    completed, а прогресс менялся сам собой. Пара к
+    test_rater_role_survives_class_transfer в test_results.py.
+    """
+    await _seed_two_questions(db_session)
+    setup = await _setup_scenario(client, admin_headers, grade=8)
+    cid = await _create_campaign(client, admin_headers)
+    await client.post(
+        f"/campaigns/{cid}/generate", json={"class_ids": [setup["class_id"]]}, headers=admin_headers
+    )
+    aid = await _self_assessment_id(db_session, setup["s1"])
+    headers = await _login(client, setup["s1_email"])
+
+    before = (await client.get(f"/assessments/{aid}", headers=headers)).json()
+    assert len(before["questions"]) == 1  # 8 класс → условный скрыт
+
+    # НОВЫЙ УЧЕБНЫЙ ГОД: админ переводит ученика в 9-й класс.
+    new_class = (
+        await client.post("/classes", json={"grade": 9, "section": "б"}, headers=admin_headers)
+    ).json()
+    await client.post(
+        f"/classes/{new_class['id']}/students",
+        json={"student_ids": [setup["s1"]]},
+        headers=admin_headers,
+    )
+
+    after = (await client.get(f"/assessments/{aid}", headers=headers)).json()
+    # Прошлая анкета не переписана: условный вопрос в ней так и не появился.
+    assert len(after["questions"]) == 1
+    assert after["questions"][0]["is_conditional"] is False
 
 
 # --- 4d: сохранение ответов (POST /assessments/{id}/answers) ---
@@ -505,8 +670,9 @@ async def test_submit_answers_rejects_hidden_question(
     aid = await _self_assessment_id(db_session, setup["s1"])
     headers = await _login(client, setup["s1_email"])
 
+    # Скрытый вопрос ищем через критерий: возраст живёт там, а не на вопросе.
     conditional_question = await db_session.execute(
-        select(Question).where(Question.is_conditional.is_(True))
+        select(Question).join(Competency).where(Competency.min_grade.is_not(None))
     )
     hidden_id = conditional_question.scalar_one().id
 

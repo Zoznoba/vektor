@@ -11,6 +11,7 @@ from vektor.modules.assessments.router import router as assessments_router
 from vektor.modules.auth.router import router as auth_router
 from vektor.modules.classes.router import router as classes_router
 from vektor.modules.competencies.router import router as competency_router
+from vektor.modules.results.router import router as results_router
 from vektor.modules.users.bootstrap import ensure_admin_exists
 from vektor.modules.users.router import router as users_router
 
@@ -47,3 +48,4 @@ app.include_router(competency_router)
 app.include_router(classes_router)
 app.include_router(assessments_router)
 app.include_router(assessment_router)
+app.include_router(results_router)

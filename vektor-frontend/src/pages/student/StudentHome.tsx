@@ -4,14 +4,15 @@ import { STUDENT_NAV_ITEMS } from '../../data/navigation';
 import { InfoBanner } from '../../components/dashboard/InfoBanner';
 import { Panel } from '../../components/ui/Panel';
 import { SurveyTaskCard } from '../../components/dashboard/SurveyTaskCard';
-import { ResultCard } from '../../components/dashboard/ResultCard';
+import { StudentResultsPanel } from '../../components/dashboard/StudentResultsPanel';
 import { useAuth } from '../../auth/AuthContext';
 import { ROLE_LABELS } from '../../types/auth';
 import { useApi } from '../../hooks/useApi';
 import { fetchMyAssessments } from '../../api/assessments';
 import type { AssessmentListItem } from '../../types/assessment';
 import type { PendingSurvey } from '../../types/dashboard';
-import { mockCompletedResults, mockStudent } from '../../data/mockStudentDashboard';
+import { mockStudent } from '../../data/mockStudentDashboard';
+import './StudentHome.css';
 
 /** «Иванова Полина» → «Полина»; если слово одно — оно и есть имя. */
 function firstNameOf(fullName: string): string {
@@ -40,9 +41,8 @@ function toPendingSurvey(item: AssessmentListItem): PendingSurvey {
 
 /**
  * Экран 1 из ТЗ (п. 4.7) — «Личный кабинет ученика».
- * Пользователь и анкеты — реальные (/users/me, /assessments). Результаты
- * («Мои результаты») пока на моках — их API появится на Этапе 5 бэкенда;
- * класс и учебный год тоже мок — /users/me их пока не отдаёт.
+ * Пользователь, анкеты и результаты — реальные (/users/me, /assessments,
+ * /results). Класс и учебный год всё ещё мок: /users/me их не отдаёт.
  */
 export function StudentHome() {
   const { user, logout } = useAuth();
@@ -66,10 +66,6 @@ export function StudentHome() {
     navigate(`/assessments/${id}`);
   };
 
-  const handleViewResult = (id: string) => {
-    console.info(`Открыть результат: ${id}`);
-  };
-
   return (
     <AppShell
       navItems={STUDENT_NAV_ITEMS}
@@ -81,7 +77,10 @@ export function StudentHome() {
     >
       <h2>Добрый день, {firstNameOf(user.full_name)}</h2>
       <div className="app-main__sub">
-        {mockStudent.className} · {mockStudent.academicYear}
+        {/* Класс — реальный, из /users/me. Учебный год пока мок: его нигде
+            в модели нет, кампания знает только period. */}
+        {user.class_label ? `${user.class_label} класс · ` : ''}
+        {mockStudent.academicYear}
       </div>
 
       {pendingCount > 0 && (
@@ -104,11 +103,8 @@ export function StudentHome() {
         )}
       </Panel>
 
-      <Panel title="Мои результаты">
-        {mockCompletedResults.map((result) => (
-          <ResultCard key={result.id} result={result} onView={handleViewResult} />
-        ))}
-      </Panel>
+      <StudentResultsPanel subjectId={user.id} />
+
     </AppShell>
   );
 }
