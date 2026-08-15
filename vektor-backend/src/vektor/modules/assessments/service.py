@@ -72,6 +72,28 @@ async def create_campaign(
     return campaign
 
 
+async def close_campaign(db: AsyncSession, campaign_id: int) -> Campaign:
+    """Закрыть кампанию: active → closed. Только из active — черновик (draft)
+    закрывать нечего (анкеты ещё не сгенерированы), а уже закрытую второй раз
+    закрывать бессмысленно.
+
+    Нужно, чтобы кампанию вообще можно было завершить через API: результаты и
+    динамика считаются по завершённым периодам, а до этого статус closed
+    появлялся только из импорта/дампа.
+    """
+
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise CampaignNotFound()
+    if campaign.status != CampaignStatus.ACTIVE:
+        raise CampaignNotActive()
+
+    campaign.status = CampaignStatus.CLOSED
+    await db.commit()
+    await db.refresh(campaign)
+    return campaign
+
+
 # Приоритет ролей при коллизии: один человек может быть и родителем ученика,
 # и учителем его класса. Роль должна быть ОДНА и выбираться детерминированно,
 # иначе она зависела бы от порядка циклов ниже.

@@ -787,3 +787,56 @@ async def test_list_assessments_reflects_progress(
     assert item["answered_questions"] == 1
     assert item["total_questions"] == 2
     assert item["status"] == "in_progress"
+
+
+# --- close_campaign (PATCH /campaigns/{id}/close): завершить кампанию через API.
+# Без него статус closed появлялся только из импорта/дампа, а результаты и
+# динамика считаются именно по завершённым периодам. ---
+
+
+async def test_close_campaign_from_active(client: AsyncClient, scenario) -> None:
+    cid = await _create_campaign(client, scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]]},
+        headers=scenario["headers"],
+    )
+    response = await client.patch(f"/campaigns/{cid}/close", headers=scenario["headers"])
+    assert response.status_code == 200
+    assert response.json()["status"] == "closed"
+
+
+async def test_close_campaign_rejects_draft(client: AsyncClient, admin_headers) -> None:
+    cid = await _create_campaign(client, admin_headers)  # ещё draft — generate не вызывали
+    response = await client.patch(f"/campaigns/{cid}/close", headers=admin_headers)
+    assert response.status_code == 409
+
+
+async def test_close_campaign_rejects_already_closed(client: AsyncClient, scenario) -> None:
+    cid = await _create_campaign(client, scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]]},
+        headers=scenario["headers"],
+    )
+    await client.patch(f"/campaigns/{cid}/close", headers=scenario["headers"])
+    second = await client.patch(f"/campaigns/{cid}/close", headers=scenario["headers"])
+    assert second.status_code == 409
+
+
+async def test_close_campaign_unknown_404(client: AsyncClient, admin_headers) -> None:
+    response = await client.patch("/campaigns/99999/close", headers=admin_headers)
+    assert response.status_code == 404
+
+
+async def test_close_campaign_requires_admin(client: AsyncClient, scenario, register_user) -> None:
+    cid = await _create_campaign(client, scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]]},
+        headers=scenario["headers"],
+    )
+    login = await client.post("/auth/login", json=register_user)
+    student_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    response = await client.patch(f"/campaigns/{cid}/close", headers=student_headers)
+    assert response.status_code == 403

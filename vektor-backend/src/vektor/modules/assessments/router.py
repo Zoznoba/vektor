@@ -55,6 +55,27 @@ async def generate_assessments(
     return GenerateResult(created=created, campaign=campaign)
 
 
+@router.patch("/{campaign_id}/close", response_model=CampaignOut)
+async def close_campaign(
+    campaign_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_role(UserRole.ADMIN)),
+) -> CampaignOut:
+    try:
+        campaign = await service.close_campaign(db, campaign_id)
+    except service.CampaignNotFound as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Компания не найдена id: {campaign_id}"
+        ) from err
+    except service.CampaignNotActive as err:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Закрыть можно только активную кампанию",
+        ) from err
+
+    return campaign
+
+
 @assessment_router.get("", response_model=list[AssessmentListItemOut])
 async def list_assessments(
     campaign_id: int | None = None,
