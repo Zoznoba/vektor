@@ -21,15 +21,15 @@
 
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from vektor.modules.assessments.models import Answer, Assessment, Campaign
 from vektor.modules.classes.models import SchoolClass
-from vektor.modules.competencies.models import Competency, Question
+from vektor.modules.competencies.models import Competency, Question, QuestionnaireVersion
 from vektor.modules.users.models import User
-from vektor.shared.enums import RaterRole, UserRole
+from vektor.shared.enums import AssessmentStatus, RaterRole, UserRole
 
 DEFAULT_PEER_ANONYMITY_THRESHOLD = 3
 DEFAULT_GROWTH_ZONES_COUNT = 3
@@ -181,6 +181,109 @@ def pick_growth_zones(
     return [competency_id for competency_id, _ in ordered[:n]]
 
 
+def overall_scores_from_answers(
+    answers: list[ScoredAnswer], threshold: int = DEFAULT_PEER_ANONYMITY_THRESHOLD
+) -> dict[int, float]:
+    """Ответы → итоговый балл по компетенциям, ОДНОЙ функцией.
+
+    Вся цепочка (подсчёт пиров → агрегация → redact_peer_scores → overall)
+    собрана здесь, чтобы у неё было ровно одно место. Динамика по годам и
+    агрегаты класса обязаны считать так же, как страница результатов: если
+    редактирование применить где-то по-другому, скрытый слой одноклассников
+    «протечёт» через сравнение периодов или через средний профиль класса.
+    """
+    peer_rater_counts = count_peer_raters_by_competency(answers)
+    raw_scores = aggregate_by_competency_and_rater(answers)
+    role_scores = redact_peer_scores(raw_scores, peer_rater_counts, threshold)
+    return overall_by_competency(role_scores)
+
+
+# ---------- Срез 5d: динамика между периодами (чистые функции) ----------
+
+
+def shared_competencies(
+    current_scores: dict[int, float], previous_scores: dict[int, float]
+) -> set[int]:
+    """Общее ядро — компетенции, посчитанные в ОБОИХ периодах.
+
+    Состав критериев между годами меняется: «Исследование профессиональных
+    возможностей» открывается только с 9 класса. Сравнивать можно лишь то,
+    что мерили и там, и там.
+    """
+    return set(current_scores) & set(previous_scores)
+
+
+def compute_deltas(
+    current_scores: dict[int, float], previous_scores: dict[int, float], core: set[int]
+) -> dict[int, float]:
+    """Прирост по компетенциям общего ядра: current - previous.
+
+    Только по ядру: у критерия, появившегося в этом году, «прироста» нет —
+    показать там разницу с нулём или с самим собой значило бы нарисовать
+    достижение, которого не было.
+    """
+    return {
+        competency_id: current_scores[competency_id] - previous_scores[competency_id]
+        for competency_id in core
+        if competency_id in current_scores and competency_id in previous_scores
+    }
+
+
+def core_average(scores: dict[int, float], core: set[int]) -> float | None:
+    """Средний балл ТОЛЬКО по общему ядру.
+
+    Именно этот итог сравнивают между периодами, а не overall_average из
+    get_subject_results: тот считается по всем критериям своего периода, и при
+    смене их состава сдвинулся бы сам по себе — без всякого роста ученика.
+    """
+    relevant = [scores[competency_id] for competency_id in core if competency_id in scores]
+    return sum(relevant) / len(relevant) if relevant else None
+
+
+# ---------- Срез 5e: агрегаты класса (чистые функции) ----------
+
+
+def average_profiles(profiles: list[dict[int, float]]) -> dict[int, float]:
+    """Средний профиль по списку индивидуальных профилей.
+
+    Каждый УЧЕНИК весит одинаково, независимо от того, сколько человек его
+    оценивало. Иначе ученик, про которого ответили пятеро, перевесил бы того,
+    про кого ответил один, и «средний профиль класса» съехал бы в сторону
+    самых охваченных.
+    """
+    sums: dict[int, float] = {}
+    counts: dict[int, int] = {}
+    for profile in profiles:
+        for competency_id, value in profile.items():
+            sums[competency_id] = sums.get(competency_id, 0.0) + value
+            counts[competency_id] = counts.get(competency_id, 0) + 1
+    return {competency_id: sums[competency_id] / counts[competency_id] for competency_id in sums}
+
+
+def count_growth_zone_hits(growth_zone_lists: list[list[int]]) -> dict[int, int]:
+    """У скольких учеников критерий попал в ЛИЧНЫЕ зоны роста."""
+    hits: dict[int, int] = {}
+    for zones in growth_zone_lists:
+        for competency_id in zones:
+            hits[competency_id] = hits.get(competency_id, 0) + 1
+    return hits
+
+
+def rank_growth_zones_by_hits(
+    hits: dict[int, int], n: int = DEFAULT_GROWTH_ZONES_COUNT
+) -> list[int]:
+    """Зоны роста класса — по ОХВАТУ, а не по худшему среднему.
+
+    Критерий может быть слабым местом у восьми учеников из двенадцати и при
+    этом не иметь худшего среднего по классу. В прототипе подпись прямая:
+    «темы для классных часов, а не список слабых учеников» — поэтому считаем,
+    у скольких он в личных зонах, а не насколько низко просел средний балл.
+    Сортировка по (-охват, competency_id) — детерминированно при равенстве.
+    """
+    ordered = sorted(hits.items(), key=lambda item: (-item[1], item[0]))
+    return [competency_id for competency_id, _ in ordered[:n]]
+
+
 def can_view_results(
     current_user_id: int,
     current_user_role: UserRole,
@@ -199,6 +302,21 @@ def can_view_results(
     )
 
 
+def can_view_class_results(
+    current_user_id: int,
+    current_user_role: UserRole,
+    class_teacher_ids: set[int],
+) -> bool:
+    """Кто видит класс целиком: admin или учитель ЭТОГО класса (классный
+    руководитель входит в teachers по построению — см. classes/service.py).
+
+    Родителю и ученику класс не показываем: в прототипе экран «Мой класс» с
+    баллами есть только у учителя и админа. Родитель видит своего ребёнка на
+    фоне среднего по классу — это другой экран и другие данные.
+    """
+    return current_user_role == UserRole.ADMIN or current_user_id in class_teacher_ids
+
+
 # ---------- DB-часть: сбор ответов, права, сборка ответа эндпоинта ----------
 
 
@@ -212,6 +330,51 @@ class SubjectNotFound(Exception):
 
 class NotAllowedToViewResults(Exception):
     """Текущий пользователь не имеет права смотреть результаты этого субъекта."""
+
+
+class SchoolClassNotFound(Exception):
+    """Класс с таким id не найден."""
+
+
+async def _load_subject_for_results(db: AsyncSession, subject_id: int, current_user: User) -> User:
+    """Загрузить субъекта и проверить право текущего пользователя на его
+    результаты. Общая точка для страницы результатов и динамики: иначе
+    динамика могла бы разойтись с ней в правах и показать чужие баллы.
+
+    Права считаются по ТЕКУЩИМ связям (доступ определяется тем, кто учитель и
+    родитель сейчас), а роли в агрегации берутся зафиксированные — см.
+    _load_scored_answers.
+    """
+    subject_query = await db.execute(
+        select(User)
+        .where(User.id == subject_id)
+        .options(
+            selectinload(User.school_class).selectinload(SchoolClass.teachers),
+            selectinload(User.parents),
+        )
+    )
+    subject = subject_query.scalar_one_or_none()
+    if subject is None:
+        raise SubjectNotFound()
+
+    teacher_ids = {t.id for t in subject.school_class.teachers} if subject.school_class else set()
+    parent_ids = {p.id for p in subject.parents}
+
+    if not can_view_results(
+        current_user.id, current_user.role, subject_id, teacher_ids, parent_ids
+    ):
+        raise NotAllowedToViewResults()
+
+    return subject
+
+
+async def _overall_scores_for(
+    db: AsyncSession, subject_id: int, campaign_id: int
+) -> dict[int, float]:
+    """Итоговые баллы субъекта за кампанию — через ту же цепочку, что и
+    страница результатов (включая redact_peer_scores)."""
+    answers = await _load_scored_answers(db, subject_id, campaign_id)
+    return overall_scores_from_answers(answers)
 
 
 async def _load_scored_answers(
@@ -282,25 +445,7 @@ async def get_subject_results(
     if campaign is None:
         raise CampaignNotFound()
 
-    subject_query = await db.execute(
-        select(User)
-        .where(User.id == subject_id)
-        .options(
-            selectinload(User.school_class).selectinload(SchoolClass.teachers),
-            selectinload(User.parents),
-        )
-    )
-    subject = subject_query.scalar_one_or_none()
-    if subject is None:
-        raise SubjectNotFound()
-
-    teacher_ids = {t.id for t in subject.school_class.teachers} if subject.school_class else set()
-    parent_ids = {p.id for p in subject.parents}
-
-    if not can_view_results(
-        current_user.id, current_user.role, subject_id, teacher_ids, parent_ids
-    ):
-        raise NotAllowedToViewResults()
+    subject = await _load_subject_for_results(db, subject_id, current_user)
 
     scored_answers = await _load_scored_answers(db, subject_id, campaign_id)
 
@@ -359,4 +504,356 @@ async def get_subject_results(
         "overall_average": overall_average,
         "competencies": competencies_out,
         "growth_zones": growth_zones_out,
+    }
+
+
+# ---------- Срез 5d: динамика между периодами (БД) ----------
+
+
+async def list_subject_campaigns(
+    db: AsyncSession, subject_id: int, current_user: User
+) -> list[dict]:
+    """Периоды, за которые у субъекта вообще есть результаты — под переключатель
+    кампаний на экране результатов. Порядок хронологический по `period`
+    (см. latest_campaign_id_for_subject: id ≠ хронология)."""
+    await _load_subject_for_results(db, subject_id, current_user)
+
+    rows = await db.execute(
+        select(Campaign)
+        .join(Assessment, Assessment.campaign_id == Campaign.id)
+        .where(Assessment.subject_id == subject_id)
+        .distinct()
+        .order_by(Campaign.period.desc(), Campaign.id.desc())
+    )
+    return [
+        {
+            "campaign_id": campaign.id,
+            "title": campaign.title,
+            "period": campaign.period,
+            "status": campaign.status,
+        }
+        for campaign in rows.scalars()
+    ]
+
+
+async def previous_campaign_id_for_subject(
+    db: AsyncSession, subject_id: int, campaign_id: int
+) -> int | None:
+    """Предыдущий период субъекта относительно указанной кампании.
+
+    Ищем по `Campaign.period`, а не по id — по той же причине, что и
+    latest_campaign_id_for_subject: архив импортируется позже и получает
+    больший id, хотя относится к прошлому году.
+
+    Строго МЕНЬШЕ текущего периода: две кампании одного года (например, разные
+    классы) предыдущими друг другу не являются, сравнивать их бессмысленно.
+    """
+    current = await db.get(Campaign, campaign_id)
+    if current is None:
+        raise CampaignNotFound()
+
+    row = await db.execute(
+        select(Assessment.campaign_id)
+        .join(Campaign, Campaign.id == Assessment.campaign_id)
+        .where(Assessment.subject_id == subject_id, Campaign.period < current.period)
+        .order_by(Campaign.period.desc(), Campaign.id.desc())
+        .limit(1)
+    )
+    return row.scalar_one_or_none()
+
+
+async def get_subject_dynamics(
+    db: AsyncSession, subject_id: int, campaign_id: int, current_user: User
+) -> dict:
+    """Сравнение текущего периода с предыдущим по общему ядру критериев.
+
+    Отсутствие предыдущего периода — НЕ ошибка: у пятиклассников прошлогодних
+    данных нет в принципе. Возвращаем текущие баллы и previous_campaign_id=None,
+    фронт сам решает, рисовать ли стрелку.
+    """
+    campaign = await db.get(Campaign, campaign_id)
+    if campaign is None:
+        raise CampaignNotFound()
+
+    subject = await _load_subject_for_results(db, subject_id, current_user)
+
+    current_scores = await _overall_scores_for(db, subject_id, campaign_id)
+
+    previous_id = await previous_campaign_id_for_subject(db, subject_id, campaign_id)
+    previous_campaign = await db.get(Campaign, previous_id) if previous_id else None
+    previous_scores = await _overall_scores_for(db, subject_id, previous_id) if previous_id else {}
+
+    core = shared_competencies(current_scores, previous_scores)
+    deltas = compute_deltas(current_scores, previous_scores, core)
+
+    # Редакция анкеты могла смениться между периодами: формулировки части
+    # критериев отличаются, поэтому сравнение приблизительное. Текст оговорки
+    # лежит в note архивной редакции — придумывать его здесь нельзя.
+    versions_differ = bool(
+        previous_campaign
+        and previous_campaign.questionnaire_version_id != campaign.questionnaire_version_id
+    )
+    version_note = None
+    if versions_differ:
+        version_note = await db.scalar(
+            select(QuestionnaireVersion.note).where(
+                QuestionnaireVersion.id == previous_campaign.questionnaire_version_id
+            )
+        )
+
+    competencies_result = await db.execute(select(Competency).order_by(Competency.order))
+    competencies = competencies_result.scalars().all()
+
+    competencies_out = [
+        {
+            "competency_id": comp.id,
+            "code": comp.code,
+            "name": comp.name,
+            "overall_avg": current_scores.get(comp.id),
+            "previous_avg": previous_scores.get(comp.id),
+            "delta": deltas.get(comp.id),
+            # Участвует ли критерий в сравнении. False там, где его не было в
+            # прошлом периоде (открылся по возрасту) — значение показываем,
+            # дельту нет.
+            "in_core": comp.id in core,
+        }
+        for comp in competencies
+        if comp.id in current_scores or comp.id in previous_scores
+    ]
+
+    current_core_average = core_average(current_scores, core)
+    previous_core_average = core_average(previous_scores, core)
+
+    return {
+        "subject": subject,
+        "campaign_id": campaign_id,
+        "campaign_title": campaign.title,
+        "campaign_period": campaign.period,
+        "previous_campaign_id": previous_id,
+        "previous_campaign_title": previous_campaign.title if previous_campaign else None,
+        "previous_campaign_period": previous_campaign.period if previous_campaign else None,
+        "versions_differ": versions_differ,
+        "version_note": version_note,
+        # Итог по общему ядру, а НЕ overall_average из get_subject_results.
+        "core_competencies_count": len(core),
+        "core_average": current_core_average,
+        "previous_core_average": previous_core_average,
+        "core_average_delta": (
+            current_core_average - previous_core_average
+            if current_core_average is not None and previous_core_average is not None
+            else None
+        ),
+        "competencies": competencies_out,
+    }
+
+
+# ---------- Срез 5e: агрегаты класса и покрытие кампании (БД) ----------
+
+
+async def latest_campaign_id_for_class(db: AsyncSession, class_id: int) -> int | None:
+    """Самая свежая кампания, где у класса есть анкеты (по снапшоту класса).
+    Сортировка по `period` — та же причина, что у одноимённой функции для
+    субъекта: id не отражает хронологию."""
+    row = await db.execute(
+        select(Assessment.campaign_id)
+        .join(Campaign, Campaign.id == Assessment.campaign_id)
+        .where(Assessment.subject_class_id == class_id)
+        .order_by(Campaign.period.desc(), Campaign.id.desc())
+        .limit(1)
+    )
+    return row.scalar_one_or_none()
+
+
+async def _subject_class_map(db: AsyncSession, campaign_id: int) -> dict[int, int | None]:
+    """subject_id → класс НА МОМЕНТ генерации (снапшот Assessment.
+    subject_class_id). Не текущий класс ученика: иначе перевод в следующий
+    класс перетаскивал бы прошлогодние результаты в новый."""
+    rows = await db.execute(
+        select(Assessment.subject_id, Assessment.subject_class_id)
+        .where(Assessment.campaign_id == campaign_id)
+        .distinct()
+    )
+    return {subject_id: class_id for subject_id, class_id in rows.all()}
+
+
+async def _profiles_by_campaign_and_subject(
+    db: AsyncSession, campaign_ids: set[int]
+) -> dict[tuple[int, int], dict[int, float]]:
+    """Индивидуальные профили пачкой: один запрос на все нужные кампании,
+    дальше группировка в памяти. Ключ — (campaign_id, subject_id).
+
+    Считаем ПОВЕРХ индивидуальных профилей (overall_scores_from_answers), а не
+    отдельным запросом по сырым ответам: иначе правило анонимности пришлось бы
+    применять второй раз, в другом месте и по другой формуле — такие дубли
+    неизбежно расходятся.
+    """
+    if not campaign_ids:
+        return {}
+
+    rows = await db.execute(
+        select(
+            Assessment.campaign_id,
+            Assessment.subject_id,
+            Answer.value,
+            Assessment.respondent_id,
+            Assessment.rater_role,
+            Question.competency_id,
+        )
+        .join(Assessment, Answer.assessment_id == Assessment.id)
+        .join(Question, Answer.question_id == Question.id)
+        .where(Assessment.campaign_id.in_(campaign_ids))
+    )
+
+    grouped: dict[tuple[int, int], list[ScoredAnswer]] = {}
+    for campaign_id, subject_id, value, respondent_id, rater_role, competency_id in rows.all():
+        grouped.setdefault((campaign_id, subject_id), []).append(
+            ScoredAnswer(
+                competency_id=competency_id,
+                rater_role=rater_role,
+                respondent_id=respondent_id,
+                value=value,
+            )
+        )
+
+    return {key: overall_scores_from_answers(answers) for key, answers in grouped.items()}
+
+
+async def get_class_results(
+    db: AsyncSession, class_id: int, campaign_id: int, current_user: User
+) -> dict:
+    """Средний профиль класса, сравнение со школой и зоны роста класса."""
+    campaign = await db.get(Campaign, campaign_id)
+    if campaign is None:
+        raise CampaignNotFound()
+
+    class_query = await db.execute(
+        select(SchoolClass)
+        .where(SchoolClass.id == class_id)
+        .options(selectinload(SchoolClass.teachers))
+    )
+    school_class = class_query.scalar_one_or_none()
+    if school_class is None:
+        raise SchoolClassNotFound()
+
+    teacher_ids = {t.id for t in school_class.teachers}
+    if not can_view_class_results(current_user.id, current_user.role, teacher_ids):
+        raise NotAllowedToViewResults()
+
+    class_map = await _subject_class_map(db, campaign_id)
+    class_subject_ids = {sid for sid, cid in class_map.items() if cid == class_id}
+
+    # «Школа» — это весь ПЕРИОД, а не одна кампания. В боевых данных кампанию
+    # заводят на каждый класс отдельно, поэтому внутри одной кампании «школа»
+    # выродилась бы в этот же класс, и сравнение всегда давало бы ноль.
+    same_period_campaigns = await db.execute(
+        select(Campaign.id).where(Campaign.period == campaign.period)
+    )
+    campaign_ids = set(same_period_campaigns.scalars())
+
+    all_profiles = await _profiles_by_campaign_and_subject(db, campaign_ids)
+    class_profiles = [
+        profile
+        for (cid, sid), profile in all_profiles.items()
+        if cid == campaign_id and sid in class_subject_ids and profile
+    ]
+    school_profiles = [profile for profile in all_profiles.values() if profile]
+
+    class_scores = average_profiles(class_profiles)
+    school_scores = average_profiles(school_profiles)
+
+    # Зоны роста класса — по охвату личных зон, а не по худшему среднему.
+    hits = count_growth_zone_hits([pick_growth_zones(profile) for profile in class_profiles])
+    zone_ids = rank_growth_zones_by_hits(hits)
+
+    competencies_result = await db.execute(select(Competency).order_by(Competency.order))
+    competencies = competencies_result.scalars().all()
+    competencies_by_id = {c.id: c for c in competencies}
+
+    return {
+        "class_id": class_id,
+        "class_label": f"{school_class.grade}-{school_class.section}",
+        "campaign_id": campaign_id,
+        "campaign_title": campaign.title,
+        "campaign_period": campaign.period,
+        "students_with_results": len(class_profiles),
+        "class_average": (sum(class_scores.values()) / len(class_scores) if class_scores else None),
+        "school_average": (
+            sum(school_scores.values()) / len(school_scores) if school_scores else None
+        ),
+        "competencies": [
+            {
+                "competency_id": comp.id,
+                "code": comp.code,
+                "name": comp.name,
+                "class_avg": class_scores.get(comp.id),
+                "school_avg": school_scores.get(comp.id),
+            }
+            for comp in competencies
+            if comp.id in class_scores or comp.id in school_scores
+        ],
+        "growth_zones": [
+            {
+                "competency_id": competency_id,
+                "code": competencies_by_id[competency_id].code,
+                "name": competencies_by_id[competency_id].name,
+                "students_affected": hits[competency_id],
+                "class_avg": class_scores.get(competency_id),
+            }
+            for competency_id in zone_ids
+        ],
+    }
+
+
+async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
+    """«X из Y анкет» по классам — под админский экран кампании.
+
+    Группируем по снапшоту subject_class_id. Анкеты без снапшота (субъект вне
+    класса, пилотная кампания на учителях) попадают в отдельную строку с
+    class_id=None, а не выбрасываются: иначе итог по классам не сходился бы с
+    общим числом анкет.
+    """
+    campaign = await db.get(Campaign, campaign_id)
+    if campaign is None:
+        raise CampaignNotFound()
+
+    completed = func.count().filter(Assessment.status == AssessmentStatus.COMPLETED)
+    rows = await db.execute(
+        select(
+            Assessment.subject_class_id,
+            func.count().label("total"),
+            completed.label("completed"),
+            SchoolClass.grade,
+            SchoolClass.section,
+        )
+        .outerjoin(SchoolClass, SchoolClass.id == Assessment.subject_class_id)
+        .where(Assessment.campaign_id == campaign_id)
+        .group_by(Assessment.subject_class_id, SchoolClass.grade, SchoolClass.section)
+        # NULLS LAST: строка «без класса» уходит в конец списка, а не в начало.
+        .order_by(SchoolClass.grade.asc().nulls_last(), SchoolClass.section.asc().nulls_last())
+    )
+
+    classes_out = []
+    total_all = 0
+    completed_all = 0
+    for class_id, total, done, grade, section in rows.all():
+        total_all += total
+        completed_all += done
+        classes_out.append(
+            {
+                "class_id": class_id,
+                "class_label": f"{grade}-{section}" if class_id is not None else None,
+                "total": total,
+                "completed": done,
+                "percent": round(done / total * 100, 1) if total else 0.0,
+            }
+        )
+
+    return {
+        "campaign_id": campaign_id,
+        "campaign_title": campaign.title,
+        "campaign_period": campaign.period,
+        "total": total_all,
+        "completed": completed_all,
+        "percent": round(completed_all / total_all * 100, 1) if total_all else 0.0,
+        "classes": classes_out,
     }

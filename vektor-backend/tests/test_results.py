@@ -11,9 +11,10 @@
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from vektor.modules.assessments.models import Assessment
+from vektor.modules.assessments.models import Assessment, Campaign
 from vektor.modules.competencies.models import (
     Competency,
     OutcomeArea,
@@ -23,15 +24,23 @@ from vektor.modules.competencies.models import (
 from vektor.modules.results.service import (
     ScoredAnswer,
     aggregate_by_competency_and_rater,
+    average_profiles,
     can_disclose_peer_scores,
+    can_view_class_results,
     can_view_results,
+    compute_deltas,
     compute_gap,
+    core_average,
+    count_growth_zone_hits,
     count_peer_raters_by_competency,
     others_by_competency,
     overall_by_competency,
+    overall_scores_from_answers,
     pick_growth_zones,
+    rank_growth_zones_by_hits,
     redact_peer_scores,
     self_by_competency,
+    shared_competencies,
 )
 from vektor.shared.enums import RaterRole, UserRole
 
@@ -231,6 +240,129 @@ def test_can_view_results_parent() -> None:
 
 def test_can_view_results_unrelated_denied() -> None:
     assert can_view_results(2, UserRole.STUDENT, 1, {10}, {20}) is False
+
+
+# --- can_view_class_results (5e) ---
+
+
+def test_can_view_class_results_admin() -> None:
+    assert can_view_class_results(1, UserRole.ADMIN, set()) is True
+
+
+def test_can_view_class_results_teacher_of_class() -> None:
+    assert can_view_class_results(10, UserRole.TEACHER, {10, 11}) is True
+
+
+def test_can_view_class_results_other_teacher_denied() -> None:
+    # Учитель ЧУЖОГО класса класс целиком не видит.
+    assert can_view_class_results(12, UserRole.TEACHER, {10, 11}) is False
+
+
+def test_can_view_class_results_parent_and_student_denied() -> None:
+    assert can_view_class_results(20, UserRole.PARENT, {10}) is False
+    assert can_view_class_results(1, UserRole.STUDENT, {10}) is False
+
+
+# --- overall_scores_from_answers: цепочка целиком ---
+
+
+def test_overall_scores_from_answers_applies_redaction() -> None:
+    # Два пира — ниже порога, слой PEER обязан исчезнуть ещё внутри цепочки,
+    # иначе он «протечёт» в динамику и в средний профиль класса.
+    answers = [
+        ScoredAnswer(competency_id=1, rater_role=RaterRole.SELF, respondent_id=1, value=5),
+        _peer(1, 2, 1),
+        _peer(1, 3, 1),
+    ]
+    assert overall_scores_from_answers(answers) == {1: 5.0}
+
+
+def test_overall_scores_from_answers_keeps_peer_at_threshold() -> None:
+    answers = [
+        ScoredAnswer(competency_id=1, rater_role=RaterRole.SELF, respondent_id=1, value=5),
+        _peer(1, 2, 1),
+        _peer(1, 3, 1),
+        _peer(1, 4, 1),
+    ]
+    # self=5, peer=(1+1+1)/3=1 → среднее по ролям = 3.0
+    assert overall_scores_from_answers(answers) == {1: 3.0}
+
+
+# --- 5d: shared_competencies / compute_deltas / core_average ---
+
+
+def test_shared_competencies_is_intersection() -> None:
+    assert shared_competencies({1: 3.0, 2: 4.0}, {2: 3.5, 3: 2.0}) == {2}
+
+
+def test_shared_competencies_empty_when_no_previous() -> None:
+    assert shared_competencies({1: 3.0}, {}) == set()
+
+
+def test_compute_deltas_only_over_core() -> None:
+    current = {1: 4.0, 2: 5.0}
+    previous = {1: 3.0, 3: 2.0}
+    # Ядро — только критерий 1. У 2 нет прошлого, у 3 нет текущего.
+    assert compute_deltas(current, previous, {1}) == {1: 1.0}
+
+
+def test_compute_deltas_negative_when_dropped() -> None:
+    assert compute_deltas({1: 2.5}, {1: 3.0}, {1}) == {1: -0.5}
+
+
+def test_compute_deltas_ignores_competency_outside_core() -> None:
+    # Критерий появился в этом году: значение есть, дельты быть не должно —
+    # иначе нарисуем прирост, которого не было.
+    current = {1: 4.0, 9: 3.0}
+    previous = {1: 4.0}
+    assert 9 not in compute_deltas(current, previous, shared_competencies(current, previous))
+
+
+def test_core_average_uses_only_core() -> None:
+    # Критерий 2 в ядро не входит и на итог влиять не должен.
+    assert core_average({1: 3.0, 2: 5.0}, {1}) == 3.0
+
+
+def test_core_average_none_when_core_empty() -> None:
+    assert core_average({1: 3.0}, set()) is None
+
+
+def test_core_average_ignores_missing_competency() -> None:
+    assert core_average({1: 4.0}, {1, 42}) == 4.0
+
+
+# --- 5e: average_profiles / count_growth_zone_hits / rank_growth_zones_by_hits ---
+
+
+def test_average_profiles_weighs_students_equally() -> None:
+    # Каждый ученик — один голос, независимо от числа оценивших его людей.
+    assert average_profiles([{1: 2.0}, {1: 4.0}]) == {1: 3.0}
+
+
+def test_average_profiles_handles_partial_competencies() -> None:
+    # Критерий 2 есть только у одного ученика — усредняем по тем, у кого он есть.
+    assert average_profiles([{1: 2.0, 2: 5.0}, {1: 4.0}]) == {1: 3.0, 2: 5.0}
+
+
+def test_average_profiles_empty() -> None:
+    assert average_profiles([]) == {}
+
+
+def test_count_growth_zone_hits() -> None:
+    assert count_growth_zone_hits([[1, 2], [2, 3], [2]]) == {1: 1, 2: 3, 3: 1}
+
+
+def test_rank_growth_zones_by_coverage_not_by_score() -> None:
+    # 5 учеников против 2 — первым идёт более массовый критерий.
+    assert rank_growth_zones_by_hits({1: 2, 2: 5}, n=2) == [2, 1]
+
+
+def test_rank_growth_zones_tie_broken_by_competency_id() -> None:
+    assert rank_growth_zones_by_hits({3: 2, 1: 2, 2: 2}, n=2) == [1, 2]
+
+
+def test_rank_growth_zones_n_larger_than_available() -> None:
+    assert rank_growth_zones_by_hits({1: 1}, n=5) == [1]
 
 
 # --- Интеграционные тесты GET /results/{subject_id} ---
@@ -574,3 +706,450 @@ async def test_gap_reflects_self_versus_others(
 
     assert comp["others_avg"] == pytest.approx(2.5)
     assert comp["gap"] == pytest.approx(2.5)  # себя оценивает выше на 2.5
+
+
+# --- Срез 5d: динамика между периодами (GET /results/{id}/dynamics) ---
+
+
+async def _answer_in_campaign(
+    client: AsyncClient,
+    db_session,
+    email: str,
+    respondent_id: int,
+    subject_id: int,
+    campaign_id: int,
+    question_id: int,
+    value: int,
+) -> None:
+    """Как _answer_as, но с фильтром по кампании: в сценариях с двумя периодами
+    у одной пары респондент/субъект анкет несколько."""
+    row = await db_session.execute(
+        select(Assessment.id).where(
+            Assessment.respondent_id == respondent_id,
+            Assessment.subject_id == subject_id,
+            Assessment.campaign_id == campaign_id,
+        )
+    )
+    aid = row.scalar_one()
+    headers = await _login(client, email)
+    response = await client.post(
+        f"/assessments/{aid}/answers",
+        json={"answers": [{"question_id": question_id, "value": value}]},
+        headers=headers,
+    )
+    assert response.status_code == 200
+
+
+@pytest.fixture
+async def dynamics_scenario(client: AsyncClient, admin_headers: dict[str, str], db_session) -> dict:
+    """Два периода подряд у одного ученика.
+
+    Критерий A отвечен в ОБА года (попадёт в общее ядро), критерий B — только
+    во второй: так воспроизводится «критерий появился», для которого дельты
+    быть не должно.
+    """
+    s1 = await _register(client, "ds1@vektor.ru", "student")
+    t1 = await _register(client, "dt1@vektor.ru", "teacher")
+
+    cls = (
+        await client.post("/classes", json={"grade": 9, "section": "д"}, headers=admin_headers)
+    ).json()
+    class_id = cls["id"]
+    await client.post(
+        f"/classes/{class_id}/students", json={"student_ids": [s1]}, headers=admin_headers
+    )
+    await client.post(
+        f"/classes/{class_id}/teachers", json={"teacher_ids": [t1]}, headers=admin_headers
+    )
+
+    comp_a = await _seed_competency(db_session, "dyn_a", order=1)
+    comp_b = await _seed_competency(db_session, "dyn_b", order=2)
+    q_a = await _question_id_for(db_session, comp_a)
+    q_b = await _question_id_for(db_session, comp_b)
+
+    campaigns = {}
+    for period in ("2025", "2026"):
+        campaign = (
+            await client.post(
+                "/campaigns",
+                json={"title": f"360 · {period}", "period": period},
+                headers=admin_headers,
+            )
+        ).json()
+        await client.post(
+            f"/campaigns/{campaign['id']}/generate",
+            json={"class_ids": [class_id]},
+            headers=admin_headers,
+        )
+        campaigns[period] = campaign["id"]
+
+    # 2025: только критерий A (self=3, teacher=3 → overall 3.0)
+    await _answer_in_campaign(
+        client, db_session, "ds1@vektor.ru", s1, s1, campaigns["2025"], q_a, 3
+    )
+    await _answer_in_campaign(
+        client, db_session, "dt1@vektor.ru", t1, s1, campaigns["2025"], q_a, 3
+    )
+    # 2026: A вырос до 4.0, плюс появился B
+    await _answer_in_campaign(
+        client, db_session, "ds1@vektor.ru", s1, s1, campaigns["2026"], q_a, 4
+    )
+    await _answer_in_campaign(
+        client, db_session, "dt1@vektor.ru", t1, s1, campaigns["2026"], q_a, 4
+    )
+    await _answer_in_campaign(
+        client, db_session, "ds1@vektor.ru", s1, s1, campaigns["2026"], q_b, 5
+    )
+
+    return {
+        "class_id": class_id,
+        "campaigns": campaigns,
+        "comp_a": comp_a,
+        "comp_b": comp_b,
+        "ids": {"s1": s1, "t1": t1},
+    }
+
+
+async def test_dynamics_compares_with_previous_period(
+    client: AsyncClient, dynamics_scenario
+) -> None:
+    s1 = dynamics_scenario["ids"]["s1"]
+    headers = await _login(client, "ds1@vektor.ru")
+    body = (await client.get(f"/results/{s1}/dynamics", headers=headers)).json()
+
+    assert body["campaign_period"] == "2026"
+    assert body["previous_campaign_period"] == "2025"
+    assert body["previous_campaign_id"] == dynamics_scenario["campaigns"]["2025"]
+
+    comp_a = next(
+        c for c in body["competencies"] if c["competency_id"] == dynamics_scenario["comp_a"]
+    )
+    assert comp_a["in_core"] is True
+    assert comp_a["overall_avg"] == pytest.approx(4.0)
+    assert comp_a["previous_avg"] == pytest.approx(3.0)
+    assert comp_a["delta"] == pytest.approx(1.0)
+
+
+async def test_dynamics_appeared_competency_has_value_but_no_delta(
+    client: AsyncClient, dynamics_scenario
+) -> None:
+    # Критерий B появился только во втором периоде: значение показываем,
+    # дельту — нет, иначе нарисуем прирост с нуля.
+    s1 = dynamics_scenario["ids"]["s1"]
+    headers = await _login(client, "ds1@vektor.ru")
+    body = (await client.get(f"/results/{s1}/dynamics", headers=headers)).json()
+
+    comp_b = next(
+        c for c in body["competencies"] if c["competency_id"] == dynamics_scenario["comp_b"]
+    )
+    assert comp_b["in_core"] is False
+    assert comp_b["overall_avg"] == pytest.approx(5.0)
+    assert comp_b["previous_avg"] is None
+    assert comp_b["delta"] is None
+
+
+async def test_dynamics_core_average_ignores_appeared_competency(
+    client: AsyncClient, dynamics_scenario
+) -> None:
+    # Ядро — только A. Если бы в итог попал появившийся B (5.0), среднее
+    # выросло бы само по себе, без роста ученика.
+    s1 = dynamics_scenario["ids"]["s1"]
+    headers = await _login(client, "ds1@vektor.ru")
+    body = (await client.get(f"/results/{s1}/dynamics", headers=headers)).json()
+
+    assert body["core_competencies_count"] == 1
+    assert body["core_average"] == pytest.approx(4.0)
+    assert body["previous_core_average"] == pytest.approx(3.0)
+    assert body["core_average_delta"] == pytest.approx(1.0)
+
+
+async def test_dynamics_without_previous_period_is_not_404(
+    client: AsyncClient, dynamics_scenario
+) -> None:
+    # У первого года обучения прошлого периода нет — это штатное состояние.
+    s1 = dynamics_scenario["ids"]["s1"]
+    headers = await _login(client, "ds1@vektor.ru")
+    first = dynamics_scenario["campaigns"]["2025"]
+
+    response = await client.get(f"/results/{s1}/dynamics?campaign_id={first}", headers=headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["previous_campaign_id"] is None
+    assert body["core_average_delta"] is None
+    # Текущие баллы при этом на месте.
+    comp_a = next(
+        c for c in body["competencies"] if c["competency_id"] == dynamics_scenario["comp_a"]
+    )
+    assert comp_a["overall_avg"] == pytest.approx(3.0)
+
+
+async def test_dynamics_same_period_campaign_is_not_previous(
+    client: AsyncClient, admin_headers, dynamics_scenario, db_session
+) -> None:
+    # Вторая кампания ТОГО ЖЕ года не является предыдущей: сравнение идёт
+    # строго по периодам, иначе два класса одного года стали бы «динамикой».
+    s1 = dynamics_scenario["ids"]["s1"]
+    twin = (
+        await client.post(
+            "/campaigns",
+            json={"title": "360 · 2026 второй", "period": "2026"},
+            headers=admin_headers,
+        )
+    ).json()
+    await client.post(
+        f"/campaigns/{twin['id']}/generate",
+        json={"class_ids": [dynamics_scenario["class_id"]]},
+        headers=admin_headers,
+    )
+    q_a = await _question_id_for(db_session, dynamics_scenario["comp_a"])
+    await _answer_in_campaign(client, db_session, "ds1@vektor.ru", s1, s1, twin["id"], q_a, 2)
+
+    headers = await _login(client, "ds1@vektor.ru")
+    body = (
+        await client.get(f"/results/{s1}/dynamics?campaign_id={twin['id']}", headers=headers)
+    ).json()
+
+    assert body["previous_campaign_period"] == "2025"
+
+
+async def test_dynamics_reports_version_change(
+    client: AsyncClient, dynamics_scenario, db_session
+) -> None:
+    # Архивной кампании подменяем редакцию анкеты — фронт должен получить
+    # признак и текст оговорки ИЗ САМОЙ редакции, а не выдуманный.
+    archive = QuestionnaireVersion(
+        code="archive-test",
+        title="Архивная редакция",
+        note="Формулировки отличаются, сравнение приблизительное.",
+        is_current=False,
+    )
+    db_session.add(archive)
+    await db_session.flush()
+    await db_session.execute(
+        sa_update(Campaign)
+        .where(Campaign.id == dynamics_scenario["campaigns"]["2025"])
+        .values(questionnaire_version_id=archive.id)
+    )
+    await db_session.commit()
+
+    s1 = dynamics_scenario["ids"]["s1"]
+    headers = await _login(client, "ds1@vektor.ru")
+    body = (await client.get(f"/results/{s1}/dynamics", headers=headers)).json()
+
+    assert body["versions_differ"] is True
+    assert body["version_note"] == "Формулировки отличаются, сравнение приблизительное."
+
+
+async def test_dynamics_forbidden_for_unrelated_student(
+    client: AsyncClient, dynamics_scenario
+) -> None:
+    outsider = await _register(client, "dout@vektor.ru", "student")
+    assert outsider  # зарегистрировался, но к классу отношения не имеет
+    headers = await _login(client, "dout@vektor.ru")
+    response = await client.get(
+        f"/results/{dynamics_scenario['ids']['s1']}/dynamics", headers=headers
+    )
+    assert response.status_code == 403
+
+
+async def test_subject_campaigns_lists_both_periods(client: AsyncClient, dynamics_scenario) -> None:
+    s1 = dynamics_scenario["ids"]["s1"]
+    headers = await _login(client, "ds1@vektor.ru")
+    body = (await client.get(f"/results/{s1}/campaigns", headers=headers)).json()
+
+    # Свежий период первым — переключатель периодов открывается на актуальном.
+    assert [c["period"] for c in body] == ["2026", "2025"]
+
+
+async def test_subject_campaigns_forbidden_for_unrelated(
+    client: AsyncClient, dynamics_scenario
+) -> None:
+    await _register(client, "dout2@vektor.ru", "student")
+    headers = await _login(client, "dout2@vektor.ru")
+    response = await client.get(
+        f"/results/{dynamics_scenario['ids']['s1']}/campaigns", headers=headers
+    )
+    assert response.status_code == 403
+
+
+# --- Срез 5e: агрегаты класса и покрытие кампании ---
+
+
+@pytest.fixture
+async def class_scenario(client: AsyncClient, admin_headers: dict[str, str], db_session) -> dict:
+    """Класс 7-К: s1 и s2 с РАЗНЫМ числом оценивших.
+
+    s1 оценивают трое (self + учитель + родитель), s2 — только он сам. Это
+    ключевой момент для проверки «каждый ученик весит одинаково»: при
+    взвешивании по ответам s1 перетянул бы средний профиль на себя.
+    """
+    s1 = await _register(client, "cs1@vektor.ru", "student")
+    s2 = await _register(client, "cs2@vektor.ru", "student")
+    t1 = await _register(client, "ct1@vektor.ru", "teacher")
+    p1 = await _register(client, "cp1@vektor.ru", "parent")
+
+    cls = (
+        await client.post("/classes", json={"grade": 7, "section": "к"}, headers=admin_headers)
+    ).json()
+    class_id = cls["id"]
+    await client.post(
+        f"/classes/{class_id}/students", json={"student_ids": [s1, s2]}, headers=admin_headers
+    )
+    await client.post(
+        f"/classes/{class_id}/teachers", json={"teacher_ids": [t1]}, headers=admin_headers
+    )
+    await client.post(f"/users/{p1}/children", json={"child_ids": [s1]}, headers=admin_headers)
+
+    comp_a = await _seed_competency(db_session, "cls_a", order=1)
+    comp_b = await _seed_competency(db_session, "cls_b", order=2)
+    q_a = await _question_id_for(db_session, comp_a)
+    q_b = await _question_id_for(db_session, comp_b)
+
+    campaign = (
+        await client.post(
+            "/campaigns", json={"title": "360 · класс", "period": "2026"}, headers=admin_headers
+        )
+    ).json()
+    campaign_id = campaign["id"]
+    await client.post(
+        f"/campaigns/{campaign_id}/generate",
+        json={"class_ids": [class_id]},
+        headers=admin_headers,
+    )
+
+    # s1: критерий A оценён тремя людьми (все ставят 2 → overall 2.0),
+    #     критерий B — только собой (5.0).
+    for email, rid in (("cs1@vektor.ru", s1), ("ct1@vektor.ru", t1), ("cp1@vektor.ru", p1)):
+        await _answer_in_campaign(client, db_session, email, rid, s1, campaign_id, q_a, 2)
+    await _answer_in_campaign(client, db_session, "cs1@vektor.ru", s1, s1, campaign_id, q_b, 5)
+
+    # s2: оба критерия только самооценка — A=4.0, B=5.0.
+    await _answer_in_campaign(client, db_session, "cs2@vektor.ru", s2, s2, campaign_id, q_a, 4)
+    await _answer_in_campaign(client, db_session, "cs2@vektor.ru", s2, s2, campaign_id, q_b, 5)
+
+    return {
+        "class_id": class_id,
+        "campaign_id": campaign_id,
+        "comp_a": comp_a,
+        "comp_b": comp_b,
+        "ids": {"s1": s1, "s2": s2, "t1": t1, "p1": p1},
+    }
+
+
+async def test_class_results_visible_to_teacher_of_class(
+    client: AsyncClient, class_scenario
+) -> None:
+    headers = await _login(client, "ct1@vektor.ru")
+    response = await client.get(f"/results/class/{class_scenario['class_id']}", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["class_label"] == "7-к"
+
+
+async def test_class_results_visible_to_admin(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    response = await client.get(
+        f"/results/class/{class_scenario['class_id']}", headers=admin_headers
+    )
+    assert response.status_code == 200
+
+
+async def test_class_results_forbidden_for_student_and_parent(
+    client: AsyncClient, class_scenario
+) -> None:
+    # Класс целиком не показываем ни ученику, ни родителю — в прототипе этот
+    # экран есть только у учителя и админа.
+    for email in ("cs1@vektor.ru", "cp1@vektor.ru"):
+        headers = await _login(client, email)
+        response = await client.get(f"/results/class/{class_scenario['class_id']}", headers=headers)
+        assert response.status_code == 403, email
+
+
+async def test_class_results_unknown_class_404(client: AsyncClient, admin_headers) -> None:
+    response = await client.get("/results/class/99999", headers=admin_headers)
+    assert response.status_code == 404
+
+
+async def test_class_profile_weighs_students_equally(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    # s1 по критерию A = 2.0 (его оценили трое), s2 = 4.0 (только сам).
+    # Правильное среднее по КЛАССУ = (2.0 + 4.0) / 2 = 3.0. Если бы считали
+    # по ответам, три двойки s1 перевесили бы одну четвёрку s2 → 2.5.
+    response = await client.get(
+        f"/results/class/{class_scenario['class_id']}", headers=admin_headers
+    )
+    body = response.json()
+    comp_a = next(c for c in body["competencies"] if c["competency_id"] == class_scenario["comp_a"])
+    assert comp_a["class_avg"] == pytest.approx(3.0)
+    assert body["students_with_results"] == 2
+
+
+async def test_class_growth_zones_ranked_by_coverage(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    # Критерий A в личных зонах роста у ОБОИХ учеников (у каждого он ниже B),
+    # значит он идёт первым — по охвату.
+    response = await client.get(
+        f"/results/class/{class_scenario['class_id']}", headers=admin_headers
+    )
+    zones = response.json()["growth_zones"]
+    assert zones[0]["competency_id"] == class_scenario["comp_a"]
+    assert zones[0]["students_affected"] == 2
+
+
+async def test_coverage_requires_admin(client: AsyncClient, class_scenario) -> None:
+    # Покрытие по всей школе — админский экран, учителю своего класса не даём.
+    headers = await _login(client, "ct1@vektor.ru")
+    response = await client.get(
+        f"/results/campaigns/{class_scenario['campaign_id']}/coverage", headers=headers
+    )
+    assert response.status_code == 403
+
+
+async def test_coverage_counts_by_class_snapshot(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    response = await client.get(
+        f"/results/campaigns/{class_scenario['campaign_id']}/coverage", headers=admin_headers
+    )
+    assert response.status_code == 200
+    body = response.json()
+    row = next(c for c in body["classes"] if c["class_id"] == class_scenario["class_id"])
+    # Матрица без пиров: self(s1,s2)=2 + teacher(t1→s1,s2)=2 + parent(p1→s1)=1 = 5.
+    assert row["total"] == 5
+    assert body["total"] == 5
+
+
+async def test_coverage_keeps_assessments_without_class_snapshot(
+    client: AsyncClient, admin_headers, class_scenario, db_session
+) -> None:
+    # Анкета без снапшота класса (субъект вне класса, пилот на учителях) должна
+    # попасть в отдельную строку, а не потеряться: иначе итог по классам
+    # перестанет сходиться с общим числом анкет.
+    await db_session.execute(
+        sa_update(Assessment)
+        .where(
+            Assessment.campaign_id == class_scenario["campaign_id"],
+            Assessment.subject_id == class_scenario["ids"]["s2"],
+        )
+        .values(subject_class_id=None)
+    )
+    await db_session.commit()
+
+    body = (
+        await client.get(
+            f"/results/campaigns/{class_scenario['campaign_id']}/coverage", headers=admin_headers
+        )
+    ).json()
+
+    orphan = next(c for c in body["classes"] if c["class_id"] is None)
+    assert orphan["class_label"] is None
+    assert orphan["total"] == 2  # self(s2) + teacher(t1→s2)
+    assert sum(c["total"] for c in body["classes"]) == body["total"] == 5
+
+
+async def test_coverage_unknown_campaign_404(client: AsyncClient, admin_headers) -> None:
+    response = await client.get("/results/campaigns/99999/coverage", headers=admin_headers)
+    assert response.status_code == 404
