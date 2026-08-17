@@ -50,5 +50,18 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
+    # Ограничение частоты — только на вход и регистрацию (перебор паролей и
+    # массовое создание учёток). Пороги с запасом: живой человек, ошибившийся
+    # паролем несколько раз подряд, под лимит попасть не должен.
+    # Выключается целиком в тестах: они делают десятки логинов подряд и
+    # пробивают любой разумный порог. Проверяется отдельным test_rate_limit.py,
+    # который включает флаг обратно.
+    rate_limit_enabled: bool = True
+
+    login_rate_limit: int = 10
+    login_rate_window_seconds: int = 60
+    register_rate_limit: int = 5
+    register_rate_window_seconds: int = 300
+
 
 settings = Settings()

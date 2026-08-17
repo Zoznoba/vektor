@@ -10,6 +10,7 @@ from vektor.core.database import async_session_factory, engine
 from vektor.core.errors import register_error_handlers
 from vektor.core.logging import setup_logging
 from vektor.core.middleware import RequestContextMiddleware
+from vektor.core.rate_limit import close_redis
 from vektor.modules.assessments.router import assessment_router
 from vektor.modules.assessments.router import router as assessments_router
 from vektor.modules.auth.router import router as auth_router
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI):
         await ensure_admin_exists(session)
     yield
     await engine.dispose()
+    await close_redis()
 
 
 def create_app() -> FastAPI:
