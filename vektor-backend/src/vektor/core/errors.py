@@ -53,10 +53,17 @@ def error_response(
     code: str,
     errors: list[dict] | None = None,
     headers: dict[str, str] | None = None,
+    request: Request | None = None,
 ) -> JSONResponse:
     content: dict = {"detail": detail, "code": code}
     if errors:
         content["errors"] = errors
+    # id запроса кладём в тело: пользователю есть что приложить к обращению, а
+    # в логах строка находится за один grep. Ставит его RequestContextMiddleware;
+    # в тестах, где middleware не подключён, поля просто не будет.
+    request_id = getattr(getattr(request, "state", None), "request_id", None)
+    if request_id:
+        content["request_id"] = request_id
     return JSONResponse(status_code=status_code, content=content, headers=headers)
 
 
@@ -77,7 +84,7 @@ _HTTP_CODES = {
 
 
 async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
-    return error_response(exc.status_code, exc.message, exc.code)
+    return error_response(exc.status_code, exc.message, exc.code, request=request)
 
 
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
@@ -89,6 +96,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
         detail,
         _HTTP_CODES.get(exc.status_code, "http_error"),
         headers=getattr(exc, "headers", None),
+        request=request,
     )
 
 
@@ -113,7 +121,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         if first
         else "Данные запроса не прошли валидацию"
     )
-    return error_response(422, detail, "validation_error", errors=errors)
+    return error_response(422, detail, "validation_error", errors=errors, request=request)
 
 
 def register_error_handlers(app: FastAPI) -> None:

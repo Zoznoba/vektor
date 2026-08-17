@@ -81,9 +81,7 @@ async def test_validation_error_detail_is_string_not_list(
     assert body["code"] == "validation_error"
 
 
-async def test_validation_error_lists_offending_fields(
-    client: AsyncClient, admin_headers
-) -> None:
+async def test_validation_error_lists_offending_fields(client: AsyncClient, admin_headers) -> None:
     response = await client.post(
         "/campaigns", json={"title": "", "period": "2026"}, headers=admin_headers
     )
@@ -107,9 +105,7 @@ async def test_unauthorized_keeps_shape_and_challenge_header(client: AsyncClient
     assert body["code"] == "unauthorized"
 
 
-async def test_forbidden_from_require_role_keeps_shape(
-    client: AsyncClient, register_user
-) -> None:
+async def test_forbidden_from_require_role_keeps_shape(client: AsyncClient, register_user) -> None:
     login = await client.post("/auth/login", json=register_user)
     student_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 

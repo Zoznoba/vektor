@@ -91,4 +91,11 @@ async def test_login_errors_are_indistinguishable(
     )
 
     assert wrong_password.status_code == unknown_email.status_code
-    assert wrong_password.json() == unknown_email.json()
+
+    # request_id исключаем: он уникален для КАЖДОГО запроса (Этап 7,
+    # RequestContextMiddleware) и про пользователя не говорит ничего. Всё
+    # остальное — текст и машинный код — обязано совпадать.
+    def without_request_id(response) -> dict:
+        return {k: v for k, v in response.json().items() if k != "request_id"}
+
+    assert without_request_id(wrong_password) == without_request_id(unknown_email)
