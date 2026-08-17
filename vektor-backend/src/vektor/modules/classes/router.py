@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vektor.core.database import get_db
@@ -22,10 +22,7 @@ async def create_school_class(
     db: AsyncSession = Depends(get_db),
     _admin_role=Depends(require_role(UserRole.ADMIN)),
 ) -> SchoolClassOut:
-    try:
-        return await service.create_class(db=db, grade=data.grade, section=data.section)
-    except service.ClassAlreadyExists as err:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(err)) from err
+    return await service.create_class(db=db, grade=data.grade, section=data.section)
 
 
 @router.get("", response_model=list[SchoolClassOut])
@@ -43,12 +40,7 @@ async def assign_students_to_class(
     db: AsyncSession = Depends(get_db),
     _admin_role=Depends(require_role(UserRole.ADMIN)),
 ) -> SchoolClassOut:
-    try:
-        return await service.assign_students(db, class_id, data.student_ids)
-    except service.ClassNotFound as err:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Класс не найден") from err
-    except service.UserNotFound as err:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(err)) from err
+    return await service.assign_students(db, class_id, data.student_ids)
 
 
 @router.post("/{class_id}/teachers", response_model=SchoolClassOut)
@@ -58,14 +50,7 @@ async def assign_teachers_to_class(
     db: AsyncSession = Depends(get_db),
     _admin_role=Depends(require_role(UserRole.ADMIN)),
 ) -> SchoolClassOut:
-    try:
-        return await service.assign_teachers(db, class_id, data.teacher_ids)
-    except service.ClassNotFound as err:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Класс не найден") from err
-    except service.UserNotFound as err:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(err)) from err
-    except service.TeacherAlreadyAssigned as err:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(err)) from err
+    return await service.assign_teachers(db, class_id, data.teacher_ids)
 
 
 @router.put("/{class_id}/homeroom", response_model=SchoolClassOut)
@@ -75,11 +60,4 @@ async def assign_homeroom_teacher(
     db: AsyncSession = Depends(get_db),
     _admin_role=Depends(require_role(UserRole.ADMIN)),
 ) -> SchoolClassOut:
-    try:
-        return await service.assign_homeroom(db, class_id, data.teacher_id)
-    except service.ClassNotFound as err:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Класс не найден") from err
-    except service.UserNotFound as err:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(err)) from err
-    except service.WrongRole as err:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(err)) from err
+    return await service.assign_homeroom(db, class_id, data.teacher_id)

@@ -37,21 +37,7 @@ async def get_class_results(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="У класса пока нет результатов",
             )
-    try:
-        return await service.get_class_results(db, class_id, campaign_id, user)
-    except service.SchoolClassNotFound as err:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Класс не найден"
-        ) from err
-    except service.CampaignNotFound as err:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Кампания не найдена"
-        ) from err
-    except service.NotAllowedToViewResults as err:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Нет доступа к результатам этого класса",
-        ) from err
+    return await service.get_class_results(db, class_id, campaign_id, user)
 
 
 @router.get("/campaigns/{campaign_id}/coverage", response_model=CampaignCoverageOut)
@@ -62,12 +48,7 @@ async def get_campaign_coverage(
 ) -> CampaignCoverageOut:
     # Покрытие по всей школе — админский экран кампании, поэтому роль жёстко
     # ADMIN, а не «учитель своего класса», как у профиля класса.
-    try:
-        return await service.get_campaign_coverage(db, campaign_id)
-    except service.CampaignNotFound as err:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Кампания не найдена"
-        ) from err
+    return await service.get_campaign_coverage(db, campaign_id)
 
 
 @router.get("/{subject_id}", response_model=ResultsOut)
@@ -88,21 +69,7 @@ async def get_results(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="У пользователя пока нет результатов",
             )
-    try:
-        return await service.get_subject_results(db, subject_id, campaign_id, user)
-    except service.CampaignNotFound as err:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Кампания не найдена"
-        ) from err
-    except service.SubjectNotFound as err:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Субъект не найден"
-        ) from err
-    except service.NotAllowedToViewResults as err:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Нет доступа к результатам этого пользователя",
-        ) from err
+    return await service.get_subject_results(db, subject_id, campaign_id, user)
 
 
 @router.get("/{subject_id}/campaigns", response_model=list[SubjectCampaignOut])
@@ -111,17 +78,7 @@ async def list_subject_campaigns(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[SubjectCampaignOut]:
-    try:
-        return await service.list_subject_campaigns(db, subject_id, user)
-    except service.SubjectNotFound as err:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Субъект не найден"
-        ) from err
-    except service.NotAllowedToViewResults as err:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Нет доступа к результатам этого пользователя",
-        ) from err
+    return await service.list_subject_campaigns(db, subject_id, user)
 
 
 @router.get("/{subject_id}/dynamics", response_model=DynamicsOut)
@@ -138,18 +95,4 @@ async def get_dynamics(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="У пользователя пока нет результатов",
             )
-    try:
-        return await service.get_subject_dynamics(db, subject_id, campaign_id, user)
-    except service.CampaignNotFound as err:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Кампания не найдена"
-        ) from err
-    except service.SubjectNotFound as err:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Субъект не найден"
-        ) from err
-    except service.NotAllowedToViewResults as err:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Нет доступа к результатам этого пользователя",
-        ) from err
+    return await service.get_subject_dynamics(db, subject_id, campaign_id, user)

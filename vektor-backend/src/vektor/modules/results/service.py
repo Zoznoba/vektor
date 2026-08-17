@@ -25,6 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from vektor.core.errors import DomainError
 from vektor.modules.assessments.models import Answer, Assessment, Campaign
 from vektor.modules.classes.models import SchoolClass
 from vektor.modules.competencies.models import Competency, Question, QuestionnaireVersion
@@ -320,20 +321,36 @@ def can_view_class_results(
 # ---------- DB-часть: сбор ответов, права, сборка ответа эндпоинта ----------
 
 
-class CampaignNotFound(Exception):
+class CampaignNotFound(DomainError):
     """Кампания с таким id не найдена."""
 
+    status_code = 404
+    code = "campaign_not_found"
+    message = "Кампания не найдена"
 
-class SubjectNotFound(Exception):
+
+class SubjectNotFound(DomainError):
     """Пользователь-субъект с таким id не найден."""
 
+    status_code = 404
+    code = "subject_not_found"
+    message = "Субъект не найден"
 
-class NotAllowedToViewResults(Exception):
+
+class NotAllowedToViewResults(DomainError):
     """Текущий пользователь не имеет права смотреть результаты этого субъекта."""
 
+    status_code = 403
+    code = "not_allowed_to_view_results"
+    message = "Нет доступа к этим результатам"
 
-class SchoolClassNotFound(Exception):
+
+class SchoolClassNotFound(DomainError):
     """Класс с таким id не найден."""
+
+    status_code = 404
+    code = "class_not_found"
+    message = "Класс не найден"
 
 
 async def _load_subject_for_results(db: AsyncSession, subject_id: int, current_user: User) -> User:

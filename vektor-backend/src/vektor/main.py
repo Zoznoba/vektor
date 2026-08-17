@@ -6,6 +6,7 @@ from sqlalchemy import text
 
 from vektor.core.config import settings
 from vektor.core.database import async_session_factory, engine
+from vektor.core.errors import register_error_handlers
 from vektor.modules.assessments.router import assessment_router
 from vektor.modules.assessments.router import router as assessments_router
 from vektor.modules.auth.router import router as auth_router
@@ -26,6 +27,10 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
+
+    # Доменные исключения переводятся в HTTP здесь, а не в каждом роутере:
+    # см. core/errors.py — там же про единый формат тела ответа.
+    register_error_handlers(app)
 
     @app.get("/health", tags=["system"])
     async def health() -> dict[str, str]:

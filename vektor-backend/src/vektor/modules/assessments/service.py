@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from vektor.core.errors import DomainError
 from vektor.modules.assessments.models import Answer, Assessment, Campaign
 from vektor.modules.classes.models import SchoolClass
 from vektor.modules.competencies.models import Question, QuestionnaireVersion
@@ -17,30 +18,62 @@ from vektor.modules.users.models import User
 from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole
 
 
-class CampaignNotFound(Exception):
+class CampaignNotFound(DomainError):
     """Кампания с таким id не найдена."""
 
+    status_code = 404
+    code = "campaign_not_found"
+    message = "Кампания не найдена"
 
-class AssessmentNotFound(Exception):
+
+class AssessmentNotFound(DomainError):
     """Анкета с таким id не найдена."""
 
+    status_code = 404
+    code = "assessment_not_found"
+    message = "Анкета не найдена"
 
-class NotAssessmentOwner(Exception):
+
+class NotAssessmentOwner(DomainError):
     """Пользователь пытается открыть/заполнить не свою анкету."""
 
+    status_code = 403
+    code = "not_assessment_owner"
+    message = "Пользователь не является владельцем анкеты"
 
-class CampaignNotActive(Exception):
-    """Кампания не в статусе active — приём ответов закрыт."""
+
+class CampaignNotActive(DomainError):
+    """Кампания не в статусе active.
+
+    Сообщение переопределяется в точке возбуждения: для приёма ответов это
+    «прием закрыт», для закрытия кампании — «закрыть можно только активную».
+    """
+
+    status_code = 409
+    code = "campaign_not_active"
+    message = "Кампания не активна"
 
 
-class QuestionNotAllowed(Exception):
+class QuestionNotAllowed(DomainError):
     """Ответ на вопрос, которого нет в видимом наборе этой анкеты."""
 
+    status_code = 422
+    code = "question_not_allowed"
+    message = "Ответ на недоступный вопрос"
 
-class NoCurrentQuestionnaireVersion(Exception):
+
+class NoCurrentQuestionnaireVersion(DomainError):
     """Ни одна редакция анкеты не помечена действующей — не по чему создавать
     кампанию. В норме недостижимо: миграция c3f81ad0e7b5 ставит флаг, а
-    частичный уникальный индекс не даёт завести вторую действующую."""
+    частичный уникальный индекс не даёт завести вторую действующую.
+
+    Раньше это исключение не ловил никто, и вместо осмысленного ответа клиент
+    получал 500 — ровно тот случай, ради которого заведён общий обработчик.
+    """
+
+    status_code = 409
+    code = "no_current_questionnaire_version"
+    message = "Нет действующей редакции анкеты"
 
 
 async def create_campaign(
@@ -86,7 +119,7 @@ async def close_campaign(db: AsyncSession, campaign_id: int) -> Campaign:
     if not campaign:
         raise CampaignNotFound()
     if campaign.status != CampaignStatus.ACTIVE:
-        raise CampaignNotActive()
+        raise CampaignNotActive("Закрыть можно только активную кампанию")
 
     campaign.status = CampaignStatus.CLOSED
     await db.commit()
@@ -424,7 +457,7 @@ async def submit_answers(
         raise NotAssessmentOwner()
 
     if assessment.campaign.status != CampaignStatus.ACTIVE:
-        raise CampaignNotActive()
+        raise CampaignNotActive("Приём ответов закрыт")
 
     visible_questions = await get_visible_questions_for_assessment(db, assessment)
     visible_ids = {q.id for q in visible_questions}

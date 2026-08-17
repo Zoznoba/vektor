@@ -11,10 +11,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def user_register(data: RegisterIn, db: AsyncSession = Depends(get_db)) -> UserOut:
-    try:
-        user = await service.register_user(db, data)
-    except service.EmailAlreadyRegistered as err:
-        raise HTTPException(status.HTTP_409_CONFLICT) from err
+    user = await service.register_user(db, data)
     return user
 
 

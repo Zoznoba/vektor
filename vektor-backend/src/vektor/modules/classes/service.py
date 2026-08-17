@@ -5,29 +5,50 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from vektor.core.errors import DomainError
 from vektor.modules.classes.models import SchoolClass
 from vektor.modules.users.models import User
 from vektor.shared.enums import UserRole
 
 
-class ClassAlreadyExists(Exception):
+class ClassAlreadyExists(DomainError):
     """Класс с таким grade+section уже существует."""
 
+    status_code = 409
+    code = "class_already_exists"
+    message = "Класс с таким номером уже существует"
 
-class UserNotFound(Exception):
+
+class UserNotFound(DomainError):
     """Один или несколько пользователей с такими id не найдены."""
 
+    status_code = 404
+    code = "user_not_found"
+    message = "Пользователь не найден"
 
-class ClassNotFound(Exception):
+
+class ClassNotFound(DomainError):
     """Класс с таким id не найден."""
 
+    status_code = 404
+    code = "class_not_found"
+    message = "Класс не найден"
 
-class TeacherAlreadyAssigned(Exception):
+
+class TeacherAlreadyAssigned(DomainError):
     """Один или несколько учителей уже привязаны к этому классу."""
 
+    status_code = 409
+    code = "teacher_already_assigned"
+    message = "Учитель уже привязан к этому классу"
 
-class WrongRole(Exception):
+
+class WrongRole(DomainError):
     """Роль пользователя не подходит для операции."""
+
+    status_code = 409
+    code = "wrong_role"
+    message = "Роль пользователя не подходит для операции"
 
 
 async def create_class(db: AsyncSession, grade: int, section: str) -> SchoolClass:

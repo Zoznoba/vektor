@@ -1,6 +1,6 @@
 # HTTP-слой users: «кто я», админский список, связь родитель—ребёнок.
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,14 +57,7 @@ async def bulk_create_users(
     db: AsyncSession = Depends(get_db),
     _admin_user: User = Depends(require_role(UserRole.ADMIN)),
 ) -> BulkCreateOut:
-    try:
-        created = await service.bulk_create_users(db, data.users, data.class_id)
-    except service.DuplicateEmailsInBatch as err:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(err)) from err
-    except service.EmailsAlreadyTaken as err:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(err)) from err
-    except service.ClassNotFound as err:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(err)) from err
+    created = await service.bulk_create_users(db, data.users, data.class_id)
 
     return BulkCreateOut(
         created=created,
@@ -79,12 +72,7 @@ async def get_children(
     db: AsyncSession = Depends(get_db),
     _admin_user: User = Depends(require_role(UserRole.ADMIN)),
 ) -> list[UserOut]:
-    try:
-        parent = await service.get_parent_with_children(db, user_id)
-    except service.UserNotFound as err:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(err)) from err
-    except service.WrongRole as err:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(err)) from err
+    parent = await service.get_parent_with_children(db, user_id)
     return parent.children
 
 
@@ -95,9 +83,4 @@ async def assign_children_to_parent(
     db: AsyncSession = Depends(get_db),
     _admin_user: User = Depends(require_role(UserRole.ADMIN)),
 ) -> ParentWithChildrenOut:
-    try:
-        return await service.assign_children(db, user_id, data.child_ids)
-    except service.UserNotFound as err:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(err)) from err
-    except service.WrongRole as err:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(err)) from err
+    return await service.assign_children(db, user_id, data.child_ids)

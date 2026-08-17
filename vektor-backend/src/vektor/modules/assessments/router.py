@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vektor.core.database import get_db
@@ -42,14 +42,9 @@ async def generate_assessments(
     db: AsyncSession = Depends(get_db),
     _admin=Depends(require_role(UserRole.ADMIN)),
 ) -> GenerateResult:
-    try:
-        assessments = await service.generate_assessments(
-            db, campaign_id, data.class_ids, data.include_peers
-        )
-    except service.CampaignNotFound as err:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Компания не найдена id: {campaign_id}"
-        ) from err
+    assessments = await service.generate_assessments(
+        db, campaign_id, data.class_ids, data.include_peers
+    )
 
     campaign, created = assessments
     return GenerateResult(created=created, campaign=campaign)
@@ -61,17 +56,7 @@ async def close_campaign(
     db: AsyncSession = Depends(get_db),
     _admin=Depends(require_role(UserRole.ADMIN)),
 ) -> CampaignOut:
-    try:
-        campaign = await service.close_campaign(db, campaign_id)
-    except service.CampaignNotFound as err:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Компания не найдена id: {campaign_id}"
-        ) from err
-    except service.CampaignNotActive as err:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Закрыть можно только активную кампанию",
-        ) from err
+    campaign = await service.close_campaign(db, campaign_id)
 
     return campaign
 
@@ -91,17 +76,7 @@ async def get_assessment(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> AssessmentDetailOut:
-    try:
-        assessment = await service.get_assessment_detail(db, assessment_id, user.id)
-    except service.AssessmentNotFound as err:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Анкета не найдена"
-        ) from err
-    except service.NotAssessmentOwner as err:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Пользователь не является владельцем анкеты",
-        ) from err
+    assessment = await service.get_assessment_detail(db, assessment_id, user.id)
 
     return assessment
 
@@ -113,25 +88,6 @@ async def submit_answers(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> SubmitResult:
-    try:
-        result = await service.submit_answers(db, assessment_id, user.id, data.answers)
-    except service.AssessmentNotFound as err:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Анкета не найдена"
-        ) from err
-    except service.NotAssessmentOwner as err:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Пользователь не является владельцем анкеты",
-        ) from err
-    except service.CampaignNotActive as err:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Приём ответов закрыт"
-        ) from err
-    except service.QuestionNotAllowed as err:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Ответ на недоступный вопрос",
-        ) from err
+    result = await service.submit_answers(db, assessment_id, user.id, data.answers)
 
     return result
