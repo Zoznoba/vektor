@@ -63,9 +63,14 @@ class ParentWithChildrenOut(UserOut):
 
 
 class MeOut(UserOut):
-    """/users/me — то же, что UserOut, плюс класс для шапки дашборда.
+    """/users/me — то же, что UserOut, плюс класс и учебный год для шапки
+    дашборда.
 
     None у class_label — штатно: у учителя, родителя и админа класса нет.
+    academic_year — не хранится нигде (Campaign.period — произвольная строка,
+    не структурированный учебный год), считается от текущей даты через
+    shared/academic_year.py и относится к школе целиком, а не к пользователю.
     """
 
     class_label: str | None = None
+    academic_year: str

@@ -61,6 +61,7 @@ class AssessmentListItemOut(BaseModel):
     campaign_id: int
     campaign_title: str
     campaign_period: str
+    campaign_closes_at: datetime | None
     subject: UserOut
     is_self: bool
     status: AssessmentStatus

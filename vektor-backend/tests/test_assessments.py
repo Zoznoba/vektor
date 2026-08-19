@@ -741,6 +741,28 @@ async def test_list_assessments_self_flag(client: AsyncClient, scenario) -> None
     assert len(body) == 1  # только самооценка
     assert body[0]["is_self"] is True
     assert body[0]["campaign_title"] == "360 · июнь 2026"
+    assert body[0]["campaign_closes_at"] is None  # _create_campaign не задаёт дедлайн
+
+
+async def test_list_assessments_exposes_campaign_deadline(client: AsyncClient, scenario) -> None:
+    response = await client.post(
+        "/campaigns",
+        json={"title": "360 · июнь 2026", "period": "2026-06", "closes_at": "2026-06-20T00:00:00"},
+        headers=scenario["headers"],
+    )
+    cid = response.json()["id"]
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]]},
+        headers=scenario["headers"],
+    )
+
+    s1_headers = await _login(client, "s1@vektor.ru")
+    response = await client.get("/assessments", headers=s1_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body[0]["campaign_closes_at"] == "2026-06-20T00:00:00"
 
 
 async def test_list_assessments_filters_by_campaign(client: AsyncClient, scenario) -> None:

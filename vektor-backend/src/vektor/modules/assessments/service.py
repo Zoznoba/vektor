@@ -420,6 +420,7 @@ async def list_my_assessments(
                 "campaign_id": assessment.campaign_id,
                 "campaign_title": assessment.campaign.title,
                 "campaign_period": assessment.campaign.period,
+                "campaign_closes_at": assessment.campaign.closes_at,
                 "subject": assessment.subject,
                 "is_self": assessment.respondent_id == assessment.subject_id,
                 "status": assessment.status,

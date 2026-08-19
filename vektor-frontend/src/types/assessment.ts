@@ -12,6 +12,7 @@ export interface AssessmentListItem {
   campaign_id: number;
   campaign_title: string;
   campaign_period: string;
+  campaign_closes_at: string | null;
   subject: User;
   is_self: boolean;
   status: AssessmentStatus;

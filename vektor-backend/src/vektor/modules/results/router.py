@@ -23,7 +23,15 @@ router = APIRouter(prefix="/results", tags=["results"])
 # следующего /{subject_id}/... не превратит /class/5 в «субъект по имени class».
 
 
-@router.get("/class/{class_id}", response_model=ClassResultsOut)
+@router.get(
+    "/class/{class_id}",
+    response_model=ClassResultsOut,
+    summary="Профиль класса",
+    description="Средний профиль класса по критериям (среднее по ученикам, "
+    "не по ответам), сравнение со школой за тот же период и зоны роста "
+    "класса по охвату. Без campaign_id берётся последняя кампания класса. "
+    "Доступно админу и учителю этого класса.",
+)
 async def get_class_results(
     class_id: int,
     campaign_id: int | None = None,
@@ -40,7 +48,13 @@ async def get_class_results(
     return await service.get_class_results(db, class_id, campaign_id, user)
 
 
-@router.get("/campaigns/{campaign_id}/coverage", response_model=CampaignCoverageOut)
+@router.get(
+    "/campaigns/{campaign_id}/coverage",
+    response_model=CampaignCoverageOut,
+    summary="Покрытие кампании",
+    description="«X из Y анкет» заполнено по каждому классу кампании "
+    "(снапшот subject_class_id на момент генерации анкет). Только админ.",
+)
 async def get_campaign_coverage(
     campaign_id: int,
     db: AsyncSession = Depends(get_db),
@@ -51,7 +65,16 @@ async def get_campaign_coverage(
     return await service.get_campaign_coverage(db, campaign_id)
 
 
-@router.get("/{subject_id}", response_model=ResultsOut)
+@router.get(
+    "/{subject_id}",
+    response_model=ResultsOut,
+    summary="Результаты пользователя",
+    description="Агрегация по критериям (self/peer/teacher/parent/others/overall), "
+    "разрыв самооценки и зоны роста. Оценки одноклассников скрываются, пока "
+    "по критерию не набралось 3 разных респондента-одноклассника. Без "
+    "campaign_id берётся последняя кампания субъекта. Доступно самому "
+    "субъекту, админу, учителю и родителю.",
+)
 async def get_results(
     subject_id: int,
     campaign_id: int | None = None,
@@ -72,7 +95,13 @@ async def get_results(
     return await service.get_subject_results(db, subject_id, campaign_id, user)
 
 
-@router.get("/{subject_id}/campaigns", response_model=list[SubjectCampaignOut])
+@router.get(
+    "/{subject_id}/campaigns",
+    response_model=list[SubjectCampaignOut],
+    summary="Кампании субъекта",
+    description="Кампании, где у субъекта есть хотя бы одна анкета — для "
+    "переключателя периода на странице результатов.",
+)
 async def list_subject_campaigns(
     subject_id: int,
     db: AsyncSession = Depends(get_db),
@@ -81,7 +110,15 @@ async def list_subject_campaigns(
     return await service.list_subject_campaigns(db, subject_id, user)
 
 
-@router.get("/{subject_id}/dynamics", response_model=DynamicsOut)
+@router.get(
+    "/{subject_id}/dynamics",
+    response_model=DynamicsOut,
+    summary="Динамика по годам",
+    description="Сравнение с предыдущей завершённой кампанией субъекта: "
+    "дельты только по критериям, общим для обоих периодов (ядро). Нет "
+    "предыдущего периода — не 404, а текущие баллы с "
+    "`previous_campaign_id=None`.",
+)
 async def get_dynamics(
     subject_id: int,
     campaign_id: int | None = None,

@@ -16,7 +16,14 @@ _login_limit = rate_limit("login", "login_rate_limit", "login_rate_window_second
 _register_limit = rate_limit("register", "register_rate_limit", "register_rate_window_seconds")
 
 
-@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=UserOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Регистрация",
+    description="Завести нового пользователя с ролью и паролем. "
+    "Ограничена по частоте: см. `register_rate_limit` в настройках.",
+)
 async def user_register(
     data: RegisterIn, db: AsyncSession = Depends(get_db), _limit=_register_limit
 ) -> UserOut:
@@ -24,7 +31,13 @@ async def user_register(
     return user
 
 
-@router.post("/login", response_model=TokenOut)
+@router.post(
+    "/login",
+    response_model=TokenOut,
+    summary="Вход",
+    description="Обменять email и пароль на JWT-токен доступа. "
+    "Ограничена по частоте: см. `login_rate_limit` в настройках.",
+)
 async def user_login(
     data: LoginIn, db: AsyncSession = Depends(get_db), _limit=_login_limit
 ) -> TokenOut:

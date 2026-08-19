@@ -30,10 +30,47 @@ async def lifespan(app: FastAPI):
     await close_redis()
 
 
+_OPENAPI_TAGS = [
+    {
+        "name": "auth",
+        "description": "Регистрация и вход (JWT). Логин и регистрация ограничены по частоте.",
+    },
+    {
+        "name": "users",
+        "description": "Профиль текущего пользователя, админский список, "
+        "родитель—ребёнок, массовая загрузка.",
+    },
+    {
+        "name": "classes",
+        "description": "Классы школы: создание, состав, кл. рук — под require_role(ADMIN).",
+    },
+    {
+        "name": "competencies",
+        "description": "Справочник критериев (11 шт.) и «ОР / навык» (5 шт.).",
+    },
+    {
+        "name": "assessments",
+        "description": "Кампании 360°: создание, генерация анкет, прохождение, "
+        "сохранение ответов, закрытие.",
+    },
+    {
+        "name": "results",
+        "description": "Агрегация результатов по критериям, динамика по годам, "
+        "профиль класса, покрытие кампании.",
+    },
+    {"name": "system", "description": "Служебные эндпоинты (healthcheck)."},
+]
+
+
 def create_app() -> FastAPI:
     setup_logging()
 
-    app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
+    app = FastAPI(
+        title=settings.app_name,
+        version=settings.app_version,
+        lifespan=lifespan,
+        openapi_tags=_OPENAPI_TAGS,
+    )
 
     # Доменные исключения переводятся в HTTP здесь, а не в каждом роутере:
     # см. core/errors.py — там же про единый формат тела ответа.

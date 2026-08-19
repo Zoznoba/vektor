@@ -11,13 +11,23 @@ import { useApi } from '../../hooks/useApi';
 import { fetchMyAssessments } from '../../api/assessments';
 import type { AssessmentListItem } from '../../types/assessment';
 import type { PendingSurvey } from '../../types/dashboard';
-import { mockStudent } from '../../data/mockStudentDashboard';
 import './StudentHome.css';
 
 /** «Иванова Полина» → «Полина»; если слово одно — оно и есть имя. */
 function firstNameOf(fullName: string): string {
   const words = fullName.trim().split(/\s+/);
   return words[1] ?? words[0];
+}
+
+/** Ближайший дедлайн среди незавершённых анкет, «20 июня» — или null, если ни у одной кампании нет closes_at. */
+function nearestDeadlineLabel(pendingItems: AssessmentListItem[]): string | null {
+  const deadlines = pendingItems
+    .map((item) => item.campaign_closes_at)
+    .filter((value): value is string => value !== null)
+    .map((value) => new Date(value));
+  if (deadlines.length === 0) return null;
+  const nearest = new Date(Math.min(...deadlines.map((d) => d.getTime())));
+  return nearest.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
 }
 
 /**
@@ -42,7 +52,7 @@ function toPendingSurvey(item: AssessmentListItem): PendingSurvey {
 /**
  * Экран 1 из ТЗ (п. 4.7) — «Личный кабинет ученика».
  * Пользователь, анкеты и результаты — реальные (/users/me, /assessments,
- * /results). Класс и учебный год всё ещё мок: /users/me их не отдаёт.
+ * /results, класс и учебный год — /users/me).
  */
 export function StudentHome() {
   const { user, logout } = useAuth();
@@ -50,11 +60,10 @@ export function StudentHome() {
   const assessments = useApi(fetchMyAssessments);
   if (!user) return null; // под RequireAuth недостижимо, но успокаивает типы
 
-  const pending = (assessments.data ?? [])
-    .filter((a) => a.status !== 'completed')
-    .map(toPendingSurvey);
+  const pendingItems = (assessments.data ?? []).filter((a) => a.status !== 'completed');
+  const pending = pendingItems.map(toPendingSurvey);
   const pendingCount = pending.length;
-  const nearestDeadlineLabel = '20 июня'; // TODO: брать минимальный deadline из реальных campaign.closes_at
+  const deadlineLabel = nearestDeadlineLabel(pendingItems);
 
   const handleNavigate = (key: string) => {
     if (key === 'home') return;
@@ -77,16 +86,14 @@ export function StudentHome() {
     >
       <h2>Добрый день, {firstNameOf(user.full_name)}</h2>
       <div className="app-main__sub">
-        {/* Класс — реальный, из /users/me. Учебный год пока мок: его нигде
-            в модели нет, кампания знает только period. */}
         {user.class_label ? `${user.class_label} класс · ` : ''}
-        {mockStudent.academicYear}
+        {user.academic_year}
       </div>
 
       {pendingCount > 0 && (
         <InfoBanner actionLabel="Заполнить" onAction={() => handleFillSurvey(pending[0].id)}>
-          Ждут заполнения {pendingCount} {pendingCount === 1 ? 'анкета' : 'анкеты'} — дедлайн{' '}
-          {nearestDeadlineLabel}
+          Ждут заполнения {pendingCount} {pendingCount === 1 ? 'анкета' : 'анкеты'}
+          {deadlineLabel ? ` — дедлайн ${deadlineLabel}` : ''}
         </InfoBanner>
       )}
 
