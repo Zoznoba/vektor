@@ -41,6 +41,12 @@ const PATHS: Record<string, string[]> = {
   plus: ['M12 5v14', 'M5 12h14'],
   search: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'M20 20l-4-4'],
   x: ['M6 6l12 12', 'M18 6L6 18'],
+  shieldLock: [
+    'M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z',
+    'M9.5 12.5h5v4h-5z',
+    'M10.3 12.5v-1.3a1.7 1.7 0 0 1 3.4 0v1.3',
+  ],
+  check: ['M5 13l4.5 4.5L19 8'],
 };
 
 export type IconName = keyof typeof PATHS;

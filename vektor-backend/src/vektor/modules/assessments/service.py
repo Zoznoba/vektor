@@ -368,7 +368,9 @@ async def get_assessment_detail(db: AsyncSession, assessment_id: int, current_us
     return {
         "id": assessment.id,
         "campaign_id": assessment.campaign_id,
+        "campaign_title": assessment.campaign.title,
         "subject": assessment.subject,
+        "rater_role": assessment.rater_role,
         "questions": questions,
     }
 

@@ -6,6 +6,7 @@
 import type { User } from './auth';
 
 export type AssessmentStatus = 'not_started' | 'in_progress' | 'completed';
+export type RaterRole = 'self' | 'peer' | 'teacher' | 'parent';
 
 export interface AssessmentListItem {
   id: number;
@@ -32,7 +33,9 @@ export interface AssessmentQuestion {
 export interface AssessmentDetail {
   id: number;
   campaign_id: number;
+  campaign_title: string;
   subject: User;
+  rater_role: RaterRole;
   questions: AssessmentQuestion[];
 }
 

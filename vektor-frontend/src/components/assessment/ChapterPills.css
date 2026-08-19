@@ -1,0 +1,47 @@
+.chapter-pills {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.chapter-pills__list {
+  display: flex;
+  gap: 6px;
+}
+
+.chapter-pills__item {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-family: var(--font-b);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chapter-pills__item:hover {
+  border-color: var(--blue);
+}
+
+.chapter-pills__item--active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.chapter-pills__item--done:not(.chapter-pills__item--active) {
+  border-color: var(--lime-ink);
+  color: var(--lime-ink);
+}
+
+.chapter-pills__summary {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-faint);
+}

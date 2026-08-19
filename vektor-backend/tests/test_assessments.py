@@ -376,13 +376,17 @@ async def _setup_scenario(client: AsyncClient, headers: dict, grade: int) -> dic
     return {"class_id": cls["id"], "s1": s1, "s2": s2, "s1_email": f"s1_{tag}@vektor.ru"}
 
 
-async def _self_assessment_id(db_session, subject_id: int) -> int:
+async def _assessment_id_for(db_session, respondent_id: int, subject_id: int) -> int:
     row = await db_session.execute(
         select(Assessment.id).where(
-            Assessment.respondent_id == subject_id, Assessment.subject_id == subject_id
+            Assessment.respondent_id == respondent_id, Assessment.subject_id == subject_id
         )
     )
     return row.scalar_one()
+
+
+async def _self_assessment_id(db_session, subject_id: int) -> int:
+    return await _assessment_id_for(db_session, subject_id, subject_id)
 
 
 async def _login(client: AsyncClient, email: str) -> dict[str, str]:
@@ -428,6 +432,8 @@ async def test_get_assessment_grade_10_sees_all_questions(
     assert response.status_code == 200
     body = response.json()
     assert body["subject"]["id"] == setup["s1"]
+    assert body["rater_role"] == "self"  # самооценка
+    assert body["campaign_title"] == "360 · июнь 2026"
     # грейд 10 → видны оба вопроса (базовый + условный), ответов ещё нет.
     assert len(body["questions"]) == 2
     assert all(q["value"] is None for q in body["questions"])
@@ -452,6 +458,30 @@ async def test_get_assessment_grade_7_hides_conditional(
     # грейд 7 → условный вопрос скрыт, остаётся только базовый.
     assert len(body["questions"]) == 1
     assert body["questions"][0]["is_conditional"] is False
+
+
+async def test_get_assessment_exposes_rater_role(client: AsyncClient, scenario, db_session) -> None:
+    """rater_role в деталях анкеты — то же, что зафиксировано при генерации
+    (Этап 5): нужно фронту решить, показывать ли баннер анонимности."""
+    cid = await _create_campaign(client, scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]], "include_peers": True},
+        headers=scenario["headers"],
+    )
+
+    s1_headers = await _login(client, "s1@vektor.ru")
+
+    peer_aid = await _assessment_id_for(db_session, scenario["ids"]["s1"], scenario["ids"]["s2"])
+    peer_detail = (await client.get(f"/assessments/{peer_aid}", headers=s1_headers)).json()
+    assert peer_detail["rater_role"] == "peer"
+
+    teacher_headers = await _login(client, "t1@vektor.ru")
+    teacher_aid = await _assessment_id_for(db_session, scenario["ids"]["t1"], scenario["ids"]["s1"])
+    teacher_detail = (
+        await client.get(f"/assessments/{teacher_aid}", headers=teacher_headers)
+    ).json()
+    assert teacher_detail["rater_role"] == "teacher"
 
 
 async def test_other_questionnaire_version_does_not_leak_into_campaign(

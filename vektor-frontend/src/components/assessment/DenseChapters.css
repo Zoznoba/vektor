@@ -1,0 +1,176 @@
+.dense-chapters {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.dense-chapters__rail {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dense-chapters__rail-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: none;
+  background: none;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-b);
+}
+
+.dense-chapters__rail-item:hover {
+  background: var(--soft);
+}
+
+.dense-chapters__rail-item--active {
+  background: var(--blue-tint);
+}
+
+.dense-chapters__rail-num {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: var(--r-pill);
+  background: var(--fog);
+  color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.dense-chapters__rail-item--active .dense-chapters__rail-num {
+  background: var(--blue);
+  color: #fff;
+}
+
+.dense-chapters__rail-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dense-chapters__rail-name {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.dense-chapters__rail-count {
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  margin-top: 1px;
+}
+
+.dense-chapters__panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.dense-chapters__panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dense-chapters__panel-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--blue-ink);
+  background: var(--blue-tint);
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+}
+
+.dense-chapters__panel-title {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.dense-chapters__panel-count {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
+.dense-chapters__questions {
+  padding: 4px 20px 16px;
+}
+
+.dense-chapters__question {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 13px 0;
+  border-bottom: 0.5px solid var(--border);
+}
+
+.dense-chapters__question:last-child {
+  border-bottom: none;
+}
+
+.dense-chapters__question-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.dense-chapters__panel-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--soft);
+  flex-wrap: wrap;
+}
+
+.dense-chapters__nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  font-family: var(--font-b);
+}
+
+.dense-chapters__nav--primary {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
+
+.dense-chapters__nav:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (max-width: 760px) {
+  .dense-chapters {
+    grid-template-columns: 1fr;
+  }
+}

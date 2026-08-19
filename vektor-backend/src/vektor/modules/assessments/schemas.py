@@ -6,7 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from vektor.modules.auth.schemas import UserOut
-from vektor.shared.enums import AssessmentStatus, CampaignStatus
+from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole
 
 
 class CampaignCreate(BaseModel):
@@ -52,7 +52,11 @@ class QuestionForAssessmentOut(BaseModel):
 class AssessmentDetailOut(BaseModel):
     id: int
     campaign_id: int
+    campaign_title: str
     subject: UserOut
+    # Нужна фронту, чтобы решить, показывать ли баннер анонимности (только
+    # при PEER) — без похода за списком анкет, где уже есть is_self.
+    rater_role: RaterRole
     questions: list[QuestionForAssessmentOut]
 
 
