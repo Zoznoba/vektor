@@ -212,6 +212,47 @@ async def test_create_campaign_requires_admin(client: AsyncClient, register_user
     assert response.status_code == 403
 
 
+async def test_list_campaigns_requires_admin(client: AsyncClient, register_user) -> None:
+    login = await client.post("/auth/login", json=register_user)
+    student_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    response = await client.get("/campaigns", headers=student_headers)
+    assert response.status_code == 403
+
+
+async def test_list_campaigns_exposes_aggregate_progress(
+    client: AsyncClient, scenario, db_session
+) -> None:
+    await _seed_two_questions(db_session)
+    cid = await _create_campaign(client, scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]]},
+        headers=scenario["headers"],
+    )
+
+    response = await client.get("/campaigns", headers=scenario["headers"])
+    assert response.status_code == 200
+    body = response.json()
+    row = next(c for c in body if c["id"] == cid)
+    assert row["status"] == "active"
+    # self(s1,s2) + parent(p1->s1) + teacher(t1->s1,s2) = 5, из сценария выше.
+    assert row["total_assessments"] == 5
+    assert row["completed_assessments"] == 0
+
+    s1_headers = await _login(client, "s1@vektor.ru")
+    self_aid = await _self_assessment_id(db_session, scenario["ids"]["s1"])
+    detail = (await client.get(f"/assessments/{self_aid}", headers=s1_headers)).json()
+    question_ids = [q["id"] for q in detail["questions"]]
+    await _submit(
+        client, self_aid, s1_headers, [{"question_id": qid, "value": 3} for qid in question_ids]
+    )
+
+    response = await client.get("/campaigns", headers=scenario["headers"])
+    row = next(c for c in response.json() if c["id"] == cid)
+    assert row["total_assessments"] == 5  # завершение анкеты не меняет общее число
+    assert row["completed_assessments"] == 1
+
+
 async def test_generate_default_no_peers(client: AsyncClient, scenario) -> None:
     cid = await _create_campaign(client, scenario["headers"])
     response = await client.post(
@@ -891,4 +932,80 @@ async def test_close_campaign_requires_admin(client: AsyncClient, scenario, regi
     login = await client.post("/auth/login", json=register_user)
     student_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     response = await client.patch(f"/campaigns/{cid}/close", headers=student_headers)
+    assert response.status_code == 403
+
+
+async def test_reopen_campaign_from_closed(client: AsyncClient, scenario) -> None:
+    cid = await _create_campaign(client, scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]]},
+        headers=scenario["headers"],
+    )
+    await client.patch(f"/campaigns/{cid}/close", headers=scenario["headers"])
+
+    response = await client.patch(f"/campaigns/{cid}/reopen", headers=scenario["headers"])
+    assert response.status_code == 200
+    assert response.json()["status"] == "active"
+
+
+async def test_reopen_campaign_reallows_answers(client: AsyncClient, scenario, db_session) -> None:
+    await _seed_two_questions(db_session)
+    cid = await _create_campaign(client, scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]]},
+        headers=scenario["headers"],
+    )
+    await client.patch(f"/campaigns/{cid}/close", headers=scenario["headers"])
+
+    s1_headers = await _login(client, "s1@vektor.ru")
+    self_aid = await _self_assessment_id(db_session, scenario["ids"]["s1"])
+
+    blocked = await _submit(client, self_aid, s1_headers, [{"question_id": 1, "value": 3}])
+    assert blocked.status_code == 409
+
+    await client.patch(f"/campaigns/{cid}/reopen", headers=scenario["headers"])
+    detail = (await client.get(f"/assessments/{self_aid}", headers=s1_headers)).json()
+    question_ids = [q["id"] for q in detail["questions"]]
+    allowed = await _submit(
+        client, self_aid, s1_headers, [{"question_id": qid, "value": 3} for qid in question_ids]
+    )
+    assert allowed.status_code == 200
+
+
+async def test_reopen_campaign_rejects_draft(client: AsyncClient, admin_headers) -> None:
+    cid = await _create_campaign(client, admin_headers)  # ещё draft
+    response = await client.patch(f"/campaigns/{cid}/reopen", headers=admin_headers)
+    assert response.status_code == 409
+
+
+async def test_reopen_campaign_rejects_active(client: AsyncClient, scenario) -> None:
+    cid = await _create_campaign(client, scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]]},
+        headers=scenario["headers"],
+    )
+    response = await client.patch(f"/campaigns/{cid}/reopen", headers=scenario["headers"])
+    assert response.status_code == 409
+
+
+async def test_reopen_campaign_unknown_404(client: AsyncClient, admin_headers) -> None:
+    response = await client.patch("/campaigns/99999/reopen", headers=admin_headers)
+    assert response.status_code == 404
+
+
+async def test_reopen_campaign_requires_admin(client: AsyncClient, scenario, register_user) -> None:
+    cid = await _create_campaign(client, scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]]},
+        headers=scenario["headers"],
+    )
+    await client.patch(f"/campaigns/{cid}/close", headers=scenario["headers"])
+
+    login = await client.post("/auth/login", json=register_user)
+    student_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    response = await client.patch(f"/campaigns/{cid}/reopen", headers=student_headers)
     assert response.status_code == 403

@@ -28,6 +28,18 @@ class CampaignOut(BaseModel):
     created_at: datetime
 
 
+class CampaignListItemOut(BaseModel):
+    id: int
+    title: str
+    period: str
+    status: CampaignStatus
+    opens_at: datetime | None
+    closes_at: datetime | None
+    created_at: datetime
+    total_assessments: int
+    completed_assessments: int
+
+
 class GenerateIn(BaseModel):
     class_ids: list[int] = Field(min_length=1)
     # Оценивают ли одноклассники друг друга. По умолчанию нет — только

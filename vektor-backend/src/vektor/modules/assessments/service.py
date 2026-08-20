@@ -6,7 +6,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -40,6 +40,14 @@ class NotAssessmentOwner(DomainError):
     status_code = 403
     code = "not_assessment_owner"
     message = "Пользователь не является владельцем анкеты"
+
+
+class CampaignNotClosed(DomainError):
+    """Возобновить можно только завершённую кампанию."""
+
+    status_code = 409
+    code = "campaign_not_closed"
+    message = "Возобновить можно только завершённую кампанию"
 
 
 class CampaignNotActive(DomainError):
@@ -105,6 +113,44 @@ async def create_campaign(
     return campaign
 
 
+async def list_campaigns(db: AsyncSession) -> list[dict]:
+    """Все кампании школы с укрупнённым прогрессом — под админский экран
+    «Кампании 360°» (список карточек сверху).
+
+    Прогресс — агрегат по ВСЕЙ кампании (total/completed анкет), не по
+    классам: разбивка по классам уже есть отдельно в
+    results.get_campaign_coverage, дублировать её здесь незачем. Одним
+    запросом на подсчёт, а не N+1 на кампанию — кампаний немного, но
+    привычка та же, что и у coverage.
+    """
+    campaigns = (
+        (await db.execute(select(Campaign).order_by(Campaign.created_at.desc()))).scalars().all()
+    )
+
+    completed = func.count().filter(Assessment.status == AssessmentStatus.COMPLETED)
+    count_rows = await db.execute(
+        select(
+            Assessment.campaign_id, func.count().label("total"), completed.label("completed")
+        ).group_by(Assessment.campaign_id)
+    )
+    counts = {row.campaign_id: (row.total, row.completed) for row in count_rows}
+
+    return [
+        {
+            "id": c.id,
+            "title": c.title,
+            "period": c.period,
+            "status": c.status,
+            "opens_at": c.opens_at,
+            "closes_at": c.closes_at,
+            "created_at": c.created_at,
+            "total_assessments": counts.get(c.id, (0, 0))[0],
+            "completed_assessments": counts.get(c.id, (0, 0))[1],
+        }
+        for c in campaigns
+    ]
+
+
 async def close_campaign(db: AsyncSession, campaign_id: int) -> Campaign:
     """Закрыть кампанию: active → closed. Только из active — черновик (draft)
     закрывать нечего (анкеты ещё не сгенерированы), а уже закрытую второй раз
@@ -122,6 +168,26 @@ async def close_campaign(db: AsyncSession, campaign_id: int) -> Campaign:
         raise CampaignNotActive("Закрыть можно только активную кампанию")
 
     campaign.status = CampaignStatus.CLOSED
+    await db.commit()
+    await db.refresh(campaign)
+    return campaign
+
+
+async def reopen_campaign(db: AsyncSession, campaign_id: int) -> Campaign:
+    """Возобновить кампанию: closed → active. Симметрично close_campaign,
+    без дополнительных условий — админ сам решает, когда это уместно (см.
+    обсуждение при добавлении: единственное место, реально завязанное на
+    статус, — submit_answers, а results/dynamics считают предыдущий период
+    по Campaign.period, не по статусу, так что переоткрытие ничего не рвёт).
+    """
+
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise CampaignNotFound()
+    if campaign.status != CampaignStatus.CLOSED:
+        raise CampaignNotClosed()
+
+    campaign.status = CampaignStatus.ACTIVE
     await db.commit()
     await db.refresh(campaign)
     return campaign

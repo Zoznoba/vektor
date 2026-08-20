@@ -1,0 +1,195 @@
+/* Стили экрана «Кампании 360°» (AdminCampaignsPage). */
+
+.campaign-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.campaign-card {
+  font-family: var(--font-b);
+  text-align: left;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  background: var(--surface);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.campaign-card--selected {
+  border-color: var(--blue);
+  background: var(--blue-tint);
+}
+
+.campaign-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.campaign-card__period {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.campaign-card__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.campaign-card__bar {
+  margin-top: 5px;
+}
+
+.campaign-card__progress {
+  font-size: 10.5px;
+  color: var(--ink-faint);
+}
+
+/* --- детали выбранной кампании: покрытие + генерация --- */
+.campaign-detail {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .campaign-detail {
+    grid-template-columns: 1fr;
+  }
+}
+
+.campaign-coverage__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.campaign-coverage__total {
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
+.coverage-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.coverage-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--border);
+}
+
+.coverage-row:first-child {
+  border-top: none;
+}
+
+.coverage-row__label {
+  width: 60px;
+  flex-shrink: 0;
+  font-family: var(--font-d);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.coverage-row__bar {
+  flex: 1;
+}
+
+.coverage-row__counts {
+  width: 90px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
+.coverage-row__pct {
+  width: 40px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* --- панель «кто кого оценивает» --- */
+.rater-rules {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 14px;
+}
+
+.rater-rule {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.rater-rule:first-child {
+  border-top: none;
+}
+
+.rater-rule--toggle {
+  cursor: pointer;
+}
+
+.rater-rule__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.rater-rule__label {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.rater-rule__note {
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-top: 1px;
+}
+
+.rater-rule__badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.class-picker {
+  margin-bottom: 14px;
+}
+
+.class-picker__label {
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 7px;
+}
+
+.campaign-generate__result {
+  font-size: 12px;
+  color: var(--lime-ink);
+  margin-bottom: 10px;
+}
+
+.campaign-generate__hint {
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-top: 9px;
+  line-height: 1.55;
+}

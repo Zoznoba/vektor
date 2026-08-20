@@ -20,14 +20,14 @@ export const STUDENT_NAV_ITEMS: NavItem[] = [
 
 /**
  * Сайдбар администратора — 6 пунктов из концепта (экран «Сводка»).
- * «360-тесты», «Импорт данных» и «Настройки» появятся после этапов 4–6
- * бэкенда — до тех пор пункты видимы, но ведут на заглушку.
+ * «Импорт данных» и «Настройки» появятся после Этапа 6 бэкенда — до тех
+ * пор пункты видимы, но ведут на заглушку.
  */
 export const ADMIN_NAV_ITEMS: NavItem[] = [
   { key: 'dashboard', label: 'Сводка', icon: 'dashboard' },
   { key: 'users', label: 'Пользователи', icon: 'users' },
   { key: 'classes', label: 'Классы', icon: 'school' },
-  { key: 'tests', label: '360-тесты', icon: 'radar' },
+  { key: 'tests', label: 'Диагностика', icon: 'radar' },
   { key: 'import', label: 'Импорт данных', icon: 'upload' },
   { key: 'settings', label: 'Настройки', icon: 'settings' },
 ];
@@ -37,4 +37,5 @@ export const ADMIN_ROUTES: Partial<Record<string, string>> = {
   dashboard: '/admin',
   users: '/admin/users',
   classes: '/admin/classes',
+  tests: '/admin/campaigns',
 };

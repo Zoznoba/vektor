@@ -7,6 +7,7 @@ import { AssessmentFillPage } from './pages/student/AssessmentFillPage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminUsersPage } from './pages/admin/AdminUsersPage';
 import { AdminClassesPage } from './pages/admin/AdminClassesPage';
+import { AdminCampaignsPage } from './pages/admin/AdminCampaignsPage';
 
 /** Уже залогиненного пользователя с /login уводим в его кабинет. */
 function LoginRoute() {
@@ -61,6 +62,14 @@ function App() {
               element={
                 <RequireAdmin>
                   <AdminClassesPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/admin/campaigns"
+              element={
+                <RequireAdmin>
+                  <AdminCampaignsPage />
                 </RequireAdmin>
               }
             />

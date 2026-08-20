@@ -7,6 +7,7 @@ from vektor.modules.assessments.schemas import (
     AssessmentDetailOut,
     AssessmentListItemOut,
     CampaignCreate,
+    CampaignListItemOut,
     CampaignOut,
     GenerateIn,
     GenerateResult,
@@ -40,6 +41,21 @@ async def create_campaign(
         db, data.title, data.period, data.opens_at, data.closes_at
     )
     return campaign
+
+
+@router.get(
+    "",
+    response_model=list[CampaignListItemOut],
+    summary="Список кампаний",
+    description="Все кампании школы с укрупнённым прогрессом (всего/заполнено "
+    "анкет по кампании целиком). Разбивка по классам — отдельным эндпоинтом, "
+    "/results/campaigns/{id}/coverage. Только админ.",
+)
+async def list_campaigns(
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_role(UserRole.ADMIN)),
+) -> list[CampaignListItemOut]:
+    return await service.list_campaigns(db)
 
 
 @router.post(
@@ -77,6 +93,23 @@ async def close_campaign(
     _admin=Depends(require_role(UserRole.ADMIN)),
 ) -> CampaignOut:
     campaign = await service.close_campaign(db, campaign_id)
+
+    return campaign
+
+
+@router.patch(
+    "/{campaign_id}/reopen",
+    response_model=CampaignOut,
+    summary="Возобновить кампанию",
+    description="Перевести завершённую кампанию обратно в `active`: приём "
+    "ответов снова открыт. Без дополнительных условий. Только админ.",
+)
+async def reopen_campaign(
+    campaign_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_role(UserRole.ADMIN)),
+) -> CampaignOut:
+    campaign = await service.reopen_campaign(db, campaign_id)
 
     return campaign
 
