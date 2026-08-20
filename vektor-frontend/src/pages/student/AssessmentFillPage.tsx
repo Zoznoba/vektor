@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AppShell } from '../../components/layout/AppShell';
-import { STUDENT_NAV_ITEMS } from '../../data/navigation';
+import { RoleShell } from '../../components/layout/RoleShell';
 import { Panel } from '../../components/ui/Panel';
 import { Icon } from '../../components/icons/Icon';
 import { ChapterPills } from '../../components/assessment/ChapterPills';
 import { FocusQuestion } from '../../components/assessment/FocusQuestion';
 import { DenseChapters } from '../../components/assessment/DenseChapters';
 import { useAuth } from '../../auth/AuthContext';
-import { ROLE_LABELS } from '../../types/auth';
 import { ApiError } from '../../api/client';
 import { fetchAssessment, submitAnswers } from '../../api/assessments';
 import { fetchCompetencies } from '../../api/competencies';
@@ -32,7 +30,7 @@ type ViewMode = 'focus' | 'dense';
  * закрывающий анкету, сам переводит статус в completed и уводит на дашборд.
  */
 export function AssessmentFillPage() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const assessmentId = Number(id);
@@ -92,7 +90,7 @@ export function AssessmentFillPage() {
     setPendingSaves((n) => n + 1);
     submitAnswers(assessmentId, [{ question_id: questionId, value }])
       .then((result) => {
-        if (result.status === 'completed') navigate('/');
+        if (result.status === 'completed') navigate('/surveys');
       })
       .catch((err: unknown) => {
         setSaveError(err instanceof ApiError ? err.message : 'Не удалось сохранить ответ');
@@ -120,16 +118,14 @@ export function AssessmentFillPage() {
     detail?.rater_role === 'self' ? 'Самооценка' : `Оценка: ${detail?.subject.full_name ?? ''}`;
 
   return (
-    <AppShell
-      navItems={STUDENT_NAV_ITEMS}
-      activeNavKey="surveys"
-      userFullName={user.full_name}
-      userRoleLabel={ROLE_LABELS[user.role]}
-      onLogout={logout}
-    >
-      <button type="button" className="assessment-fill__back" onClick={() => navigate('/')}>
+    <RoleShell activeNavKey="surveys">
+      <button
+        type="button"
+        className="assessment-fill__back"
+        onClick={() => navigate('/surveys')}
+      >
         <Icon name="arrowLeft" size={16} />
-        На главную
+        К анкетам
       </button>
 
       {loading ? (
@@ -241,6 +237,6 @@ export function AssessmentFillPage() {
           <div className="app-main__sub">Нет вопросов, доступных для заполнения</div>
         </Panel>
       )}
-    </AppShell>
+    </RoleShell>
   );
 }

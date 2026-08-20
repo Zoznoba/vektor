@@ -16,6 +16,13 @@ export interface AssessmentListItem {
   campaign_closes_at: string | null;
   subject: User;
   is_self: boolean;
+  /**
+   * Роль респондента по отношению к субъекту, зафиксированная при генерации
+   * анкеты. Именно по ней собирается подпись карточки: учитель оценивает
+   * ученика, а не одноклассника. Роль залогиненного пользователя тут не
+   * годится — учитель может оценивать и как родитель своего ребёнка.
+   */
+  rater_role: RaterRole;
   status: AssessmentStatus;
   answered_questions: number;
   total_questions: number;

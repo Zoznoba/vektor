@@ -4,6 +4,9 @@ import { RequireAuth } from './auth/RequireAuth';
 import { LoginPage } from './pages/LoginPage';
 import { StudentHome } from './pages/student/StudentHome';
 import { AssessmentFillPage } from './pages/student/AssessmentFillPage';
+import { SurveysPage } from './pages/surveys/SurveysPage';
+import { TeacherClassesPage } from './pages/teacher/TeacherClassesPage';
+import { TeacherStudentPage } from './pages/teacher/TeacherStudentPage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminUsersPage } from './pages/admin/AdminUsersPage';
 import { AdminClassesPage } from './pages/admin/AdminClassesPage';
@@ -17,11 +20,17 @@ function LoginRoute() {
   return <LoginPage />;
 }
 
-/** Корень: разводим по кабинетам согласно роли. */
+/**
+ * Корень: разводим по кабинетам согласно роли.
+ *
+ * У учителя «Главной» нет — стартовый экран «Мои классы» (так в прототипе, и
+ * дашборд с личными результатами ему бессмысленен: учитель не субъект оценки).
+ * Родитель пока попадает на ученический дашборд — его кабинет не сделан.
+ */
 function HomeRedirect() {
   const { user } = useAuth();
   if (user?.role === 'admin') return <Navigate to="/admin" replace />;
-  // Кабинеты учителя и родителя пока не реализованы — все видят ученический.
+  if (user?.role === 'teacher') return <Navigate to="/teacher/classes" replace />;
   return <StudentHome />;
 }
 
@@ -29,6 +38,13 @@ function HomeRedirect() {
 function RequireAdmin({ children }: { children: React.ReactElement }) {
   const { user } = useAuth();
   if (user?.role !== 'admin') return <Navigate to="/" replace />;
+  return children;
+}
+
+/** Экраны учителя: учителю и админу. Бэкенд всё равно проверяет права сам. */
+function RequireTeacher({ children }: { children: React.ReactElement }) {
+  const { user } = useAuth();
+  if (user?.role !== 'teacher' && user?.role !== 'admin') return <Navigate to="/" replace />;
   return children;
 }
 
@@ -40,7 +56,32 @@ function App() {
           <Route path="/login" element={<LoginRoute />} />
           <Route element={<RequireAuth />}>
             <Route path="/" element={<HomeRedirect />} />
+            <Route path="/surveys" element={<SurveysPage />} />
             <Route path="/assessments/:id" element={<AssessmentFillPage />} />
+            <Route
+              path="/teacher/classes"
+              element={
+                <RequireTeacher>
+                  <TeacherClassesPage />
+                </RequireTeacher>
+              }
+            />
+            <Route
+              path="/teacher/students"
+              element={
+                <RequireTeacher>
+                  <TeacherStudentPage />
+                </RequireTeacher>
+              }
+            />
+            <Route
+              path="/teacher/students/:id"
+              element={
+                <RequireTeacher>
+                  <TeacherStudentPage />
+                </RequireTeacher>
+              }
+            />
             <Route
               path="/admin"
               element={

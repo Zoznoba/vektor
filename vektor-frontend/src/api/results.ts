@@ -1,5 +1,5 @@
 import { apiRequest } from './client';
-import type { SubjectResults } from '../types/results';
+import type { ClassResults, ClassRoster, SubjectResults } from '../types/results';
 
 /**
  * Результаты субъекта по критериям.
@@ -17,4 +17,20 @@ export function fetchSubjectResults(
 ): Promise<SubjectResults> {
   const query = campaignId !== undefined ? `?campaign_id=${campaignId}` : '';
   return apiRequest<SubjectResults>(`/results/${subjectId}${query}`);
+}
+
+/**
+ * Средний профиль класса, сравнение со школой и зоны роста класса.
+ * Доступно админу и учителю ЭТОГО класса — остальным 403.
+ * Без campaignId бэкенд берёт последнюю кампанию класса; если кампаний нет — 404.
+ */
+export function fetchClassResults(classId: number, campaignId?: number): Promise<ClassResults> {
+  const query = campaignId !== undefined ? `?campaign_id=${campaignId}` : '';
+  return apiRequest<ClassResults>(`/results/class/${classId}${query}`);
+}
+
+/** Состав класса с прогрессом диагностики: строка на ученика + метрики шапки. */
+export function fetchClassRoster(classId: number, campaignId?: number): Promise<ClassRoster> {
+  const query = campaignId !== undefined ? `?campaign_id=${campaignId}` : '';
+  return apiRequest<ClassRoster>(`/results/class/${classId}/roster${query}`);
 }

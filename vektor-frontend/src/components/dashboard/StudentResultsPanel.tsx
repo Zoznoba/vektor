@@ -6,6 +6,8 @@ import { fetchSubjectResults } from '../../api/results';
 
 interface StudentResultsPanelProps {
   subjectId: number;
+  /** «Мои результаты» на дашборде ученика, ФИО — на экране учителя. */
+  title?: string;
 }
 
 /**
@@ -15,7 +17,10 @@ interface StudentResultsPanelProps {
  * только когда subjectId уже известен, без non-null assertion на user внутри
  * зависимостей useCallback.
  */
-export function StudentResultsPanel({ subjectId }: StudentResultsPanelProps) {
+export function StudentResultsPanel({
+  subjectId,
+  title = 'Мои результаты',
+}: StudentResultsPanelProps) {
   // useApi требует стабильную ссылку — иначе effect уходит в цикл запросов.
   const load = useCallback(() => fetchSubjectResults(subjectId), [subjectId]);
   const results = useApi(load);
@@ -26,7 +31,7 @@ export function StudentResultsPanel({ subjectId }: StudentResultsPanelProps) {
   const scored = (results.data?.competencies ?? []).filter((c) => c.overall_avg !== null);
 
   return (
-    <Panel title="Мои результаты">
+    <Panel title={title}>
       {results.loading ? (
         <div className="app-main__sub">Загрузка…</div>
       ) : results.error ? (

@@ -47,3 +47,67 @@ export interface SubjectResults {
   competencies: CompetencyScore[];
   growth_zones: GrowthZone[];
 }
+
+/** Профиль класса: GET /results/class/{id}. */
+export interface CompetencyClassScore {
+  competency_id: number;
+  code: string;
+  name: string;
+  class_avg: number | null;
+  /**
+   * Среднее по школе за тот же ПЕРИОД, а не по этой кампании: кампанию заводят
+   * на каждый класс отдельно, поэтому внутри одной кампании «школа» выродилась
+   * бы в этот же класс и сравнение всегда давало бы ноль.
+   */
+  school_avg: number | null;
+}
+
+export interface ClassGrowthZone {
+  competency_id: number;
+  code: string;
+  name: string;
+  /** У скольких учеников критерий попал в ЛИЧНЫЕ зоны роста. */
+  students_affected: number;
+  class_avg: number | null;
+}
+
+export interface ClassResults {
+  class_id: number;
+  class_label: string;
+  campaign_id: number;
+  campaign_title: string;
+  campaign_period: string;
+  students_with_results: number;
+  class_average: number | null;
+  school_average: number | null;
+  competencies: CompetencyClassScore[];
+  growth_zones: ClassGrowthZone[];
+}
+
+/** Состав класса с прогрессом: GET /results/class/{id}/roster. */
+export interface ClassRosterRow {
+  subject: { id: number; full_name: string };
+  /** null — анкета не выдана вовсе; это не то же самое, что not_started. */
+  self_status: 'not_started' | 'in_progress' | 'completed' | null;
+  assessments_total: number;
+  assessments_completed: number;
+  overall_avg: number | null;
+  previous_overall_avg: number | null;
+  /** null — прошлого периода нет либо нет общего ядра критериев. */
+  delta: number | null;
+}
+
+export interface ClassRoster {
+  class_id: number;
+  class_label: string;
+  campaign_id: number;
+  campaign_title: string;
+  campaign_period: string;
+  students_count: number;
+  assessments_total: number;
+  assessments_completed: number;
+  coverage_percent: number;
+  class_average: number | null;
+  average_delta: number | null;
+  students: ClassRosterRow[];
+}
