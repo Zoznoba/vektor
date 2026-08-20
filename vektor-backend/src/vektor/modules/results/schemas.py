@@ -4,7 +4,7 @@
 from pydantic import BaseModel
 
 from vektor.modules.auth.schemas import UserOut
-from vektor.shared.enums import CampaignStatus
+from vektor.shared.enums import AssessmentStatus, CampaignStatus
 
 
 class CompetencyScoreOut(BaseModel):
@@ -150,3 +150,50 @@ class CampaignCoverageOut(BaseModel):
     completed: int
     percent: float
     classes: list[ClassCoverageRowOut]
+
+
+# ---------- Состав класса с прогрессом (экран учителя «Мои классы») ----------
+
+
+class ClassRosterRowOut(BaseModel):
+    subject: UserOut
+
+    # None — самооценки в кампании нет вовсе (анкету не сгенерировали).
+    # Отличается от not_started: «не выдана» и «выдана, но не начата» — разные
+    # состояния, и для учителя разные действия.
+    self_status: AssessmentStatus | None
+    # «Собрано»: сколько анкет ПРО этого ученика завершено из выданных.
+    assessments_total: int
+    assessments_completed: int
+
+    overall_avg: float | None
+    # Итог прошлого периода и дельта — по ОБЩЕМУ ЯДРУ критериев, как в
+    # DynamicsOut.core_average: иначе появление возрастного критерия читалось
+    # бы как рост ученика.
+    previous_overall_avg: float | None
+    delta: float | None
+    # Сколько критериев попало в ЛИЧНЫЕ зоны роста ученика — под фильтр «есть
+    # зоны роста» на экране учителя. Считаем той же pick_growth_zones, что и
+    # везде: порог по среднему баллу дал бы другой список, и фильтр разошёлся
+    # бы с тем, что ученик видит у себя в результатах.
+    growth_zone_count: int
+
+
+class ClassRosterOut(BaseModel):
+    class_id: int
+    class_label: str
+    campaign_id: int
+    campaign_title: str
+    campaign_period: str
+
+    # Метрики шапки экрана. Считаются здесь, а не на фронте: покрытие берётся
+    # по снапшоту subject_class_id, и второе место подсчёта разошлось бы с
+    # админским /campaigns/{id}/coverage.
+    students_count: int
+    assessments_total: int
+    assessments_completed: int
+    coverage_percent: float
+    class_average: float | None
+    average_delta: float | None
+
+    students: list[ClassRosterRowOut]

@@ -1153,3 +1153,103 @@ async def test_coverage_keeps_assessments_without_class_snapshot(
 async def test_coverage_unknown_campaign_404(client: AsyncClient, admin_headers) -> None:
     response = await client.get("/results/campaigns/99999/coverage", headers=admin_headers)
     assert response.status_code == 404
+
+
+# ---------- Состав класса с прогрессом (экран учителя «Мои классы») ----------
+
+
+async def test_roster_visible_to_teacher_and_admin(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    teacher_headers = await _login(client, "ct1@vektor.ru")
+    for headers in (teacher_headers, admin_headers):
+        response = await client.get(
+            f"/results/class/{class_scenario['class_id']}/roster", headers=headers
+        )
+        assert response.status_code == 200
+        assert response.json()["class_label"] == "7-к"
+
+
+async def test_roster_forbidden_for_student_and_parent(client: AsyncClient, class_scenario) -> None:
+    # Те же права, что у профиля класса: список одноклассников с баллами —
+    # не то, что показывают ученику или родителю.
+    for email in ("cs1@vektor.ru", "cp1@vektor.ru"):
+        headers = await _login(client, email)
+        response = await client.get(
+            f"/results/class/{class_scenario['class_id']}/roster", headers=headers
+        )
+        assert response.status_code == 403, email
+
+
+async def test_roster_rows_carry_progress_and_scores(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    response = await client.get(
+        f"/results/class/{class_scenario['class_id']}/roster", headers=admin_headers
+    )
+    body = response.json()
+    rows = {row["subject"]["id"]: row for row in body["students"]}
+
+    s1, s2 = class_scenario["ids"]["s1"], class_scenario["ids"]["s2"]
+    assert body["students_count"] == 2
+    # Выдано анкет: про s1 — три (сам, учитель, родитель), про s2 — две
+    # (родителя у него нет). Завершены только самооценки: учитель и родитель
+    # ответили на один вопрос из двух, их анкеты остались in_progress.
+    # total и completed обязаны расходиться — иначе экран учителя показывал бы
+    # 100% там, где три анкеты из пяти не дозаполнены.
+    assert rows[s1]["assessments_total"] == 3
+    assert rows[s1]["assessments_completed"] == 1
+    assert rows[s2]["assessments_total"] == 2
+    assert rows[s2]["assessments_completed"] == 1
+    assert body["assessments_total"] == 5
+    assert body["assessments_completed"] == 2
+    assert body["coverage_percent"] == 40.0
+    assert rows[s1]["self_status"] == "completed"
+
+    # Итог = среднее по критериям ученика: у s1 (2.0 + 5.0) / 2, у s2 (4.0 + 5.0) / 2.
+    assert rows[s1]["overall_avg"] == 3.5
+    assert rows[s2]["overall_avg"] == 4.5
+
+    # Прошлого периода в сценарии нет — дельты быть не должно, а не 0.0:
+    # ноль читался бы как «роста не случилось».
+    assert rows[s1]["delta"] is None
+    assert body["average_delta"] is None
+
+    # Зоны роста считаются той же функцией, что и в личных результатах: у s1
+    # оба критерия с баллом, значит оба и попадают в зоны (их всего два).
+    assert rows[s1]["growth_zone_count"] == 2
+
+
+async def test_roster_includes_current_student_without_assessments(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    """Ученик, добавленный в класс после генерации, обязан быть в списке.
+
+    Иначе учитель просто не увидит, что диагностика по нему не выдана:
+    строка не появится вовсе, и отсутствие прочитается как «всё в порядке».
+    """
+    s3 = await _register(client, "cs3@vektor.ru", "student")
+    await client.post(
+        f"/classes/{class_scenario['class_id']}/students",
+        json={"student_ids": [s3]},
+        headers=admin_headers,
+    )
+
+    response = await client.get(
+        f"/results/class/{class_scenario['class_id']}/roster", headers=admin_headers
+    )
+    body = response.json()
+    rows = {row["subject"]["id"]: row for row in body["students"]}
+
+    assert s3 in rows
+    # None, а не not_started: анкета не выдана — это другое состояние, чем
+    # выдана и не начата, и действие учителя тут другое.
+    assert rows[s3]["self_status"] is None
+    assert rows[s3]["assessments_total"] == 0
+    assert rows[s3]["overall_avg"] is None
+    assert body["students_count"] == 3
+
+
+async def test_roster_unknown_class_404(client: AsyncClient, admin_headers) -> None:
+    response = await client.get("/results/class/99999/roster", headers=admin_headers)
+    assert response.status_code == 404

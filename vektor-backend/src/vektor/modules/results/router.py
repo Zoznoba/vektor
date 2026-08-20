@@ -7,6 +7,7 @@ from vektor.modules.results import service
 from vektor.modules.results.schemas import (
     CampaignCoverageOut,
     ClassResultsOut,
+    ClassRosterOut,
     DynamicsOut,
     ResultsOut,
     SubjectCampaignOut,
@@ -46,6 +47,31 @@ async def get_class_results(
                 detail="У класса пока нет результатов",
             )
     return await service.get_class_results(db, class_id, campaign_id, user)
+
+
+@router.get(
+    "/class/{class_id}/roster",
+    response_model=ClassRosterOut,
+    summary="Состав класса с прогрессом диагностики",
+    description="Строка на ученика: статус самооценки, сколько анкет про него "
+    "завершено, итоговый балл и динамика к прошлому периоду; плюс метрики "
+    "шапки экрана. Без campaign_id берётся последняя кампания класса. "
+    "Доступно админу и учителю этого класса.",
+)
+async def get_class_roster(
+    class_id: int,
+    campaign_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ClassRosterOut:
+    if campaign_id is None:
+        campaign_id = await service.latest_campaign_id_for_class(db, class_id)
+        if campaign_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="У класса пока нет результатов",
+            )
+    return await service.get_class_roster(db, class_id, campaign_id, user)
 
 
 @router.get(

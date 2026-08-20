@@ -874,3 +874,184 @@ async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
         "percent": round(completed_all / total_all * 100, 1) if total_all else 0.0,
         "classes": classes_out,
     }
+
+
+# ---------- Состав класса с прогрессом (экран учителя «Мои классы») ----------
+
+
+async def _previous_campaign_by_subject(
+    db: AsyncSession, subject_ids: set[int], period: str
+) -> dict[int, int]:
+    """subject_id → id его предыдущей кампании, одним запросом на весь класс.
+
+    Батч-версия previous_campaign_id_for_subject: на экране учителя строк
+    столько же, сколько учеников, и запрос на каждого дал бы N+1.
+
+    Предыдущий период ищем ПО СУБЪЕКТУ, а не по классу: при переводе класс
+    меняется (нынешний 8-1 в прошлом году был 7-1), и поиск по class_id не
+    нашёл бы прошлогоднюю кампанию вовсе.
+    """
+    if not subject_ids:
+        return {}
+
+    rows = await db.execute(
+        # Campaign.period и Campaign.id обязаны быть в SELECT: под DISTINCT
+        # Postgres не принимает ORDER BY по выражению вне списка выборки.
+        select(Assessment.subject_id, Assessment.campaign_id, Campaign.period, Campaign.id)
+        .join(Campaign, Campaign.id == Assessment.campaign_id)
+        .where(Assessment.subject_id.in_(subject_ids), Campaign.period < period)
+        .distinct()
+        .order_by(Campaign.period.desc(), Campaign.id.desc())
+    )
+
+    previous: dict[int, int] = {}
+    # Порядок запроса — от свежего к старому, поэтому первая встреченная
+    # кампания субъекта и есть предыдущая; остальные пропускаем.
+    for subject_id, campaign_id, _period, _id in rows.all():
+        previous.setdefault(subject_id, campaign_id)
+    return previous
+
+
+async def _assessment_progress_by_subject(
+    db: AsyncSession, campaign_id: int, subject_ids: set[int]
+) -> dict[int, dict]:
+    """subject_id → {total, completed, self_status} по анкетам ПРО ученика.
+
+    Самооценку выделяем по respondent_id == subject_id, а не по rater_role:
+    оба варианта равнозначны по данным, но сравнение id не зависит от того,
+    проставлена ли роль в архивных анкетах.
+    """
+    if not subject_ids:
+        return {}
+
+    rows = await db.execute(
+        select(
+            Assessment.subject_id,
+            Assessment.respondent_id,
+            Assessment.status,
+        ).where(
+            Assessment.campaign_id == campaign_id,
+            Assessment.subject_id.in_(subject_ids),
+        )
+    )
+
+    progress: dict[int, dict] = {
+        subject_id: {"total": 0, "completed": 0, "self_status": None} for subject_id in subject_ids
+    }
+    for subject_id, respondent_id, status in rows.all():
+        row = progress[subject_id]
+        row["total"] += 1
+        if status == AssessmentStatus.COMPLETED:
+            row["completed"] += 1
+        if respondent_id == subject_id:
+            row["self_status"] = status
+    return progress
+
+
+async def get_class_roster(
+    db: AsyncSession, class_id: int, campaign_id: int, current_user: User
+) -> dict:
+    """Состав класса с прогрессом диагностики: строка на ученика (статус
+    самооценки, собрано анкет, итоговый балл, динамика) плюс метрики шапки.
+
+    Права те же, что у профиля класса: admin или учитель ЭТОГО класса.
+    """
+    campaign = await db.get(Campaign, campaign_id)
+    if campaign is None:
+        raise CampaignNotFound()
+
+    class_query = await db.execute(
+        select(SchoolClass)
+        .where(SchoolClass.id == class_id)
+        .options(selectinload(SchoolClass.teachers), selectinload(SchoolClass.students))
+    )
+    school_class = class_query.scalar_one_or_none()
+    if school_class is None:
+        raise SchoolClassNotFound()
+
+    teacher_ids = {t.id for t in school_class.teachers}
+    if not can_view_class_results(current_user.id, current_user.role, teacher_ids):
+        raise NotAllowedToViewResults()
+
+    # Состав берём по СНАПШОТУ анкет кампании, а не по текущему списку класса:
+    # на прошлогоднюю кампанию должны попасть те, кто учился тогда, включая
+    # выбывших. Текущих учеников без анкет добавляем отдельно — учитель должен
+    # видеть, что диагностика по ним не выдана.
+    class_map = await _subject_class_map(db, campaign_id)
+    subject_ids = {sid for sid, cid in class_map.items() if cid == class_id}
+    subject_ids |= {student.id for student in school_class.students}
+
+    progress = await _assessment_progress_by_subject(db, campaign_id, subject_ids)
+
+    previous_campaign_ids = await _previous_campaign_by_subject(db, subject_ids, campaign.period)
+    profiles = await _profiles_by_campaign_and_subject(
+        db, {campaign_id} | set(previous_campaign_ids.values())
+    )
+
+    users_result = await db.execute(select(User).where(User.id.in_(subject_ids)))
+    users = {user.id: user for user in users_result.scalars()}
+
+    rows_out = []
+    deltas: list[float] = []
+    averages: list[float] = []
+    for subject_id in sorted(subject_ids, key=lambda sid: users[sid].full_name):
+        current_profile = profiles.get((campaign_id, subject_id), {})
+        previous_id = previous_campaign_ids.get(subject_id)
+        previous_profile = profiles.get((previous_id, subject_id), {}) if previous_id else {}
+
+        # Итог и дельта — по общему ядру критериев обоих периодов (как в
+        # get_subject_dynamics): иначе появление возрастного критерия в 9
+        # классе прочиталось бы как рост ученика.
+        core = shared_competencies(current_profile, previous_profile)
+        current_avg = (
+            sum(current_profile.values()) / len(current_profile) if current_profile else None
+        )
+        previous_avg = core_average(previous_profile, core) if core else None
+        current_core_avg = core_average(current_profile, core) if core else None
+        delta = (
+            round(current_core_avg - previous_avg, 3)
+            if current_core_avg is not None and previous_avg is not None
+            else None
+        )
+
+        if current_avg is not None:
+            averages.append(current_avg)
+        if delta is not None:
+            deltas.append(delta)
+
+        row = progress[subject_id]
+        rows_out.append(
+            {
+                "subject": users[subject_id],
+                "self_status": row["self_status"],
+                "assessments_total": row["total"],
+                "assessments_completed": row["completed"],
+                "overall_avg": round(current_avg, 3) if current_avg is not None else None,
+                "growth_zone_count": len(pick_growth_zones(current_profile)),
+                "previous_overall_avg": (
+                    round(previous_avg, 3) if previous_avg is not None else None
+                ),
+                "delta": delta,
+            }
+        )
+
+    total_all = sum(row["assessments_total"] for row in rows_out)
+    completed_all = sum(row["assessments_completed"] for row in rows_out)
+
+    return {
+        "class_id": class_id,
+        "class_label": f"{school_class.grade}-{school_class.section}",
+        "campaign_id": campaign_id,
+        "campaign_title": campaign.title,
+        "campaign_period": campaign.period,
+        "students_count": len(rows_out),
+        "assessments_total": total_all,
+        "assessments_completed": completed_all,
+        "coverage_percent": round(completed_all / total_all * 100, 1) if total_all else 0.0,
+        # Средний балл класса — среднее ПО УЧЕНИКАМ, каждый весит одинаково
+        # (та же логика, что в average_profiles): иначе ученик, про которого
+        # ответили пятеро, перевесил бы того, про кого ответил один.
+        "class_average": round(sum(averages) / len(averages), 3) if averages else None,
+        "average_delta": round(sum(deltas) / len(deltas), 3) if deltas else None,
+        "students": rows_out,
+    }

@@ -491,6 +491,7 @@ async def list_my_assessments(
                 "campaign_closes_at": assessment.campaign.closes_at,
                 "subject": assessment.subject,
                 "is_self": assessment.respondent_id == assessment.subject_id,
+                "rater_role": assessment.rater_role,
                 "status": assessment.status,
                 "answered_questions": len(answered),
                 "total_questions": len(visible_ids),

@@ -80,6 +80,7 @@ class AssessmentListItemOut(BaseModel):
     campaign_closes_at: datetime | None
     subject: UserOut
     is_self: bool
+    rater_role: RaterRole
     status: AssessmentStatus
     answered_questions: int
     total_questions: int
