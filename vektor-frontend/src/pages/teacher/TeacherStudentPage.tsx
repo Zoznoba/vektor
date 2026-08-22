@@ -29,20 +29,12 @@ export function TeacherStudentPage() {
 
   const subjectId = id ? Number(id) : null;
 
-  // Имя выбранного ученика ищем в составе классов — отдельного запроса за
-  // пользователем не делаем: он уже приехал вместе со списком классов.
-  const subjectName = useMemo(() => {
-    for (const cls of myClasses) {
-      const found = cls.students.find((s) => s.id === subjectId);
-      if (found) return found.full_name;
-    }
-    return null;
-  }, [myClasses, subjectId]);
-
   if (subjectId !== null) {
+    // Имя показывает сама StudentResultsPanel (шапка «кого мы смотрим»,
+    // из subject в /results/{id}) — здесь дублировать не нужно.
     return (
       <RoleShell activeNavKey="students">
-        <h2>{subjectName ?? 'Профиль ученика'}</h2>
+        <h2>Профиль ученика</h2>
         <div className="app-main__sub">
           <button type="button" className="link-button" onClick={() => navigate('/teacher/students')}>
             ← ко всем ученикам

@@ -31,6 +31,16 @@ export const TEACHER_NAV_ITEMS: NavItem[] = [
 ];
 
 /**
+ * Сайдбар родителя — по прототипу (роль parentchild): «Результаты» —
+ * стартовый экран (данные ребёнка, с переключателем при 2+ детях), «Анкеты» —
+ * родитель тоже оценивает своего ребёнка в рамках кампании 360°.
+ */
+export const PARENT_NAV_ITEMS: NavItem[] = [
+  { key: 'results', label: 'Результаты', icon: 'radar' },
+  { key: 'surveys', label: 'Анкеты', icon: 'file' },
+];
+
+/**
  * Маршруты разделов ученика. Ключи без маршрута («Результаты», «Профиль») ещё
  * не реализованы: пункт остаётся видимым, но клик ничего не делает — это
  * честнее, чем увести на несуществующую страницу и вернуть на главную.
@@ -48,6 +58,12 @@ export const TEACHER_ROUTES: Record<string, string> = {
   students: '/teacher/students',
 };
 
+/** Маршруты разделов родителя. */
+export const PARENT_ROUTES: Record<string, string> = {
+  results: '/parent/results',
+  surveys: '/surveys',
+};
+
 /**
  * Сайдбар администратора — 6 пунктов из концепта (экран «Сводка»).
  * «Импорт данных» и «Настройки» появятся после Этапа 6 бэкенда — до тех
@@ -58,6 +74,7 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
   { key: 'users', label: 'Пользователи', icon: 'users' },
   { key: 'classes', label: 'Классы', icon: 'school' },
   { key: 'tests', label: 'Диагностика', icon: 'radar' },
+  { key: 'results', label: 'Результаты', icon: 'chart' },
   { key: 'import', label: 'Импорт данных', icon: 'upload' },
   { key: 'settings', label: 'Настройки', icon: 'settings' },
 ];
@@ -68,4 +85,5 @@ export const ADMIN_ROUTES: Partial<Record<string, string>> = {
   users: '/admin/users',
   classes: '/admin/classes',
   tests: '/admin/campaigns',
+  results: '/admin/results',
 };

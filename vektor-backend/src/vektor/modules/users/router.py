@@ -2,8 +2,8 @@
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vektor.core.config import settings
@@ -57,12 +57,28 @@ async def read_me(
     "",
     response_model=list[UserOut],
     summary="Список пользователей",
-    description="Все пользователи школы. Только админ.",
+    description="Пользователи школы с опциональными фильтрами по роли, "
+    "подстроке в имени/email и классу (только для учеников). Только админ.",
 )
 async def get_all_users(
-    _admin_user: User = Depends(require_role(UserRole.ADMIN)), db: AsyncSession = Depends(get_db)
+    role: UserRole | None = Query(None),
+    search: str | None = Query(None, min_length=1),
+    class_id: int | None = Query(None),
+    _admin_user: User = Depends(require_role(UserRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
 ):
-    all_users = (await db.execute(select(User).order_by(User.id))).scalars().all()
+    query = select(User).order_by(User.id)
+    if role is not None:
+        query = query.where(User.role == role)
+    if search is not None:
+        pattern = f"%{search.strip()}%"
+        query = query.where(
+            func.lower(User.full_name).like(func.lower(pattern))
+            | func.lower(User.email).like(func.lower(pattern))
+        )
+    if class_id is not None:
+        query = query.where(User.school_class_id == class_id)
+    all_users = (await db.execute(query)).scalars().all()
     return all_users
 
 
@@ -95,13 +111,17 @@ async def bulk_create_users(
     "/{user_id}/children",
     response_model=list[UserOut],
     summary="Дети родителя",
-    description="Список детей, привязанных к пользователю с ролью PARENT. Только админ.",
+    description="Список детей, привязанных к пользователю с ролью PARENT. "
+    "Админ — про любого родителя; сам родитель — только про себя.",
 )
 async def get_children(
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin_user: User = Depends(require_role(UserRole.ADMIN)),
+    current_user: User = Depends(get_current_user),
 ) -> list[UserOut]:
+    is_self_parent = current_user.id == user_id and current_user.role == UserRole.PARENT
+    if current_user.role != UserRole.ADMIN and not is_self_parent:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
     parent = await service.get_parent_with_children(db, user_id)
     return parent.children
 

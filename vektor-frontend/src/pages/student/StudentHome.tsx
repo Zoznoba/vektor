@@ -6,7 +6,6 @@ import { useAuth } from '../../auth/AuthContext';
 import { useApi } from '../../hooks/useApi';
 import { fetchMyAssessments } from '../../api/assessments';
 import type { AssessmentListItem } from '../../types/assessment';
-import './StudentHome.css';
 
 /** «Иванова Полина» → «Полина»; если слово одно — оно и есть имя. */
 function firstNameOf(fullName: string): string {

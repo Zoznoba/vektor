@@ -118,3 +118,59 @@ async def test_assign_children_requires_admin(client: AsyncClient, family) -> No
     )
 
     assert response.status_code == 403
+
+
+async def test_get_children_self_access_for_parent(
+    client: AsyncClient, admin_headers, family
+) -> None:
+    """Родитель может получить СВОИХ детей без админа — нужно для кабинета родителя."""
+    await client.post(
+        f"/users/{family['parent']}/children",
+        json={"child_ids": [family["child1"], family["child2"]]},
+        headers=admin_headers,
+    )
+
+    login = await client.post(
+        "/auth/login", json={"email": "mama@vektor.ru", "password": "password123"}
+    )
+    parent_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    response = await client.get(f"/users/{family['parent']}/children", headers=parent_headers)
+
+    assert response.status_code == 200
+    assert {c["id"] for c in response.json()} == {family["child1"], family["child2"]}
+
+
+async def test_get_children_forbidden_for_other_parent(
+    client: AsyncClient, admin_headers, family
+) -> None:
+    """Родитель НЕ может заглянуть в детей другого родителя по его id."""
+    await client.post(
+        f"/users/{family['parent']}/children",
+        json={"child_ids": [family["child1"]]},
+        headers=admin_headers,
+    )
+    other_parent_id = await _register(client, "papa2@vektor.ru", "parent")
+
+    login = await client.post(
+        "/auth/login", json={"email": "papa2@vektor.ru", "password": "password123"}
+    )
+    other_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    response = await client.get(f"/users/{family['parent']}/children", headers=other_headers)
+
+    assert response.status_code == 403
+
+
+async def test_get_children_forbidden_for_student_self(
+    client: AsyncClient, admin_headers, family
+) -> None:
+    """Самодоступ работает только для роли PARENT, не для любого «своего» id."""
+    login = await client.post(
+        "/auth/login", json={"email": "syn@vektor.ru", "password": "password123"}
+    )
+    student_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    response = await client.get(f"/users/{family['child1']}/children", headers=student_headers)
+
+    assert response.status_code == 403

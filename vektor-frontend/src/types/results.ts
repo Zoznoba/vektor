@@ -11,6 +11,8 @@
  * это не «нет данных», а «данные есть, но показывать нельзя».
  */
 
+import type { User } from './auth';
+
 export interface CompetencyScore {
   competency_id: number;
   code: string;
@@ -39,7 +41,8 @@ export interface GrowthZone {
 }
 
 export interface SubjectResults {
-  subject: { id: number; full_name: string };
+  /** Бэкенд отдаёт полный UserOut — email и роль тоже приезжают. */
+  subject: Pick<User, 'id' | 'email' | 'full_name' | 'role' | 'is_active'>;
   campaign_id: number;
   /** Уцелел ли слой одноклассников хоть где-то — под баннер «данных мало». */
   any_peer_scores_disclosed: boolean;
@@ -84,6 +87,38 @@ export interface ClassResults {
   growth_zones: ClassGrowthZone[];
 }
 
+/** Динамика по годам критерия: GET /results/{id}/dynamics. */
+export interface CompetencyDynamics {
+  competency_id: number;
+  code: string;
+  name: string;
+  /** Текущий период. */
+  overall_avg: number | null;
+  previous_avg: number | null;
+  /** null у критериев вне общего ядра (появились/пропали между периодами). */
+  delta: number | null;
+  in_core: boolean;
+}
+
+export interface SubjectDynamics {
+  subject: { id: number; full_name: string };
+  campaign_id: number;
+  campaign_title: string;
+  campaign_period: string;
+  /** null — предыдущего периода нет (например, у пятиклассников); не ошибка. */
+  previous_campaign_id: number | null;
+  previous_campaign_title: string | null;
+  previous_campaign_period: string | null;
+  /** Редакция анкеты сменилась между периодами — сравнение приблизительное. */
+  versions_differ: boolean;
+  version_note: string | null;
+  core_competencies_count: number;
+  core_average: number | null;
+  previous_core_average: number | null;
+  core_average_delta: number | null;
+  competencies: CompetencyDynamics[];
+}
+
 /** Состав класса с прогрессом: GET /results/class/{id}/roster. */
 export interface ClassRosterRow {
   subject: { id: number; full_name: string };
@@ -95,6 +130,8 @@ export interface ClassRosterRow {
   previous_overall_avg: number | null;
   /** null — прошлого периода нет либо нет общего ядра критериев. */
   delta: number | null;
+  /** У скольких критериев этого ученика overall_avg попал в его личные зоны роста. */
+  growth_zone_count: number;
 }
 
 export interface ClassRoster {

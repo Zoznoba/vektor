@@ -11,6 +11,8 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminUsersPage } from './pages/admin/AdminUsersPage';
 import { AdminClassesPage } from './pages/admin/AdminClassesPage';
 import { AdminCampaignsPage } from './pages/admin/AdminCampaignsPage';
+import { AdminResultsPage } from './pages/admin/AdminResultsPage';
+import { ParentResultsPage } from './pages/parent/ParentResultsPage';
 
 /** Уже залогиненного пользователя с /login уводим в его кабинет. */
 function LoginRoute() {
@@ -25,12 +27,14 @@ function LoginRoute() {
  *
  * У учителя «Главной» нет — стартовый экран «Мои классы» (так в прототипе, и
  * дашборд с личными результатами ему бессмысленен: учитель не субъект оценки).
- * Родитель пока попадает на ученический дашборд — его кабинет не сделан.
+ * У родителя тоже нет личного дашборда — стартовый экран сразу «Результаты»
+ * (данные первого ребёнка).
  */
 function HomeRedirect() {
   const { user } = useAuth();
   if (user?.role === 'admin') return <Navigate to="/admin" replace />;
   if (user?.role === 'teacher') return <Navigate to="/teacher/classes" replace />;
+  if (user?.role === 'parent') return <Navigate to="/parent/results" replace />;
   return <StudentHome />;
 }
 
@@ -58,6 +62,7 @@ function App() {
             <Route path="/" element={<HomeRedirect />} />
             <Route path="/surveys" element={<SurveysPage />} />
             <Route path="/assessments/:id" element={<AssessmentFillPage />} />
+            <Route path="/parent/results" element={<ParentResultsPage />} />
             <Route
               path="/teacher/classes"
               element={
@@ -111,6 +116,22 @@ function App() {
               element={
                 <RequireAdmin>
                   <AdminCampaignsPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/admin/results"
+              element={
+                <RequireAdmin>
+                  <AdminResultsPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/admin/results/:id"
+              element={
+                <RequireAdmin>
+                  <AdminResultsPage />
                 </RequireAdmin>
               }
             />

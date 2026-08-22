@@ -1,8 +1,19 @@
 import { apiRequest } from './client';
 import type { User, UserRole } from '../types/auth';
 
-export function fetchUsers(): Promise<User[]> {
-  return apiRequest<User[]>('/users');
+export interface FetchUsersParams {
+  role?: UserRole;
+  search?: string;
+  classId?: number;
+}
+
+export function fetchUsers(params: FetchUsersParams = {}): Promise<User[]> {
+  const query = new URLSearchParams();
+  if (params.role) query.set('role', params.role);
+  if (params.search) query.set('search', params.search);
+  if (params.classId !== undefined) query.set('class_id', String(params.classId));
+  const qs = query.toString();
+  return apiRequest<User[]>(`/users${qs ? `?${qs}` : ''}`);
 }
 
 export interface CreateUserIn {

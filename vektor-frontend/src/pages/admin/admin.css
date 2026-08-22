@@ -69,6 +69,18 @@
   color: var(--ink-faint);
 }
 
+/* --- выпадающий фильтр (класс и т.п.) --- */
+.admin-select {
+  font-family: var(--font-b);
+  font-size: 13.5px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
 /* --- таблица --- */
 .admin-table-panel {
   padding: 6px 20px;

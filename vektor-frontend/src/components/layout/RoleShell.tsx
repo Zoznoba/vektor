@@ -2,6 +2,8 @@ import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppShell } from './AppShell';
 import {
+  PARENT_NAV_ITEMS,
+  PARENT_ROUTES,
   STUDENT_NAV_ITEMS,
   STUDENT_ROUTES,
   TEACHER_NAV_ITEMS,
@@ -20,12 +22,13 @@ interface RoleShellProps {
 /**
  * Набор пунктов и маршрутов по роли.
  *
- * Родитель пока ходит по ученическому набору: его кабинет не сделан, а пустой
- * сайдбар хуже неточного. Учитель — по прототипу: «Мои классы», «Анкеты»,
- * «Профиль ученика», без «Главной» и без личных результатов.
+ * Учитель — по прототипу: «Мои классы», «Анкеты», «Профиль ученика», без
+ * «Главной» и без личных результатов. Родитель — «Результаты» (ребёнка) и
+ * «Анкеты», без личного дашборда (он не субъект оценки в своей анкете).
  */
 function navFor(role: UserRole): { items: NavItem[]; routes: Record<string, string> } {
   if (role === 'teacher') return { items: TEACHER_NAV_ITEMS, routes: TEACHER_ROUTES };
+  if (role === 'parent') return { items: PARENT_NAV_ITEMS, routes: PARENT_ROUTES };
   return { items: STUDENT_NAV_ITEMS, routes: STUDENT_ROUTES };
 }
 
