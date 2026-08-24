@@ -8,6 +8,7 @@ import { useApi } from '../../hooks/useApi';
 import { useAuth } from '../../auth/AuthContext';
 import { fetchSubjectResults, fetchSubjectDynamics } from '../../api/results';
 import './StudentResultsPanel.css';
+import { formatPeriod } from '../../data/period';
 
 interface StudentResultsPanelProps {
   subjectId: number;
@@ -140,8 +141,19 @@ export function StudentResultsPanel({
               <div className="results-section__title">Динамика по годам</div>
               <DynamicsChart
                 competencies={dynamicsScored}
-                previousLabel={dynamics.data.previous_campaign_period ?? 'пред. период'}
-                currentLabel={dynamics.data.campaign_period}
+                previousLabel={
+                  dynamics.data.previous_campaign_period_year !== null &&
+                  dynamics.data.previous_campaign_period_month !== null
+                    ? formatPeriod(
+                        dynamics.data.previous_campaign_period_year,
+                        dynamics.data.previous_campaign_period_month,
+                      )
+                    : 'пред. период'
+                }
+                currentLabel={formatPeriod(
+                  dynamics.data.campaign_period_year,
+                  dynamics.data.campaign_period_month,
+                )}
               />
               {dynamics.data.versions_differ && dynamics.data.version_note && (
                 <div className="app-main__sub results-note">{dynamics.data.version_note}</div>

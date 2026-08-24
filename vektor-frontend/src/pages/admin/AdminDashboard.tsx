@@ -9,6 +9,7 @@ import { fetchUsers } from '../../api/users';
 import { fetchClasses } from '../../api/classes';
 import { fetchCampaigns } from '../../api/campaigns';
 import './admin.css';
+import { formatPeriod } from '../../data/period';
 
 /** «Сводка» — метрики считаются из реальных /users, /classes и /campaigns. */
 export function AdminDashboard() {
@@ -65,7 +66,7 @@ export function AdminDashboard() {
             {activeCampaigns.map((c) => (
               <div className="profile-row" key={c.id}>
                 <span>
-                  {c.title} · {c.period}
+                  {c.title} · {formatPeriod(c.period_year, c.period_month)}
                 </span>
                 <span>
                   {c.completed_assessments} из {c.total_assessments} анкет

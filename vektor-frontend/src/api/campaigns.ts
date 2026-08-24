@@ -7,23 +7,27 @@ export function fetchCampaigns(): Promise<CampaignListItem[]> {
 
 export interface CreateCampaignIn {
   title: string;
-  period: string;
-  opens_at?: string | null;
-  closes_at?: string | null;
+  period_year: number;
+  period_month: number;
 }
 
 export function createCampaign(data: CreateCampaignIn): Promise<Campaign> {
   return apiRequest<Campaign>('/campaigns', { method: 'POST', body: data });
 }
 
+/**
+ * teacherIdsByClass — какие учителя класса участвуют: {classId: [teacherId]}.
+ * Класса нет в объекте → участвуют ВСЕ его учителя (прежнее поведение);
+ * пустой массив → учительских анкет по классу не будет.
+ */
 export function generateAssessments(
   campaignId: number,
   classIds: number[],
-  includePeers: boolean,
+  teacherIdsByClass: Record<number, number[]>,
 ): Promise<GenerateResult> {
   return apiRequest<GenerateResult>(`/campaigns/${campaignId}/generate`, {
     method: 'POST',
-    body: { class_ids: classIds, include_peers: includePeers },
+    body: { class_ids: classIds, teacher_ids_by_class: teacherIdsByClass },
   });
 }
 

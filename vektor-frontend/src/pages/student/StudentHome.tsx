@@ -5,23 +5,11 @@ import { StudentResultsPanel } from '../../components/dashboard/StudentResultsPa
 import { useAuth } from '../../auth/AuthContext';
 import { useApi } from '../../hooks/useApi';
 import { fetchMyAssessments } from '../../api/assessments';
-import type { AssessmentListItem } from '../../types/assessment';
 
 /** «Иванова Полина» → «Полина»; если слово одно — оно и есть имя. */
 function firstNameOf(fullName: string): string {
   const words = fullName.trim().split(/\s+/);
   return words[1] ?? words[0];
-}
-
-/** Ближайший дедлайн среди незавершённых анкет, «20 июня» — или null, если ни у одной кампании нет closes_at. */
-function nearestDeadlineLabel(pendingItems: AssessmentListItem[]): string | null {
-  const deadlines = pendingItems
-    .map((item) => item.campaign_closes_at)
-    .filter((value): value is string => value !== null)
-    .map((value) => new Date(value));
-  if (deadlines.length === 0) return null;
-  const nearest = new Date(Math.min(...deadlines.map((d) => d.getTime())));
-  return nearest.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
 }
 
 /**
@@ -39,7 +27,6 @@ export function StudentHome() {
 
   const pendingItems = (assessments.data ?? []).filter((a) => a.status !== 'completed');
   const pendingCount = pendingItems.length;
-  const deadlineLabel = nearestDeadlineLabel(pendingItems);
 
   return (
     <RoleShell activeNavKey="home">
@@ -51,8 +38,10 @@ export function StudentHome() {
 
       {pendingCount > 0 && (
         <InfoBanner actionLabel="Перейти к анкетам" onAction={() => navigate('/surveys')}>
+          {/* Дедлайна в тексте нет: окно приёма (campaigns.opens_at /
+              closes_at) удалено — оно ничего не ограничивало, приём режется
+              статусом кампании. */}
           Ждут заполнения {pendingCount} {pendingCount === 1 ? 'анкета' : 'анкеты'}
-          {deadlineLabel ? ` — дедлайн ${deadlineLabel}` : ''}
         </InfoBanner>
       )}
 

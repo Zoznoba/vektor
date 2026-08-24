@@ -5,6 +5,7 @@ import { useApi } from '../../hooks/useApi';
 import { useAuth } from '../../auth/AuthContext';
 import { fetchClasses } from '../../api/classes';
 import { classLabel } from '../../types/school';
+import type { SchoolClass } from '../../types/school';
 import './TeacherClassesPage.css';
 
 /**
@@ -21,7 +22,7 @@ export function TeacherClassesPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const myClasses = useMemo(
-    () => (classes.data ?? []).filter((c) => c.teachers.some((t) => t.id === user?.id)),
+    () => (classes.data ?? []).filter((c) => c.teachers.some((t) => t.teacher.id === user?.id)),
     [classes.data, user?.id],
   );
 
@@ -43,7 +44,7 @@ export function TeacherClassesPage() {
             >
               {classLabel(cls)}
               <span className="teacher-chip__tag">
-                {cls.homeroom_teacher?.id === user?.id ? 'кл. рук.' : 'предмет'}
+                {myRoleTag(cls, user?.id)}
               </span>
             </button>
           ))}
@@ -66,4 +67,14 @@ export function TeacherClassesPage() {
       )}
     </RoleShell>
   );
+}
+
+/**
+ * Подпись роли на чипе класса: кл. руководство важнее предмета, а предмет
+ * («литература») информативнее слова «предмет» — но у старых связей его нет.
+ */
+function myRoleTag(cls: SchoolClass, userId: number | undefined): string {
+  const link = cls.teachers.find((t) => t.teacher.id === userId);
+  if (link?.is_homeroom) return 'кл. рук.';
+  return link?.subject ?? 'предмет';
 }

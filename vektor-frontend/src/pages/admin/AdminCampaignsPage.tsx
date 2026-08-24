@@ -19,6 +19,7 @@ import {
 import type { CreateCampaignIn } from '../../api/campaigns';
 import { fetchClasses } from '../../api/classes';
 import { classLabel } from '../../types/school';
+import { MONTH_OPTIONS, formatPeriod } from '../../data/period';
 import type { SchoolClass } from '../../types/school';
 import { ApiError } from '../../api/client';
 import type { CampaignCoverage, CampaignListItem, CampaignStatus } from '../../types/campaign';
@@ -114,7 +115,10 @@ export function AdminCampaignsPage() {
 
       {campaigns.error && <div className="form-error">{campaigns.error}</div>}
 
-      {campaigns.loading ? (
+      {/* Спиннер только на ПЕРВОЙ загрузке: reload после мутации оставляет
+          данные на экране, а подмена всего блока размонтировала бы панель
+          вместе с её состоянием — сообщение о результате исчезало. */}
+      {campaigns.loading && !campaigns.data ? (
         <Panel>
           <div className="admin-empty">Загрузка…</div>
         </Panel>
@@ -141,7 +145,9 @@ export function AdminCampaignsPage() {
               >
                 <div className="campaign-card__head">
                   <Badge variant={STATUS_BADGE[c.status]}>{STATUS_LABEL[c.status]}</Badge>
-                  <span className="campaign-card__period">{c.period}</span>
+                  <span className="campaign-card__period">
+                    {formatPeriod(c.period_year, c.period_month)}
+                  </span>
                 </div>
                 <div className="campaign-card__title">{c.title}</div>
                 <ProgressBar
@@ -253,7 +259,10 @@ function CoveragePanel({
   };
 
   return (
-    <Panel title={`Покрытие по классам · ${campaign.period}`} className="campaign-coverage">
+    <Panel
+      title={`Покрытие по классам · ${formatPeriod(campaign.period_year, campaign.period_month)}`}
+      className="campaign-coverage"
+    >
       <div className="campaign-coverage__head">
         <span className="campaign-coverage__total">
           {coverage ? `${coverage.completed} из ${coverage.total} анкет` : '—'}
@@ -303,8 +312,11 @@ function GeneratePanel({
   allClasses: SchoolClass[];
   onGenerated: () => void;
 }) {
-  const [includePeers, setIncludePeers] = useState(false);
   const [checkedClassIds, setCheckedClassIds] = useState<Set<number>>(new Set());
+  // Выбор учителей ПО КЛАССУ: ученика оценивают 2–4 учителя, а не весь
+  // педсостав. Ключ появляется, только когда класс отмечен, — отправляем
+  // ровно то, что админ видел на экране.
+  const [teachersByClass, setTeachersByClass] = useState<Record<number, Set<number>>>({});
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -317,7 +329,27 @@ function GeneratePanel({
       else next.add(id);
       return next;
     });
+    setTeachersByClass((prev) => {
+      if (prev[id]) return prev;
+      // По умолчанию — никого: 2–4 учителя выбирает человек, а молчаливое
+      // «все 11» ровно та ситуация, от которой уходим.
+      return { ...prev, [id]: new Set<number>() };
+    });
   };
+
+  const toggleTeacher = (classId: number, teacherId: number) => {
+    setResult(null);
+    setTeachersByClass((prev) => {
+      const next = new Set(prev[classId] ?? []);
+      if (next.has(teacherId)) next.delete(teacherId);
+      else next.add(teacherId);
+      return { ...prev, [classId]: next };
+    });
+  };
+
+  const checkedClasses = allClasses.filter((c) => checkedClassIds.has(c.id));
+  const withoutTeachers = checkedClasses.filter((c) => (teachersByClass[c.id]?.size ?? 0) === 0);
+  const overLimit = checkedClasses.filter((c) => (teachersByClass[c.id]?.size ?? 0) > 4);
 
   const handleGenerate = async () => {
     if (checkedClassIds.size === 0) return;
@@ -325,7 +357,9 @@ function GeneratePanel({
     setResult(null);
     setSubmitting(true);
     try {
-      const res = await generateAssessments(campaign.id, [...checkedClassIds], includePeers);
+      const payload: Record<number, number[]> = {};
+      for (const id of checkedClassIds) payload[id] = [...(teachersByClass[id] ?? [])];
+      const res = await generateAssessments(campaign.id, [...checkedClassIds], payload);
       setResult(
         res.created > 0
           ? `Добавлено новых анкет: ${res.created}`
@@ -359,59 +393,82 @@ function GeneratePanel({
         <div className="rater-rule">
           <div className="rater-rule__text">
             <div className="rater-rule__label">Учителя</div>
-            <div className="rater-rule__note">Каждый учитель класса</div>
-          </div>
-          <span className="rater-rule__badge">Всегда</span>
-        </div>
-        <label className="rater-rule rater-rule--toggle">
-          <div className="rater-rule__text">
-            <div className="rater-rule__label">Одноклассники</div>
             <div className="rater-rule__note">
-              Оценивают друг друга — анонимно, раскрывается от 3 ответов
+              Выбранные ниже — они оценивают всех учеников своего класса
             </div>
           </div>
-          <input
-            type="checkbox"
-            checked={includePeers}
-            onChange={(e) => setIncludePeers(e.target.checked)}
-          />
-        </label>
+          <span className="rater-rule__badge">По выбору</span>
+        </div>
       </div>
 
       <div className="class-picker">
-        <div className="class-picker__label">Классы для генерации</div>
+        <div className="class-picker__label">Классы и учителя-оценщики</div>
         {allClasses.length === 0 ? (
           <div className="admin-empty">Классов пока нет</div>
         ) : (
           <div className="assign-list">
             {allClasses.map((c) => (
-              <label key={c.id} className="assign-item">
-                <input
-                  type="checkbox"
-                  checked={checkedClassIds.has(c.id)}
-                  onChange={() => toggleClass(c.id)}
-                />
-                <span className="assign-item__name">{classLabel(c)}</span>
-                <span className="assign-item__email">{c.students.length} учеников</span>
-              </label>
+              <div key={c.id}>
+                <label className="assign-item">
+                  <input
+                    type="checkbox"
+                    checked={checkedClassIds.has(c.id)}
+                    onChange={() => toggleClass(c.id)}
+                  />
+                  <span className="assign-item__name">{classLabel(c)}</span>
+                  <span className="assign-item__email">{c.students.length} учеников</span>
+                </label>
+
+                {checkedClassIds.has(c.id) && (
+                  <div className="teacher-picker">
+                    <div className="teacher-picker__hint">
+                      Кто из учителей оценивает класс — обычно 2–4 человека
+                    </div>
+                    {c.teachers.length === 0 ? (
+                      <div className="admin-empty">К классу не привязан ни один учитель</div>
+                    ) : (
+                      c.teachers.map((link) => (
+                        <label key={link.teacher.id} className="teacher-picker__item">
+                          <input
+                            type="checkbox"
+                            checked={teachersByClass[c.id]?.has(link.teacher.id) ?? false}
+                            onChange={() => toggleTeacher(c.id, link.teacher.id)}
+                          />
+                          <span className="teacher-picker__name">{link.teacher.full_name}</span>
+                          <span className="teacher-picker__role">
+                            {link.is_homeroom ? 'кл. рук.' : (link.subject ?? '')}
+                          </span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}
       </div>
 
+      {/* Не блокируем генерацию: 2–4 — это практика школы, а не инвариант. */}
+      {overLimit.length > 0 && (
+        <div className="campaign-generate__warning">
+          Больше 4 учителей на класс ({overLimit.map(classLabel).join(', ')}) — обычно берут 2–4.
+          Сгенерировать всё равно можно.
+        </div>
+      )}
+      {withoutTeachers.length > 0 && (
+        <div className="campaign-generate__warning">
+          Учителя не выбраны ({withoutTeachers.map(classLabel).join(', ')}) — по этим классам
+          будут только самооценка и анкеты родителей.
+        </div>
+      )}
+
       {error && <div className="form-error">{error}</div>}
       {result && !error && <div className="campaign-generate__result">{result}</div>}
 
-      <Button
-        block
-        onClick={handleGenerate}
-        disabled={submitting || checkedClassIds.size === 0}
-      >
+      <Button block onClick={handleGenerate} disabled={submitting || checkedClassIds.size === 0}>
         {submitting ? 'Генерируем…' : 'Сгенерировать анкеты'}
       </Button>
-      <div className="campaign-generate__hint">
-        Повторный запуск добавит только новые пары — уже заполненные анкеты не тронет.
-      </div>
     </Panel>
   );
 }
@@ -423,14 +480,16 @@ function CreateCampaignModal({
   onClose: () => void;
   onCreated: (id: number) => void;
 }) {
+  const now = new Date();
   const [title, setTitle] = useState('');
-  const [period, setPeriod] = useState('');
-  const [opensAt, setOpensAt] = useState('');
-  const [closesAt, setClosesAt] = useState('');
+  // Период — выбор из списка, а не свободный текст: ярлык-опечатка
+  // («2026-е2е») раньше ломал резолюцию «последней кампании» у всей школы.
+  const [periodYear, setPeriodYear] = useState(now.getFullYear());
+  const [periodMonth, setPeriodMonth] = useState(now.getMonth() + 1);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const canSubmit = title.trim().length > 0 && period.trim().length > 0;
+  const canSubmit = title.trim().length > 0;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -439,9 +498,8 @@ function CreateCampaignModal({
     try {
       const payload: CreateCampaignIn = {
         title: title.trim(),
-        period: period.trim(),
-        opens_at: opensAt ? new Date(opensAt).toISOString() : null,
-        closes_at: closesAt ? new Date(closesAt).toISOString() : null,
+        period_year: periodYear,
+        period_month: periodMonth,
       };
       const campaign = await createCampaign(payload);
       onCreated(campaign.id);
@@ -463,27 +521,28 @@ function CreateCampaignModal({
           autoFocus
         />
       </label>
-      <label className="form-field">
-        <span>Период</span>
-        <input
-          value={period}
-          onChange={(e) => setPeriod(e.target.value)}
-          placeholder="2026-06"
-          maxLength={20}
-        />
-      </label>
-      <label className="form-field">
-        <span>Открытие анкет (необязательно)</span>
-        <input type="datetime-local" value={opensAt} onChange={(e) => setOpensAt(e.target.value)} />
-      </label>
-      <label className="form-field">
-        <span>Дедлайн (необязательно)</span>
-        <input
-          type="datetime-local"
-          value={closesAt}
-          onChange={(e) => setClosesAt(e.target.value)}
-        />
-      </label>
+      <div className="form-row">
+        <label className="form-field">
+          <span>Месяц</span>
+          <select value={periodMonth} onChange={(e) => setPeriodMonth(Number(e.target.value))}>
+            {MONTH_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="form-field">
+          <span>Год</span>
+          <input
+            type="number"
+            min={2000}
+            max={2100}
+            value={periodYear}
+            onChange={(e) => setPeriodYear(Number(e.target.value))}
+          />
+        </label>
+      </div>
 
       {error && <div className="form-error">{error}</div>}
 

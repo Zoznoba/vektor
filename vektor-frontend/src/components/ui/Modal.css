@@ -51,6 +51,14 @@
   margin-bottom: 14px;
 }
 
+/* Два поля в строку — месяц и год периода кампании. Год уже месяца: месяц
+   должен вмещать «Сентябрь», году хватает четырёх цифр. */
+.form-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 12px;
+}
+
 .form-field > span {
   display: block;
   font-size: 13px;

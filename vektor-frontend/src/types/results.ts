@@ -79,7 +79,8 @@ export interface ClassResults {
   class_label: string;
   campaign_id: number;
   campaign_title: string;
-  campaign_period: string;
+  campaign_period_year: number;
+  campaign_period_month: number;
   students_with_results: number;
   class_average: number | null;
   school_average: number | null;
@@ -104,11 +105,13 @@ export interface SubjectDynamics {
   subject: { id: number; full_name: string };
   campaign_id: number;
   campaign_title: string;
-  campaign_period: string;
+  campaign_period_year: number;
+  campaign_period_month: number;
   /** null — предыдущего периода нет (например, у пятиклассников); не ошибка. */
   previous_campaign_id: number | null;
   previous_campaign_title: string | null;
-  previous_campaign_period: string | null;
+  previous_campaign_period_year: number | null;
+  previous_campaign_period_month: number | null;
   /** Редакция анкеты сменилась между периодами — сравнение приблизительное. */
   versions_differ: boolean;
   version_note: string | null;
@@ -139,7 +142,8 @@ export interface ClassRoster {
   class_label: string;
   campaign_id: number;
   campaign_title: string;
-  campaign_period: string;
+  campaign_period_year: number;
+  campaign_period_month: number;
   students_count: number;
   assessments_total: number;
   assessments_completed: number;
