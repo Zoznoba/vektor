@@ -14,6 +14,14 @@ class CampaignStatus(StrEnum):
     CLOSED = "closed"
 
 
+class QuestionnaireVersionStatus(StrEnum):
+    """Черновик анкеты редактируется свободно; после публикации — навсегда
+    заморожен (см. QuestionnaireVersion.status в competencies/models.py)."""
+
+    DRAFT = "draft"
+    PUBLISHED = "published"
+
+
 class AssessmentStatus(StrEnum):
     NOT_STARTED = "not_started"
     IN_PROGRESS = "in_progress"

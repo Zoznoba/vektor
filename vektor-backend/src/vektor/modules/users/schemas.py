@@ -11,6 +11,17 @@ class AssignChildrenIn(BaseModel):
     child_ids: list[int]
 
 
+class SetUserActiveIn(BaseModel):
+    is_active: bool
+
+
+class ResetPasswordOut(BaseModel):
+    """Новый пароль — эхом один раз, как default_password в BulkCreateOut:
+    другого способа его узнать не будет, рассылки почтой в системе пока нет."""
+
+    new_password: str
+
+
 # ── Массовая загрузка (bulk) ──────────────────────────────────────────────
 # Пароль в строке НЕ принимаем. ВРЕМЕННО (для тестов) всем создаваемым юзерам
 # ставится один общий пароль из настроек (settings.bulk_default_password).

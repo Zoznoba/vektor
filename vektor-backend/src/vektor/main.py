@@ -15,6 +15,8 @@ from vektor.modules.assessments.router import assessment_router
 from vektor.modules.assessments.router import router as assessments_router
 from vektor.modules.auth.router import router as auth_router
 from vektor.modules.classes.router import router as classes_router
+from vektor.modules.competencies.router import builder_router as questionnaire_builder_router
+from vektor.modules.competencies.router import items_router as questionnaire_items_router
 from vektor.modules.competencies.router import router as competency_router
 from vektor.modules.results.router import router as results_router
 from vektor.modules.users.bootstrap import ensure_admin_exists
@@ -46,7 +48,8 @@ _OPENAPI_TAGS = [
     },
     {
         "name": "competencies",
-        "description": "Справочник критериев (11 шт.) и «ОР / навык» (5 шт.).",
+        "description": "Справочник критериев (11 шт.) и «ОР / навык» (5 шт.), "
+        "плюс конструктор анкеты для админа (черновик → публикация).",
     },
     {
         "name": "assessments",
@@ -110,6 +113,8 @@ app = create_app()
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(competency_router)
+app.include_router(questionnaire_builder_router)
+app.include_router(questionnaire_items_router)
 app.include_router(classes_router)
 app.include_router(assessments_router)
 app.include_router(assessment_router)

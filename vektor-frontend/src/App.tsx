@@ -11,6 +11,7 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminUsersPage } from './pages/admin/AdminUsersPage';
 import { AdminClassesPage } from './pages/admin/AdminClassesPage';
 import { AdminCampaignsPage } from './pages/admin/AdminCampaignsPage';
+import { AdminQuestionnairePage } from './pages/admin/AdminQuestionnairePage';
 import { AdminResultsPage } from './pages/admin/AdminResultsPage';
 import { ParentResultsPage } from './pages/parent/ParentResultsPage';
 
@@ -116,6 +117,14 @@ function App() {
               element={
                 <RequireAdmin>
                   <AdminCampaignsPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/admin/questionnaire"
+              element={
+                <RequireAdmin>
+                  <AdminQuestionnairePage />
                 </RequireAdmin>
               }
             />

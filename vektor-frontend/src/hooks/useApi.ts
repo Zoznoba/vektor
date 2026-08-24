@@ -5,11 +5,15 @@ interface ApiState<T> {
   data: T | null;
   loading: boolean;
   error: string | null;
+  /** HTTP-статус последней ошибки (null пока не было ошибки/при успехе).
+   * Нужен, чтобы отличить штатное «404 — ещё нет данных» от реального сбоя
+   * (403 нет доступа, 500 и т.п.), который нельзя прятать за пустым стейтом. */
+  status: number | null;
   /** Перезапросить данные (после мутаций: создали пользователя — обновили список). */
   reload: () => void;
 }
 
-const INITIAL = { data: null, loading: true, error: null };
+const INITIAL = { data: null, loading: true, error: null, status: null };
 
 /**
  * Загрузка данных при монтировании + ручной reload.
@@ -22,6 +26,7 @@ export function useApi<T>(fn: () => Promise<T>): ApiState<T> {
     data: T | null;
     loading: boolean;
     error: string | null;
+    status: number | null;
   }>(INITIAL);
   // Счётчик перезагрузок: смена значения перезапускает effect
   const [version, setVersion] = useState(0);
@@ -48,7 +53,7 @@ export function useApi<T>(fn: () => Promise<T>): ApiState<T> {
     fn()
       .then((result) => {
         if (cancelled) return;
-        setState({ data: result, loading: false, error: null });
+        setState({ data: result, loading: false, error: null, status: null });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -56,6 +61,7 @@ export function useApi<T>(fn: () => Promise<T>): ApiState<T> {
           data: null,
           loading: false,
           error: err instanceof ApiError ? err.message : 'Не удалось загрузить данные',
+          status: err instanceof ApiError ? err.status : null,
         });
       });
 

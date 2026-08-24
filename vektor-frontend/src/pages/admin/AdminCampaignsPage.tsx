@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
 import { Button } from '../../components/ui/Button';
@@ -51,6 +52,7 @@ const STATUS_FILTERS: { key: CampaignStatus; label: string }[] = [
  * только пользовательский текст (пункт меню, заголовок), не сущность.
  */
 export function AdminCampaignsPage() {
+  const navigate = useNavigate();
   const campaigns = useApi(fetchCampaigns);
   const classes = useApi(fetchClasses);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -100,6 +102,10 @@ export function AdminCampaignsPage() {
           ))}
         </div>
         <div className="admin-toolbar__spacer" />
+        <Button variant="secondary" onClick={() => navigate('/admin/questionnaire')}>
+          <Icon name="file" size={15} />
+          Конструктор анкеты
+        </Button>
         <Button onClick={() => setShowCreate(true)}>
           <Icon name="plus" size={15} />
           Новая кампания
