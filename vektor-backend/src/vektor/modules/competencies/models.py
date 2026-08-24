@@ -13,6 +13,7 @@ from sqlalchemy import ForeignKey, Index, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vektor.core.database import Base
+from vektor.shared.enums import QuestionnaireVersionStatus
 
 
 class QuestionnaireVersion(Base):
@@ -27,6 +28,11 @@ class QuestionnaireVersion(Base):
 
     is_current — редакция, которую получают НОВЫЕ кампании. Ровно одна:
     гарантирует частичный уникальный индекс uq_questionnaire_versions_current.
+
+    status — жизненный цикл конструктора анкеты (Этап 7): draft редактируется
+    свободно (OutcomeArea/Competency/Question можно добавлять, менять,
+    архивировать), published заморожен навсегда. Публикация — один раз и
+    необратимо: назад в draft редакция не возвращается.
     """
 
     __tablename__ = "questionnaire_versions"
@@ -50,6 +56,7 @@ class QuestionnaireVersion(Base):
     # Оговорка для стыка версий; None — «сравнение корректно».
     note: Mapped[str | None] = mapped_column(String(500))
     is_current: Mapped[bool] = mapped_column(default=False)
+    status: Mapped[str] = mapped_column(String(20), default=QuestionnaireVersionStatus.PUBLISHED)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     questions: Mapped[list["Question"]] = relationship(back_populates="version")
@@ -72,6 +79,14 @@ class OutcomeArea(Base):
     code: Mapped[str] = mapped_column(String(50), unique=True)
     name: Mapped[str] = mapped_column(String(255))
     order: Mapped[int]
+
+    # Не версионируются (см. Competency.is_archived ниже) — общий список на
+    # все редакции. is_archived скрывает область из НОВЫХ черновиков, не
+    # трогая прошлые кампании. is_draft — область добавлена в ещё не
+    # опубликованный черновик: при публикации становится false (см.
+    # service.publish_version), при отмене черновика строка удаляется целиком.
+    is_archived: Mapped[bool] = mapped_column(default=False)
+    is_draft: Mapped[bool] = mapped_column(default=False)
 
     competencies: Mapped[list["Competency"]] = relationship(back_populates="outcome_area")
 
@@ -104,6 +119,11 @@ class Competency(Base):
     # прыгал бы при переходе из класса в класс сам по себе.
     min_grade: Mapped[int | None]
     max_grade: Mapped[int | None]
+
+    # См. OutcomeArea.is_archived/is_draft — тот же смысл, критерий тоже общий
+    # на все редакции анкеты, а не принадлежит одной версии.
+    is_archived: Mapped[bool] = mapped_column(default=False)
+    is_draft: Mapped[bool] = mapped_column(default=False)
 
     def __repr__(self) -> str:
         return f"<Competency id={self.id} code={self.code}>"

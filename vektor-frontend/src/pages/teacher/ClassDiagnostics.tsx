@@ -111,7 +111,18 @@ export function ClassDiagnostics({ classId }: ClassDiagnosticsProps) {
     );
   }
 
-  // 404 здесь — штатное «диагностики по классу ещё не было», а не сбой.
+  // 404 здесь — штатное «диагностики по классу ещё не было». Остальные ошибки
+  // (403 нет доступа, 500 и т.п.) показываем текстом, а не прячем за этим же
+  // приветливым пустым стейтом — иначе учитель видит «нет диагностики» вместо
+  // «нет доступа» и не понимает, что дело в привязке к классу.
+  if (roster.error && roster.status !== 404) {
+    return (
+      <Panel>
+        <div className="form-error">{roster.error}</div>
+      </Panel>
+    );
+  }
+
   if (roster.error || !roster.data) {
     return (
       <Panel>

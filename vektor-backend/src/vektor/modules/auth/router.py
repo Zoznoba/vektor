@@ -42,7 +42,12 @@ async def user_login(
     data: LoginIn, db: AsyncSession = Depends(get_db), _limit=_login_limit
 ) -> TokenOut:
     user = await service.authenticate_user(db, data.email, data.password)
-    if user is not None:
+    # is_active тоже здесь, а не только в get_current_user: иначе деактивированный
+    # админом пользователь получал бы токен и «успешный» логин, который тут же
+    # разваливается на первом запросе — путаннее, чем сразу сказать «не пускаем».
+    # Причина — та же самая (неверные данные), чтобы не выдавать существование
+    # аккаунта тем, кто просто перебирает пароли.
+    if user is not None and user.is_active:
         return TokenOut(access_token=create_access_token(str(user.id)))
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный email или пароль"

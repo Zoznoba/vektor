@@ -19,6 +19,8 @@ from vektor.modules.users.schemas import (
     BulkCreateOut,
     MeOut,
     ParentWithChildrenOut,
+    ResetPasswordOut,
+    SetUserActiveIn,
 )
 from vektor.shared.academic_year import academic_year_label
 from vektor.shared.enums import UserRole
@@ -80,6 +82,43 @@ async def get_all_users(
         query = query.where(User.school_class_id == class_id)
     all_users = (await db.execute(query)).scalars().all()
     return all_users
+
+
+@router.patch(
+    "/{user_id}/active",
+    response_model=UserOut,
+    summary="Активировать/деактивировать пользователя",
+    description="Единственная форма «удаления» пользователя в системе: "
+    "деактивация мгновенно блокирует вход и все авторизованные запросы, но "
+    "сохраняет историю (ответы анкет, привязки к классу/детям) нетронутой. "
+    "Обратимо в любой момент. Нельзя деактивировать самого себя. Только "
+    "админ.",
+)
+async def update_user_active_status(
+    user_id: int,
+    data: SetUserActiveIn,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_role(UserRole.ADMIN)),
+) -> User:
+    return await service.set_user_active(db, user_id, data.is_active, admin_user)
+
+
+@router.post(
+    "/{user_id}/reset-password",
+    response_model=ResetPasswordOut,
+    summary="Сбросить пароль пользователя",
+    description="Сгенерировать новый временный пароль и показать его один "
+    "раз в ответе — почтовой рассылки в системе пока нет (см. "
+    "BulkCreateOut.default_password), другого способа узнать пароль не "
+    "будет. Только админ.",
+)
+async def reset_user_password(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin_user: User = Depends(require_role(UserRole.ADMIN)),
+) -> ResetPasswordOut:
+    new_password = await service.reset_password(db, user_id)
+    return ResetPasswordOut(new_password=new_password)
 
 
 @router.post(

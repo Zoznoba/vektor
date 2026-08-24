@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from vektor.core.config import settings
 from vektor.core.errors import DomainError
-from vektor.core.security import hash_password
+from vektor.core.security import generate_temporary_password, hash_password
 from vektor.modules.classes.models import SchoolClass
 from vektor.modules.users.models import User
 from vektor.modules.users.schemas import BulkUserIn
@@ -56,6 +56,14 @@ class ClassNotFound(DomainError):
     message = "Класс не найден"
 
 
+class CannotModifySelf(DomainError):
+    """Админ пытается деактивировать сам себя."""
+
+    status_code = 409
+    code = "cannot_modify_self"
+    message = "Нельзя изменить статус собственной учётной записи"
+
+
 async def get_parent_with_children(db: AsyncSession, parent_id: int) -> User:
     result = await db.execute(
         select(User).where(User.id == parent_id).options(selectinload(User.children))
@@ -92,6 +100,51 @@ async def assign_children(db: AsyncSession, parent_id: int, child_ids: list[int]
     await db.commit()
     await db.refresh(parent, attribute_names=["children"])
     return parent
+
+
+async def set_user_active(
+    db: AsyncSession, user_id: int, is_active: bool, current_user: User
+) -> User:
+    """Включить/выключить учётку — единственная форма «удаления» пользователя
+    в системе (soft-delete). is_active уже гейтит вход (auth/router.py) и
+    все авторизованные запросы (get_current_user), так что деактивация
+    перекрывает доступ мгновенно и без нового кода — здесь только сам
+    переключатель и защита от самоблокировки.
+
+    Не даём деактивировать самого себя: иначе админ, отключив свою же
+    учётку, тут же теряет доступ к панели и включить её обратно уже некому.
+    """
+    if user_id == current_user.id:
+        raise CannotModifySelf()
+
+    user = await db.get(User, user_id)
+    if user is None:
+        raise UserNotFound(f"Пользователь {user_id} не найден")
+
+    user.is_active = is_active
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def reset_password(db: AsyncSession, user_id: int) -> str:
+    """Сгенерировать новый временный пароль и сохранить его хеш. Пароль
+    возвращается вызывающему один раз простым текстом — как в
+    bulk_create_users, другого способа узнать его потом не будет (почтовой
+    рассылки в системе пока нет).
+
+    Без защиты от self: в отличие от деактивации, сброс своего же пароля
+    никого не запирает — новый пароль тут же показывается тому, кто его и
+    запросил.
+    """
+    user = await db.get(User, user_id)
+    if user is None:
+        raise UserNotFound(f"Пользователь {user_id} не найден")
+
+    new_password = generate_temporary_password()
+    user.hashed_password = hash_password(new_password)
+    await db.commit()
+    return new_password
 
 
 async def bulk_create_users(

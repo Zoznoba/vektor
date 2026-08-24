@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
 import { Button } from '../../components/ui/Button';
@@ -23,8 +24,13 @@ import './admin.css';
 export function AdminClassesPage() {
   const classes = useApi(fetchClasses);
   const users = useApi(fetchUsers);
+  const location = useLocation();
 
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  // Переход «Классы» из карточки учителя (AdminUsersPage) кладёт id класса
+  // в state — так сразу открывается нужный класс, а не первый по сортировке.
+  const [selectedId, setSelectedId] = useState<number | null>(
+    () => (location.state as { classId?: number } | null)?.classId ?? null,
+  );
   const [showCreate, setShowCreate] = useState(false);
   const [assignRole, setAssignRole] = useState<'student' | 'teacher' | null>(null);
   const [showHomeroom, setShowHomeroom] = useState(false);

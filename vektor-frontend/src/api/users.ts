@@ -63,6 +63,28 @@ export function bulkCreateUsers(
   });
 }
 
+/**
+ * Включить/выключить учётку — единственная форма «удаления» пользователя:
+ * скрывает его и блокирует вход, но сохраняет всю историю (ответы анкет,
+ * привязки к классу/детям).
+ */
+export function setUserActive(userId: number, isActive: boolean): Promise<User> {
+  return apiRequest<User>(`/users/${userId}/active`, {
+    method: 'PATCH',
+    body: { is_active: isActive },
+  });
+}
+
+/**
+ * Сбросить пароль пользователя. Почтовой рассылки в системе нет — новый
+ * пароль приходит в ответе один раз, показать его повторно нельзя.
+ */
+export function resetPassword(userId: number): Promise<{ new_password: string }> {
+  return apiRequest<{ new_password: string }>(`/users/${userId}/reset-password`, {
+    method: 'POST',
+  });
+}
+
 export function fetchChildren(parentId: number): Promise<User[]> {
   return apiRequest<User[]>(`/users/${parentId}/children`);
 }
