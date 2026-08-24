@@ -35,6 +35,13 @@ export interface ClassCoverageRow {
   percent: number;
 }
 
+/** Итог удаления кампании — сколько анкет и ответов ушло вместе с ней. */
+export interface CampaignDeleteResult {
+  campaign_id: number;
+  assessments_deleted: number;
+  answers_deleted: number;
+}
+
 export interface CampaignCoverage {
   campaign_id: number;
   campaign_title: string;

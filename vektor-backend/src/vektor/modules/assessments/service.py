@@ -189,6 +189,50 @@ async def reopen_campaign(db: AsyncSession, campaign_id: int) -> Campaign:
     return campaign
 
 
+async def delete_campaign(db: AsyncSession, campaign_id: int) -> dict:
+    """Удалить кампанию вместе со всеми её анкетами и ответами. Необратимо.
+
+    Зачем вообще: единственный способ убрать кампанию до сих пор был SQL
+    руками, и дважды (находки 7g и сегодняшняя) забытая тестовая кампания
+    молча перебивала боевую в резолюции «последний период» — экран
+    результатов у всех учеников школы становился пустым.
+
+    ВАЖНО про порядок удаления: каскада на уровне БД у нас НЕТ. У
+    Assessment.answers каскад только ORM-ный (delete-orphan) и срабатывает
+    лишь для объектов, реально загруженных в сессию, — bulk-DELETE его не
+    запускает. Значит, чистим руками и снизу вверх: answers → assessments →
+    campaign. В обратном порядке FK-констрейнт даст IntegrityError.
+
+    Всё — в ОДНОЙ транзакции (один commit в конце): частично снесённая
+    кампания — это осиротевшие ответы, которые уже ничем не найти.
+
+    TODO(Максим):
+      1. campaign = await db.get(Campaign, campaign_id); нет → raise CampaignNotFound()
+      2. Подзапрос с id анкет кампании:
+             assessment_ids = select(Assessment.id).where(Assessment.campaign_id == campaign_id)
+         Отдельным select'ом СНАЧАЛА посчитай, сколько ответов и анкет
+         удалится — после DELETE считать будет уже нечего, а числа нужны
+         в ответе (CampaignDeleteResult).
+      3. Удаление — bulk-DELETE, а не «загрузить объекты и db.delete(...)»:
+         анкет в кампании бывает под 400, грузить их в сессию незачем.
+             from sqlalchemy import delete  # добавь в импорты сверху
+             await db.execute(delete(Answer).where(Answer.assessment_id.in_(assessment_ids)))
+             await db.execute(delete(Assessment).where(Assessment.campaign_id == campaign_id))
+             await db.delete(campaign)   # он уже в сессии, отдельный DELETE не нужен
+      4. await db.commit()
+      5. Верни dict под CampaignDeleteResult:
+             {"campaign_id": ..., "assessments_deleted": ..., "answers_deleted": ...}
+
+    Вопрос, который надо решить тебе (я бы ответил «нет»): резать ли
+    удаление активной кампании (status == active)? Аргумент «за» — защита от
+    сноса идущего сбора. Аргумент «против» — мусорные кампании как раз
+    бывают в любом статусе, а подтверждение с числами уже показывает UI.
+    Если решишь резать — заведи отдельный DomainError на 409, не переиспользуй
+    CampaignNotActive (у него противоположный смысл).
+    """
+    raise NotImplementedError
+
+
 # Приоритет ролей при коллизии: один человек может быть и родителем ученика,
 # и учителем его класса. Роль должна быть ОДНА и выбираться детерминированно,
 # иначе она зависела бы от порядка циклов ниже.

@@ -14,6 +14,7 @@ import {
   generateAssessments,
   closeCampaign,
   reopenCampaign,
+  deleteCampaign,
   fetchCampaignCoverage,
 } from '../../api/campaigns';
 import type { CreateCampaignIn } from '../../api/campaigns';
@@ -171,6 +172,13 @@ export function AdminCampaignsPage() {
                 key={`coverage-${selected.id}`}
                 campaign={selected}
                 onChanged={() => campaigns.reload()}
+                onDeleted={() => {
+                  // Выбор сбрасываем сами: удалённая кампания больше не
+                  // придёт в списке, а selectedId на неё бы остался — до
+                  // перерисовки экран показывал бы панели мёртвой кампании.
+                  setSelectedId(null);
+                  campaigns.reload();
+                }}
               />
               <GeneratePanel
                 key={`generate-${selected.id}`}
@@ -200,15 +208,18 @@ export function AdminCampaignsPage() {
 function CoveragePanel({
   campaign,
   onChanged,
+  onDeleted,
 }: {
   campaign: CampaignListItem;
   onChanged: () => void;
+  onDeleted: () => void;
 }) {
   const [coverage, setCoverage] = useState<CampaignCoverage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [reopening, setReopening] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -277,6 +288,13 @@ function CoveragePanel({
             {reopening ? 'Возобновляем…' : 'Возобновить кампанию'}
           </Button>
         )}
+        {/* Удаление — необратимое и в любом статусе: мусорные кампании
+            бывают и черновиками, и «завершёнными». Защита — подтверждение
+            с числами, а не запрет по статусу. */}
+        <Button variant="danger" onClick={() => setShowDelete(true)}>
+          <Icon name="trash" size={15} />
+          Удалить
+        </Button>
       </div>
 
       {error && <div className="form-error">{error}</div>}
@@ -299,7 +317,83 @@ function CoveragePanel({
           ))}
         </div>
       )}
+
+      {showDelete && (
+        <DeleteCampaignModal
+          campaign={campaign}
+          onClose={() => setShowDelete(false)}
+          onDeleted={() => {
+            setShowDelete(false);
+            onDeleted();
+          }}
+        />
+      )}
     </Panel>
+  );
+}
+
+/**
+ * Подтверждение удаления кампании. Показывает МАСШТАБ (сколько анкет и
+ * сколько из них заполнено) до нажатия: заполненные анкеты — это чужая
+ * работа, и «удалить пустой черновик» от «удалить собранную диагностику»
+ * админ должен отличать до, а не после.
+ */
+function DeleteCampaignModal({
+  campaign,
+  onClose,
+  onDeleted,
+}: {
+  campaign: CampaignListItem;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const hasAnswers = campaign.completed_assessments > 0;
+
+  const handleConfirm = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await deleteCampaign(campaign.id);
+      onDeleted();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось удалить кампанию');
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal title="Удалить кампанию" onClose={onClose}>
+      <p>
+        «{campaign.title}» ({formatPeriod(campaign.period_year, campaign.period_month)}) будет
+        удалена вместе со всеми анкетами и ответами. Действие необратимо — в отличие от
+        деактивации пользователя, восстановить данные будет нельзя.
+      </p>
+      <p className="app-main__sub">
+        Сейчас в кампании {campaign.total_assessments}{' '}
+        {campaign.total_assessments === 1 ? 'анкета' : 'анкет'}, из них заполнено{' '}
+        {campaign.completed_assessments}.
+      </p>
+      {hasAnswers && (
+        <div className="form-error">
+          В кампании есть заполненные анкеты — вместе с ней пропадут собранные ответы и
+          результаты диагностики за этот период.
+        </div>
+      )}
+
+      {error && <div className="form-error">{error}</div>}
+
+      <div className="modal__actions">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Отмена
+        </Button>
+        <Button variant="danger" onClick={handleConfirm} disabled={submitting}>
+          {submitting ? 'Удаляем…' : 'Удалить кампанию'}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 

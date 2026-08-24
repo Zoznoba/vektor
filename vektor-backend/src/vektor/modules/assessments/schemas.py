@@ -40,6 +40,19 @@ class CampaignListItemOut(BaseModel):
     completed_assessments: int
 
 
+class CampaignDeleteResult(BaseModel):
+    """Что именно снесли — под подтверждение в UI («удалено N анкет, M ответов»).
+
+    Возвращаем тело, а не 204: удаление кампании необратимо и утаскивает за
+    собой чужую работу, поэтому админ должен увидеть масштаб постфактум, а не
+    только «ок».
+    """
+
+    campaign_id: int
+    assessments_deleted: int
+    answers_deleted: int
+
+
 class GenerateIn(BaseModel):
     class_ids: list[int] = Field(min_length=1)
     # Оценивают ли одноклассники друг друга. По умолчанию нет — только

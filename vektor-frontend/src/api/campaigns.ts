@@ -1,5 +1,11 @@
 import { apiRequest } from './client';
-import type { Campaign, CampaignCoverage, CampaignListItem, GenerateResult } from '../types/campaign';
+import type {
+  Campaign,
+  CampaignCoverage,
+  CampaignDeleteResult,
+  CampaignListItem,
+  GenerateResult,
+} from '../types/campaign';
 
 export function fetchCampaigns(): Promise<CampaignListItem[]> {
   return apiRequest<CampaignListItem[]>('/campaigns');
@@ -29,6 +35,14 @@ export function generateAssessments(
     method: 'POST',
     body: { class_ids: classIds, teacher_ids_by_class: teacherIdsByClass },
   });
+}
+
+/**
+ * Удаляет кампанию вместе со всеми анкетами и ответами. Необратимо —
+ * вызывать только после подтверждения пользователем.
+ */
+export function deleteCampaign(campaignId: number): Promise<CampaignDeleteResult> {
+  return apiRequest<CampaignDeleteResult>(`/campaigns/${campaignId}`, { method: 'DELETE' });
 }
 
 export function closeCampaign(campaignId: number): Promise<Campaign> {

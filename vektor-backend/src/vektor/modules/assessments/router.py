@@ -7,6 +7,7 @@ from vektor.modules.assessments.schemas import (
     AssessmentDetailOut,
     AssessmentListItemOut,
     CampaignCreate,
+    CampaignDeleteResult,
     CampaignListItemOut,
     CampaignOut,
     GenerateIn,
@@ -112,6 +113,28 @@ async def reopen_campaign(
     campaign = await service.reopen_campaign(db, campaign_id)
 
     return campaign
+
+
+@router.delete(
+    "/{campaign_id}",
+    response_model=CampaignDeleteResult,
+    summary="Удалить кампанию",
+    description="Удалить кампанию вместе со всеми её анкетами и ответами. "
+    "Необратимо. Нужно, чтобы убирать тестовые и ошибочно заведённые "
+    "кампании: «последний период» на экране результатов резолвится по дате "
+    "кампании, и забытая пустая кампания скрывает настоящую диагностику. "
+    "Только админ.",
+)
+async def delete_campaign(
+    campaign_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_role(UserRole.ADMIN)),
+) -> CampaignDeleteResult:
+    # TODO(Максим): сервис вернёт dict — отдай его как есть, FastAPI сам
+    # соберёт CampaignDeleteResult по response_model. Ловить исключения тут
+    # НЕ надо: CampaignNotFound — DomainError, его разбирает общий обработчик
+    # из core/errors.py (Этап 7a).
+    return await service.delete_campaign(db, campaign_id)
 
 
 @assessment_router.get(
