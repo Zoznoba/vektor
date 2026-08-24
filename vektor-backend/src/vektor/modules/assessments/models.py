@@ -40,9 +40,14 @@ def _enum_col(enum_cls):
 class Campaign(Base):
     """Кампания оценки — один раунд 360 (например «360 · июнь 2026»).
 
-    Задаёт период сбора, окно приёма ответов (opens_at / closes_at) и статус
-    жизненного цикла (draft → active → closed). Все анкеты раунда ссылаются на
-    неё через Assessment.campaign_id. Таблица в БД: `campaigns`.
+    Задаёт период сбора (год + месяц) и статус жизненного цикла
+    (draft → active → closed). Все анкеты раунда ссылаются на неё через
+    Assessment.campaign_id. Таблица в БД: `campaigns`.
+
+    Окна приёма ответов (opens_at / closes_at) у кампании НЕТ: они были
+    декоративными — ни одна проверка в бэкенде на них не смотрела, приём
+    ответов режется только статусом, а во всех боевых данных обе колонки
+    стояли в NULL. Удалены миграцией e7b3f9c2a815.
     """
 
     __tablename__ = "campaigns"
@@ -51,15 +56,20 @@ class Campaign(Base):
 
     title: Mapped[str] = mapped_column(String(255))
 
-    period: Mapped[str] = mapped_column(String(20))
+    # Период — ГОД + МЕСЯЦ числами, а не свободный ярлык строкой. Раньше это
+    # был String(20) («2026» или «2026-06», формат не зафиксирован), и сравнение
+    # периодов приходилось делать разбором регуляркой в Python: "2026" —
+    # префикс "2026-02" и потому лексикографически МЕНЬШЕ, хотя по смыслу не
+    # раньше. На проде это уже приводило к тому, что «последней» кампанией
+    # класса выбиралась кампания-артефакт. С двумя числами хронологический
+    # порядок снова выражается обычным ORDER BY.
+    period_year: Mapped[int]
+
+    period_month: Mapped[int]
 
     status: Mapped[CampaignStatus] = mapped_column(
         _enum_col(CampaignStatus), default=CampaignStatus.DRAFT
     )
-
-    opens_at: Mapped[datetime | None]
-
-    closes_at: Mapped[datetime | None]
 
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
@@ -73,7 +83,7 @@ class Campaign(Base):
     assessments: Mapped[list["Assessment"]] = relationship(back_populates="campaign")
 
     def __repr__(self) -> str:
-        return f"<Campaign id={self.id} period={self.period!r}>"
+        return f"<Campaign id={self.id} period={self.period_year}-{self.period_month:02d}>"
 
 
 class Assessment(Base):

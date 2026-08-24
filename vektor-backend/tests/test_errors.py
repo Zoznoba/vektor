@@ -72,7 +72,9 @@ async def test_validation_error_detail_is_string_not_list(
     # показывает detail только если это строка — любая 422 выглядела как
     # «Ошибка запроса (422)» без объяснения.
     response = await client.post(
-        "/campaigns", json={"title": "", "period": "2026"}, headers=admin_headers
+        "/campaigns",
+        json={"title": "", "period_year": 2026, "period_month": 6},
+        headers=admin_headers,
     )
 
     assert response.status_code == 422
@@ -83,7 +85,9 @@ async def test_validation_error_detail_is_string_not_list(
 
 async def test_validation_error_lists_offending_fields(client: AsyncClient, admin_headers) -> None:
     response = await client.post(
-        "/campaigns", json={"title": "", "period": "2026"}, headers=admin_headers
+        "/campaigns",
+        json={"title": "", "period_year": 2026, "period_month": 6},
+        headers=admin_headers,
     )
 
     body = response.json()
@@ -110,7 +114,9 @@ async def test_forbidden_from_require_role_keeps_shape(client: AsyncClient, regi
     student_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
     response = await client.post(
-        "/campaigns", json={"title": "X", "period": "2026"}, headers=student_headers
+        "/campaigns",
+        json={"title": "X", "period_year": 2026, "period_month": 6},
+        headers=student_headers,
     )
 
     assert response.status_code == 403
@@ -135,7 +141,9 @@ async def test_missing_current_version_gives_409_not_500(
     await db_session.commit()
 
     response = await client.post(
-        "/campaigns", json={"title": "360", "period": "2026"}, headers=admin_headers
+        "/campaigns",
+        json={"title": "360", "period_year": 2026, "period_month": 6},
+        headers=admin_headers,
     )
 
     assert response.status_code == 409
@@ -152,7 +160,9 @@ async def test_same_error_carries_context_specific_message(
     # закрытие, а не общее «кампания не активна».
     campaign = (
         await client.post(
-            "/campaigns", json={"title": "360", "period": "2026"}, headers=admin_headers
+            "/campaigns",
+            json={"title": "360", "period_year": 2026, "period_month": 6},
+            headers=admin_headers,
         )
     ).json()
 

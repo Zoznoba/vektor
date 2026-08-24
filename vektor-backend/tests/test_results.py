@@ -471,7 +471,7 @@ async def results_scenario(client: AsyncClient, admin_headers: dict[str, str]) -
     campaign = (
         await client.post(
             "/campaigns",
-            json={"title": "360 · результаты", "period": "2026-06"},
+            json={"title": "360 · результаты", "period_year": 2026, "period_month": 6},
             headers=admin_headers,
         )
     ).json()
@@ -768,11 +768,11 @@ async def dynamics_scenario(client: AsyncClient, admin_headers: dict[str, str], 
     q_b = await _question_id_for(db_session, comp_b)
 
     campaigns = {}
-    for period in ("2025", "2026"):
+    for period in (2025, 2026):
         campaign = (
             await client.post(
                 "/campaigns",
-                json={"title": f"360 · {period}", "period": period},
+                json={"title": f"360 · {period}", "period_year": period, "period_month": 6},
                 headers=admin_headers,
             )
         ).json()
@@ -784,22 +784,12 @@ async def dynamics_scenario(client: AsyncClient, admin_headers: dict[str, str], 
         campaigns[period] = campaign["id"]
 
     # 2025: только критерий A (self=3, teacher=3 → overall 3.0)
-    await _answer_in_campaign(
-        client, db_session, "ds1@vektor.ru", s1, s1, campaigns["2025"], q_a, 3
-    )
-    await _answer_in_campaign(
-        client, db_session, "dt1@vektor.ru", t1, s1, campaigns["2025"], q_a, 3
-    )
+    await _answer_in_campaign(client, db_session, "ds1@vektor.ru", s1, s1, campaigns[2025], q_a, 3)
+    await _answer_in_campaign(client, db_session, "dt1@vektor.ru", t1, s1, campaigns[2025], q_a, 3)
     # 2026: A вырос до 4.0, плюс появился B
-    await _answer_in_campaign(
-        client, db_session, "ds1@vektor.ru", s1, s1, campaigns["2026"], q_a, 4
-    )
-    await _answer_in_campaign(
-        client, db_session, "dt1@vektor.ru", t1, s1, campaigns["2026"], q_a, 4
-    )
-    await _answer_in_campaign(
-        client, db_session, "ds1@vektor.ru", s1, s1, campaigns["2026"], q_b, 5
-    )
+    await _answer_in_campaign(client, db_session, "ds1@vektor.ru", s1, s1, campaigns[2026], q_a, 4)
+    await _answer_in_campaign(client, db_session, "dt1@vektor.ru", t1, s1, campaigns[2026], q_a, 4)
+    await _answer_in_campaign(client, db_session, "ds1@vektor.ru", s1, s1, campaigns[2026], q_b, 5)
 
     return {
         "class_id": class_id,
@@ -817,9 +807,9 @@ async def test_dynamics_compares_with_previous_period(
     headers = await _login(client, "ds1@vektor.ru")
     body = (await client.get(f"/results/{s1}/dynamics", headers=headers)).json()
 
-    assert body["campaign_period"] == "2026"
-    assert body["previous_campaign_period"] == "2025"
-    assert body["previous_campaign_id"] == dynamics_scenario["campaigns"]["2025"]
+    assert body["campaign_period_year"] == 2026
+    assert body["previous_campaign_period_year"] == 2025
+    assert body["previous_campaign_id"] == dynamics_scenario["campaigns"][2025]
 
     comp_a = next(
         c for c in body["competencies"] if c["competency_id"] == dynamics_scenario["comp_a"]
@@ -869,7 +859,7 @@ async def test_dynamics_without_previous_period_is_not_404(
     # У первого года обучения прошлого периода нет — это штатное состояние.
     s1 = dynamics_scenario["ids"]["s1"]
     headers = await _login(client, "ds1@vektor.ru")
-    first = dynamics_scenario["campaigns"]["2025"]
+    first = dynamics_scenario["campaigns"][2025]
 
     response = await client.get(f"/results/{s1}/dynamics?campaign_id={first}", headers=headers)
 
@@ -884,16 +874,51 @@ async def test_dynamics_without_previous_period_is_not_404(
     assert comp_a["overall_avg"] == pytest.approx(3.0)
 
 
+async def test_dynamics_orders_periods_by_month_within_year(
+    client: AsyncClient, admin_headers, dynamics_scenario, db_session
+) -> None:
+    # РЕГРЕССИЯ на прод-баг, который жил, пока период был свободной строкой:
+    # "2026" — префикс "2026-02" и потому лексикографически МЕНЬШЕ, так что
+    # хронологию приходилось восстанавливать разбором ярлыка (period_sort_key
+    # с месяцем-заглушкой 13). С числовыми год/месяц порядок обычный, и
+    # сентябрь того же года честно оказывается ПОЗЖЕ июня.
+    s1 = dynamics_scenario["ids"]["s1"]
+    september = (
+        await client.post(
+            "/campaigns",
+            json={"title": "360 · сентябрь 2026", "period_year": 2026, "period_month": 9},
+            headers=admin_headers,
+        )
+    ).json()
+    await client.post(
+        f"/campaigns/{september['id']}/generate",
+        json={"class_ids": [dynamics_scenario["class_id"]]},
+        headers=admin_headers,
+    )
+    q_a = await _question_id_for(db_session, dynamics_scenario["comp_a"])
+    await _answer_in_campaign(client, db_session, "ds1@vektor.ru", s1, s1, september["id"], q_a, 5)
+
+    headers = await _login(client, "ds1@vektor.ru")
+
+    # Без campaign_id берётся САМАЯ СВЕЖАЯ — сентябрьская, а не июньская.
+    latest = (await client.get(f"/results/{s1}/dynamics", headers=headers)).json()
+    assert latest["campaign_id"] == september["id"]
+    # Предыдущей для неё оказывается июнь ТОГО ЖЕ года, а не прошлогодняя.
+    assert latest["previous_campaign_id"] == dynamics_scenario["campaigns"][2026]
+    assert latest["previous_campaign_period_year"] == 2026
+    assert latest["previous_campaign_period_month"] == 6
+
+
 async def test_dynamics_same_period_campaign_is_not_previous(
     client: AsyncClient, admin_headers, dynamics_scenario, db_session
 ) -> None:
-    # Вторая кампания ТОГО ЖЕ года не является предыдущей: сравнение идёт
+    # Вторая кампания ТОГО ЖЕ периода не является предыдущей: сравнение идёт
     # строго по периодам, иначе два класса одного года стали бы «динамикой».
     s1 = dynamics_scenario["ids"]["s1"]
     twin = (
         await client.post(
             "/campaigns",
-            json={"title": "360 · 2026 второй", "period": "2026"},
+            json={"title": "360 · 2026 второй", "period_year": 2026, "period_month": 6},
             headers=admin_headers,
         )
     ).json()
@@ -910,7 +935,7 @@ async def test_dynamics_same_period_campaign_is_not_previous(
         await client.get(f"/results/{s1}/dynamics?campaign_id={twin['id']}", headers=headers)
     ).json()
 
-    assert body["previous_campaign_period"] == "2025"
+    assert body["previous_campaign_period_year"] == 2025
 
 
 async def test_dynamics_reports_version_change(
@@ -928,7 +953,7 @@ async def test_dynamics_reports_version_change(
     await db_session.flush()
     await db_session.execute(
         sa_update(Campaign)
-        .where(Campaign.id == dynamics_scenario["campaigns"]["2025"])
+        .where(Campaign.id == dynamics_scenario["campaigns"][2025])
         .values(questionnaire_version_id=archive.id)
     )
     await db_session.commit()
@@ -959,7 +984,7 @@ async def test_subject_campaigns_lists_both_periods(client: AsyncClient, dynamic
     body = (await client.get(f"/results/{s1}/campaigns", headers=headers)).json()
 
     # Свежий период первым — переключатель периодов открывается на актуальном.
-    assert [c["period"] for c in body] == ["2026", "2025"]
+    assert [c["period_year"] for c in body] == [2026, 2025]
 
 
 async def test_subject_campaigns_forbidden_for_unrelated(
@@ -1008,7 +1033,9 @@ async def class_scenario(client: AsyncClient, admin_headers: dict[str, str], db_
 
     campaign = (
         await client.post(
-            "/campaigns", json={"title": "360 · класс", "period": "2026"}, headers=admin_headers
+            "/campaigns",
+            json={"title": "360 · класс", "period_year": 2026, "period_month": 6},
+            headers=admin_headers,
         )
     ).json()
     campaign_id = campaign["id"]

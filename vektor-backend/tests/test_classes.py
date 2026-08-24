@@ -207,7 +207,7 @@ async def test_assign_one_teacher(client: AsyncClient, existing_class: dict) -> 
     )
 
     assert response.status_code == 200
-    assert [t["id"] for t in response.json()["teachers"]] == [teacher["id"]]
+    assert [t["teacher"]["id"] for t in response.json()["teachers"]] == [teacher["id"]]
 
 
 async def test_assign_multiple_teachers(client: AsyncClient, existing_class: dict) -> None:
@@ -221,7 +221,7 @@ async def test_assign_multiple_teachers(client: AsyncClient, existing_class: dic
     )
 
     assert response.status_code == 200
-    assigned_ids = {t["id"] for t in response.json()["teachers"]}
+    assigned_ids = {t["teacher"]["id"] for t in response.json()["teachers"]}
     assert assigned_ids == {teacher_a["id"], teacher_b["id"]}
 
 

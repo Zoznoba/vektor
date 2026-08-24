@@ -187,7 +187,9 @@ async def scenario(client: AsyncClient, admin_headers: dict[str, str]) -> dict:
 
 async def _create_campaign(client: AsyncClient, headers: dict[str, str]) -> int:
     response = await client.post(
-        "/campaigns", json={"title": "360 · июнь 2026", "period": "2026-06"}, headers=headers
+        "/campaigns",
+        json={"title": "360 · июнь 2026", "period_year": 2026, "period_month": 6},
+        headers=headers,
     )
     assert response.status_code == 201
     return response.json()["id"]
@@ -195,7 +197,9 @@ async def _create_campaign(client: AsyncClient, headers: dict[str, str]) -> int:
 
 async def test_create_campaign_starts_as_draft(client: AsyncClient, admin_headers) -> None:
     response = await client.post(
-        "/campaigns", json={"title": "360 · июнь 2026", "period": "2026-06"}, headers=admin_headers
+        "/campaigns",
+        json={"title": "360 · июнь 2026", "period_year": 2026, "period_month": 6},
+        headers=admin_headers,
     )
     assert response.status_code == 201
     body = response.json()
@@ -207,7 +211,9 @@ async def test_create_campaign_requires_admin(client: AsyncClient, register_user
     login = await client.post("/auth/login", json=register_user)
     student_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     response = await client.post(
-        "/campaigns", json={"title": "X", "period": "2026-06"}, headers=student_headers
+        "/campaigns",
+        json={"title": "X", "period_year": 2026, "period_month": 6},
+        headers=student_headers,
     )
     assert response.status_code == 403
 
@@ -277,6 +283,69 @@ async def test_generate_with_peers_adds_pairs(client: AsyncClient, scenario) -> 
     assert response.status_code == 200
     # 5 базовых + 2 пира (s1↔s2) = 7.
     assert response.json()["created"] == 7
+
+
+async def test_generate_uses_only_chosen_teachers(client: AsyncClient, scenario) -> None:
+    """Ученика оценивают не все предметники, а выбранные администратором."""
+    headers = scenario["headers"]
+    t2 = await _register(client, "t2@vektor.ru", "teacher")
+    await client.post(
+        f"/classes/{scenario['class_id']}/teachers", json={"teacher_ids": [t2]}, headers=headers
+    )
+    cid = await _create_campaign(client, headers)
+
+    response = await client.post(
+        f"/campaigns/{cid}/generate",
+        json={
+            "class_ids": [scenario["class_id"]],
+            "teacher_ids_by_class": {str(scenario["class_id"]): [scenario["ids"]["t1"]]},
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    # self(2) + parent(1) + teacher t1 на двоих учеников(2) = 5; t2 не участвует,
+    # хотя и числится учителем класса — иначе было бы 7.
+    assert response.json()["created"] == 5
+
+
+async def test_generate_without_teachers_for_class(client: AsyncClient, scenario) -> None:
+    """Пустой список ≠ «ключа нет»: это осознанное «учителей не опрашиваем»."""
+    cid = await _create_campaign(client, scenario["headers"])
+
+    response = await client.post(
+        f"/campaigns/{cid}/generate",
+        json={
+            "class_ids": [scenario["class_id"]],
+            "teacher_ids_by_class": {str(scenario["class_id"]): []},
+        },
+        headers=scenario["headers"],
+    )
+
+    # Остались только self(2) + parent(1).
+    assert response.json()["created"] == 3
+
+
+async def test_generate_ignores_teacher_detached_from_class(client: AsyncClient, scenario) -> None:
+    """Галочка могла устареть: учителя открепили, пока экран был открыт.
+
+    Такой выбор молча игнорируется — иначе чужой учитель получил бы анкеты и
+    доступ к результатам класса, к которому больше не имеет отношения.
+    """
+    headers = scenario["headers"]
+    outsider = await _register(client, "outsider@vektor.ru", "teacher")
+    cid = await _create_campaign(client, headers)
+
+    response = await client.post(
+        f"/campaigns/{cid}/generate",
+        json={
+            "class_ids": [scenario["class_id"]],
+            "teacher_ids_by_class": {str(scenario["class_id"]): [scenario["ids"]["t1"], outsider]},
+        },
+        headers=headers,
+    )
+
+    assert response.json()["created"] == 5  # как будто выбран только t1
 
 
 async def test_generate_is_idempotent(client: AsyncClient, scenario) -> None:
@@ -812,28 +881,8 @@ async def test_list_assessments_self_flag(client: AsyncClient, scenario) -> None
     assert len(body) == 1  # только самооценка
     assert body[0]["is_self"] is True
     assert body[0]["campaign_title"] == "360 · июнь 2026"
-    assert body[0]["campaign_closes_at"] is None  # _create_campaign не задаёт дедлайн
-
-
-async def test_list_assessments_exposes_campaign_deadline(client: AsyncClient, scenario) -> None:
-    response = await client.post(
-        "/campaigns",
-        json={"title": "360 · июнь 2026", "period": "2026-06", "closes_at": "2026-06-20T00:00:00"},
-        headers=scenario["headers"],
-    )
-    cid = response.json()["id"]
-    await client.post(
-        f"/campaigns/{cid}/generate",
-        json={"class_ids": [scenario["class_id"]]},
-        headers=scenario["headers"],
-    )
-
-    s1_headers = await _login(client, "s1@vektor.ru")
-    response = await client.get("/assessments", headers=s1_headers)
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body[0]["campaign_closes_at"] == "2026-06-20T00:00:00"
+    assert body[0]["campaign_period_year"] == 2026
+    assert body[0]["campaign_period_month"] == 6
 
 
 async def test_list_assessments_filters_by_campaign(client: AsyncClient, scenario) -> None:
@@ -846,7 +895,7 @@ async def test_list_assessments_filters_by_campaign(client: AsyncClient, scenari
     cid2 = (
         await client.post(
             "/campaigns",
-            json={"title": "360 · сентябрь 2026", "period": "2026-09"},
+            json={"title": "360 · сентябрь 2026", "period_year": 2026, "period_month": 9},
             headers=scenario["headers"],
         )
     ).json()["id"]  # без generate — анкет под ней нет
