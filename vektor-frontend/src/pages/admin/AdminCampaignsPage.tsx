@@ -23,7 +23,15 @@ import { classLabel } from '../../types/school';
 import { MONTH_OPTIONS, formatPeriod } from '../../data/period';
 import type { SchoolClass } from '../../types/school';
 import { ApiError } from '../../api/client';
-import type { CampaignCoverage, CampaignListItem, CampaignStatus } from '../../types/campaign';
+import type {
+  CampaignCoverage,
+  CampaignListItem,
+  CampaignStatus,
+  CampaignStudentRow,
+  ClassCoverageRow,
+  LayerCoverage,
+} from '../../types/campaign';
+import type { AssessmentStatus } from '../../types/assessment';
 import './admin.css';
 import './campaigns.css';
 
@@ -306,14 +314,7 @@ function CoveragePanel({
       ) : (
         <div className="coverage-rows">
           {coverage.classes.map((row) => (
-            <div className="coverage-row" key={row.class_id ?? 'none'}>
-              <div className="coverage-row__label">{row.class_label ?? 'без класса'}</div>
-              <ProgressBar value={row.percent} className="coverage-row__bar" />
-              <div className="coverage-row__counts">
-                {row.completed} из {row.total}
-              </div>
-              <div className="coverage-row__pct">{Math.round(row.percent)}%</div>
-            </div>
+            <CoverageClassRow key={row.class_id ?? 'none'} row={row} />
           ))}
         </div>
       )}
@@ -329,6 +330,135 @@ function CoveragePanel({
         />
       )}
     </Panel>
+  );
+}
+
+/**
+ * Строка класса в покрытии: сводка + раскрывающийся список учеников.
+ *
+ * Свёрнута по умолчанию — на школьной кампании классов десяток, и
+ * развёрнутые таблицы превратили бы экран в простыню. Раскрытие локальное,
+ * не в URL: это деталь просмотра, а не адресуемое состояние.
+ */
+function CoverageClassRow({ row }: { row: ClassCoverageRow }) {
+  const [open, setOpen] = useState(false);
+  const hasStudents = row.students.length > 0;
+
+  return (
+    <div className="coverage-group">
+      <button
+        type="button"
+        className="coverage-row coverage-row--toggle"
+        onClick={() => setOpen((v) => !v)}
+        disabled={!hasStudents}
+        aria-expanded={open}
+      >
+        <Icon
+          name="chevronDown"
+          size={15}
+          className={`coverage-row__chevron${open ? ' coverage-row__chevron--open' : ''}`}
+        />
+        <div className="coverage-row__label">{row.class_label ?? 'без класса'}</div>
+        <ProgressBar value={row.percent} className="coverage-row__bar" />
+        <div className="coverage-row__counts">
+          {row.completed} из {row.total}
+        </div>
+        <div className="coverage-row__pct">{Math.round(row.percent)}%</div>
+      </button>
+
+      {open && hasStudents && <CoverageStudentsTable students={row.students} />}
+    </div>
+  );
+}
+
+/**
+ * Кто прошёл диагностику внутри класса. Колонка одноклассников показывается
+ * только если слой вообще выдавался (7o убрал его из UI генерации, но в
+ * архивных кампаниях он встречается).
+ */
+function CoverageStudentsTable({ students }: { students: CampaignStudentRow[] }) {
+  const navigate = useNavigate();
+  const showPeers = students.some((s) => s.peers.total > 0);
+
+  return (
+    <div className="coverage-students">
+      <table className="admin-table coverage-students__table">
+        <thead>
+          <tr>
+            <th>Ученик</th>
+            <th>Самооценка</th>
+            <th>Родители</th>
+            <th>Учителя</th>
+            {showPeers && <th>Одноклассники</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {students.map((student) => (
+            <tr
+              key={student.subject.id}
+              className="coverage-students__row"
+              onClick={() => navigate(`/admin/results/${student.subject.id}`)}
+              title="Открыть результаты ученика"
+            >
+              <td>{student.subject.full_name}</td>
+              <td>
+                <SelfStatusCell status={student.self_status} />
+              </td>
+              <td>
+                <LayerCell layer={student.parents} />
+              </td>
+              <td>
+                <LayerCell layer={student.teachers} />
+              </td>
+              {showPeers && (
+                <td>
+                  <LayerCell layer={student.peers} />
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const SELF_STATUS_LABEL: Record<AssessmentStatus, string> = {
+  not_started: 'не начата',
+  in_progress: 'в процессе',
+  completed: 'пройдена',
+};
+
+/**
+ * Самооценка. Двух состояний мало: null («анкету не выдали») и not_started
+ * («выдали, не начал») требуют от админа разных действий — перегенерировать
+ * или напомнить, — поэтому и выглядят по-разному.
+ */
+function SelfStatusCell({ status }: { status: AssessmentStatus | null }) {
+  if (status === null) {
+    return <span className="cover-mark cover-mark--missing">не выдана</span>;
+  }
+  const tone = status === 'completed' ? 'done' : status === 'in_progress' ? 'partial' : 'none';
+  return (
+    <span className={`cover-mark cover-mark--${tone}`}>
+      {status === 'completed' && <Icon name="check" size={13} />}
+      {SELF_STATUS_LABEL[status]}
+    </span>
+  );
+}
+
+/** Слой раторов: «2 из 2» с галочкой, «1 из 2» приглушённо, «—» если не выдан. */
+function LayerCell({ layer }: { layer: LayerCoverage }) {
+  if (layer.total === 0) {
+    return <span className="cover-mark cover-mark--missing">—</span>;
+  }
+  const done = layer.completed === layer.total;
+  const tone = done ? 'done' : layer.completed > 0 ? 'partial' : 'none';
+  return (
+    <span className={`cover-mark cover-mark--${tone}`}>
+      {done && <Icon name="check" size={13} />}
+      {layer.completed} из {layer.total}
+    </span>
   );
 }
 

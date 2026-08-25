@@ -83,16 +83,96 @@
   flex-direction: column;
 }
 
+.coverage-group {
+  border-top: 1px solid var(--border);
+}
+
+.coverage-group:first-child {
+  border-top: none;
+}
+
 .coverage-row {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 9px 0;
-  border-top: 1px solid var(--border);
 }
 
-.coverage-row:first-child {
-  border-top: none;
+/* Строка класса — кнопка-раскрывашка: сбрасываем всё, что браузер рисует у
+   button, и растягиваем на всю ширину, чтобы попадать по ней целиком. */
+.coverage-row--toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.coverage-row--toggle:disabled {
+  cursor: default;
+}
+
+.coverage-row__chevron {
+  flex-shrink: 0;
+  color: var(--ink-soft);
+  transition: transform 0.15s ease;
+}
+
+.coverage-row__chevron--open {
+  transform: rotate(180deg);
+}
+
+.coverage-row--toggle:disabled .coverage-row__chevron {
+  opacity: 0.3;
+}
+
+/* Таблица учеников внутри класса: узкая и с отступом слева, чтобы читалась
+   как вложенная в строку класса, а не как отдельный блок. */
+.coverage-students {
+  padding: 0 0 12px 27px;
+  overflow-x: auto;
+}
+
+.coverage-students__table {
+  font-size: 12.5px;
+}
+
+.coverage-students__row {
+  cursor: pointer;
+}
+
+.coverage-students__row:hover {
+  background: var(--bg-soft, var(--blue-tint));
+}
+
+/* Отметка «сделано / частично / не начато / не выдано». Цвет несёт смысл, но
+   рядом всегда есть текст («2 из 2», «в процессе») — по одному цвету ничего
+   различать не приходится. */
+.cover-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.cover-mark--done {
+  color: var(--lime-ink);
+  font-weight: 600;
+}
+
+.cover-mark--partial {
+  color: var(--amber-ink);
+}
+
+.cover-mark--none {
+  color: var(--ink-soft);
+}
+
+.cover-mark--missing {
+  color: var(--ink-soft);
+  opacity: 0.65;
 }
 
 .coverage-row__label {

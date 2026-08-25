@@ -436,14 +436,6 @@
   color: var(--ink-soft);
   margin-top: 4px;
 }
-<<<<<<< HEAD
-=======
-
-.quick-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
 
 /* Вкладки состава класса: чипы слева, контекстная кнопка добавления справа. */
 .class-tabs {
@@ -460,4 +452,3 @@
   text-align: right;
   white-space: nowrap;
 }
->>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
