@@ -79,6 +79,19 @@ class QuestionForAssessmentOut(BaseModel):
     is_conditional: bool
     value: int | None
 
+    # Критерий и глава («ОР / навык») приходят ВМЕСТЕ с вопросом, а не
+    # добираются фронтом из GET /competencies. Тот справочник отдаёт только
+    # ДЕЙСТВУЮЩУЮ методику (без is_archived), а уже опубликованная редакция
+    # анкеты может содержать вопросы критерия, заархивированного позже —
+    # архивирование не переписывает прошлые редакции (7l). На таком вопросе
+    # группировка по справочнику молча теряла строку, и анкета не могла
+    # завершиться: ответить на «пропавшие» вопросы было негде.
+    competency_name: str
+    competency_order: int
+    outcome_area_id: int
+    outcome_area_name: str
+    outcome_area_order: int
+
 
 class AssessmentDetailOut(BaseModel):
     id: int

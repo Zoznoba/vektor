@@ -570,6 +570,48 @@ async def test_get_assessment_grade_7_hides_conditional(
     assert body["questions"][0]["is_conditional"] is False
 
 
+async def test_assessment_keeps_questions_of_archived_competency(
+    client: AsyncClient, admin_headers, db_session
+) -> None:
+    """РЕГРЕССИЯ: вопрос заархивированного критерия обязан остаться в анкете
+    уже созданной кампании — и прийти с именами критерия и главы.
+
+    Архивирование критерия не переписывает опубликованные редакции (7l), но
+    GET /competencies архивные прячет. Пока фронт группировал вопросы по
+    справочнику, такой вопрос молча исчезал с экрана: бэкенд продолжал
+    считать его обязательным, и анкета не могла завершиться никогда
+    («28 из 31» на скрине). Теперь имена приходят с самим вопросом.
+    """
+    await _seed_two_questions(db_session)
+    setup = await _setup_scenario(client, admin_headers, grade=10)
+    cid = await _create_campaign(client, admin_headers)
+    await client.post(
+        f"/campaigns/{cid}/generate", json={"class_ids": [setup["class_id"]]}, headers=admin_headers
+    )
+
+    # Архивируем базовый критерий уже ПОСЛЕ генерации анкет.
+    base = await db_session.scalar(select(Competency).where(Competency.code == "C1"))
+    base.is_archived = True
+    await db_session.commit()
+
+    aid = await _self_assessment_id(db_session, setup["s1"])
+    headers = await _login(client, setup["s1_email"])
+    detail = (await client.get(f"/assessments/{aid}", headers=headers)).json()
+
+    assert [q["competency_name"] for q in detail["questions"]] == [
+        "Базовый критерий",
+        "Возрастной критерий",
+    ]
+    assert all(q["outcome_area_name"] for q in detail["questions"])
+
+    # И анкета из этих же вопросов доходит до completed — раньше три
+    # «невидимых» вопроса держали её в in_progress вечно.
+    result = await _submit(
+        client, aid, headers, [{"question_id": q["id"], "value": 4} for q in detail["questions"]]
+    )
+    assert result.json()["status"] == "completed"
+
+
 async def test_get_assessment_exposes_rater_role(client: AsyncClient, scenario, db_session) -> None:
     """rater_role в деталях анкеты — то же, что зафиксировано при генерации
     (Этап 5): нужно фронту решить, показывать ли баннер анонимности."""

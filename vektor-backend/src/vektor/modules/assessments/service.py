@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 from vektor.core.errors import DomainError
 from vektor.modules.assessments.models import Answer, Assessment, Campaign
 from vektor.modules.classes.models import SchoolClass
-from vektor.modules.competencies.models import Question, QuestionnaireVersion
+from vektor.modules.competencies.models import Competency, Question, QuestionnaireVersion
 from vektor.modules.users.models import User
 from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole
 
@@ -473,7 +473,7 @@ async def get_visible_questions_for_assessment(
     q_ordered_questions = await db.execute(
         select(Question)
         .where(Question.version_id == assessment.campaign.questionnaire_version_id)
-        .options(selectinload(Question.competency))
+        .options(selectinload(Question.competency).selectinload(Competency.outcome_area))
         .order_by(Question.competency_id, Question.order)
     )
     return [
@@ -518,6 +518,11 @@ async def get_assessment_detail(db: AsyncSession, assessment_id: int, current_us
             "is_conditional": q.competency.min_grade is not None
             or q.competency.max_grade is not None,
             "value": already_answered.get(q.id),
+            "competency_name": q.competency.name,
+            "competency_order": q.competency.order,
+            "outcome_area_id": q.competency.outcome_area_id,
+            "outcome_area_name": q.competency.outcome_area.name,
+            "outcome_area_order": q.competency.outcome_area.order,
         }
         for q in visible_questions
     ]

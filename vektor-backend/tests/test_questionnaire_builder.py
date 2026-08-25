@@ -196,3 +196,44 @@ async def test_archive_applies_immediately_without_draft(
         f"/outcome-areas/{area['id']}/archive", json={"is_archived": False}, headers=admin_headers
     )
     assert restored.json()["is_archived"] is False
+
+
+async def test_new_draft_skips_questions_of_archived_competency(
+    client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """Архивный критерий не тянется в следующую редакцию.
+
+    is_archived и означает «скрыт из новых черновиков» (7l): в уже
+    опубликованных редакциях вопросы остаются — прошлое неизменно, — но
+    новая редакция начинается без них. Иначе архивирование не имело бы
+    никакого эффекта и критерий переезжал бы из редакции в редакцию вечно
+    (ровно это и случилось на dev-БД: заархивированный «goal_planning»
+    доехал до редакции идущей кампании).
+    """
+    draft = await _create_draft(client, admin_headers)
+    area = await _add_area(client, admin_headers, draft["id"], "Глава с архивом")
+    keep = await _add_competency(client, admin_headers, draft["id"], area["id"], "Останется")
+    drop = await _add_competency(client, admin_headers, draft["id"], area["id"], "Уйдёт в архив")
+    await _add_question(client, admin_headers, draft["id"], keep["id"], "вопрос живого критерия")
+    await _add_question(client, admin_headers, draft["id"], drop["id"], "вопрос архивного")
+
+    publish = await client.post(
+        f"/questionnaire-versions/{draft['id']}/publish", headers=admin_headers
+    )
+    assert publish.status_code == 200
+
+    archived = await client.patch(
+        f"/competencies/{drop['id']}/archive", json={"is_archived": True}, headers=admin_headers
+    )
+    assert archived.status_code == 200
+
+    next_draft = await _create_draft(client, admin_headers)
+    tree = (
+        await client.get(f"/questionnaire-versions/{next_draft['id']}/tree", headers=admin_headers)
+    ).json()
+
+    texts = [
+        q["text"] for a in tree["outcome_areas"] for c in a["competencies"] for q in c["questions"]
+    ]
+    assert "вопрос живого критерия" in texts
+    assert "вопрос архивного" not in texts

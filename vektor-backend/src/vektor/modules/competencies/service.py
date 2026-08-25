@@ -146,7 +146,16 @@ async def create_draft_version(db: AsyncSession) -> QuestionnaireVersion:
     db.add(draft)
     await db.flush()
 
-    source_questions = await db.execute(select(Question).where(Question.version_id == current.id))
+    # Вопросы АРХИВНЫХ критериев в черновик не переносим: is_archived и
+    # означает «скрыт из новых черновиков» (7l). В уже опубликованных
+    # редакциях они остаются — прошлое неизменно, — но новая редакция
+    # начинается без них, иначе архивирование не имело бы никакого эффекта
+    # и критерий тянулся бы из редакции в редакцию вечно.
+    source_questions = await db.execute(
+        select(Question)
+        .join(Competency, Competency.id == Question.competency_id)
+        .where(Question.version_id == current.id, Competency.is_archived.is_(False))
+    )
     for q in source_questions.scalars():
         db.add(
             Question(
