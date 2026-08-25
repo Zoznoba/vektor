@@ -31,7 +31,7 @@ from vektor.modules.assessments.models import Answer, Assessment, Campaign
 from vektor.modules.classes.models import SchoolClass
 from vektor.modules.competencies.models import Competency, Question, QuestionnaireVersion
 from vektor.modules.users.models import User
-from vektor.shared.enums import AssessmentStatus, RaterRole, UserRole
+from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole, UserRole
 
 DEFAULT_PEER_ANONYMITY_THRESHOLD = 3
 DEFAULT_GROWTH_ZONES_COUNT = 3
@@ -330,6 +330,14 @@ class CampaignNotFound(DomainError):
     message = "Кампания не найдена"
 
 
+class CampaignNotCompleted(DomainError):
+    """Кампания существует, но ещё не завершена — результатов по ней нет."""
+
+    status_code = 409
+    code = "campaign_not_completed"
+    message = "Результаты доступны только по завершённой кампании"
+
+
 class SubjectNotFound(DomainError):
     """Пользователь-субъект с таким id не найден."""
 
@@ -352,6 +360,32 @@ class SchoolClassNotFound(DomainError):
     status_code = 404
     code = "class_not_found"
     message = "Класс не найден"
+
+
+async def _load_completed_campaign(db: AsyncSession, campaign_id: int) -> Campaign:
+    """Кампания для СТРАНИЦЫ РЕЗУЛЬТАТОВ: только завершённая (closed).
+
+    Пока кампания в draft/active, ответы ещё собираются: часть анкет пуста,
+    часть заполнена наполовину, и любой агрегат по ним — не «промежуточный
+    результат», а случайное число, которое завтра изменится. Особенно это
+    видно на порогах: критерий с двумя пришедшими ответами уезжает в зоны
+    роста, а слой одноклассников то раскрывается, то снова прячется по мере
+    заполнения (см. can_disclose_peer_scores).
+
+    Черновик отсекается тем же правилом заодно — это и чинит артефакт из
+    находки 7g в CLAUDE.md: пустая кампания-заглушка больше не может стать
+    «последней» и подменить собой реальные результаты.
+
+    Мониторинг хода кампании (покрытие, состав класса с прогрессом) под это
+    правило НЕ подпадает — там смысл экрана именно в незавершённой кампании,
+    см. latest_campaign_id_for_class(only_completed=False).
+    """
+    campaign = await db.get(Campaign, campaign_id)
+    if campaign is None:
+        raise CampaignNotFound()
+    if campaign.status != CampaignStatus.CLOSED:
+        raise CampaignNotCompleted()
+    return campaign
 
 
 async def _load_subject_for_results(db: AsyncSession, subject_id: int, current_user: User) -> User:
@@ -471,11 +505,16 @@ async def latest_campaign_id_for_subject(db: AsyncSession, subject_id: int) -> i
 
     Сравнение периодов — в Python через period_sort_key, а не ORDER BY по
     строке: см. её докстринг про "2026" против "2026-02".
+
+    Считаем только ЗАВЕРШЁННЫЕ кампании (см. _load_completed_campaign):
+    незакрытая кампания не должна подменять собой прошлые результаты, пока
+    ответы по ней ещё собираются.
     """
     rows = await db.execute(
         select(Assessment.campaign_id, Campaign.period)
         .join(Campaign, Campaign.id == Assessment.campaign_id)
         .where(Assessment.subject_id == subject_id)
+        .where(Campaign.status == CampaignStatus.CLOSED)
         .distinct()
     )
     candidates = rows.all()
@@ -499,11 +538,11 @@ async def get_subject_results(
     верно: доступ определяется тем, кто учитель/родитель сейчас), а роли в
     агрегации берутся зафиксированные — см. _load_scored_answers.
     """
-    campaign = await db.get(Campaign, campaign_id)
-    if campaign is None:
-        raise CampaignNotFound()
-
+    # Права проверяем ПЕРВЫМИ, статус кампании — вторым: посторонний не
+    # должен по коду ошибки узнавать, есть ли у чужого ученика незавершённая
+    # диагностика.
     subject = await _load_subject_for_results(db, subject_id, current_user)
+    await _load_completed_campaign(db, campaign_id)
 
     scored_answers = await _load_scored_answers(db, subject_id, campaign_id)
 
@@ -573,13 +612,18 @@ async def list_subject_campaigns(
 ) -> list[dict]:
     """Периоды, за которые у субъекта вообще есть результаты — под переключатель
     кампаний на экране результатов. Порядок хронологический по `period`
-    (см. latest_campaign_id_for_subject: id ≠ хронология)."""
+    (см. latest_campaign_id_for_subject: id ≠ хронология).
+
+    Только завершённые кампании — список должен совпадать с тем, что
+    страница результатов реально умеет открыть, иначе выбор периода в
+    селекторе приводил бы к 409."""
     await _load_subject_for_results(db, subject_id, current_user)
 
     rows = await db.execute(
         select(Campaign)
         .join(Assessment, Assessment.campaign_id == Campaign.id)
         .where(Assessment.subject_id == subject_id)
+        .where(Campaign.status == CampaignStatus.CLOSED)
         .distinct()
     )
     # Сортировка периода — через period_sort_key, не строкой ORDER BY: см. её
@@ -623,6 +667,7 @@ async def previous_campaign_id_for_subject(
         select(Assessment.campaign_id, Campaign.period)
         .join(Campaign, Campaign.id == Assessment.campaign_id)
         .where(Assessment.subject_id == subject_id)
+        .where(Campaign.status == CampaignStatus.CLOSED)
         .distinct()
     )
     current_key = period_sort_key(current.period)
@@ -646,11 +691,8 @@ async def get_subject_dynamics(
     данных нет в принципе. Возвращаем текущие баллы и previous_campaign_id=None,
     фронт сам решает, рисовать ли стрелку.
     """
-    campaign = await db.get(Campaign, campaign_id)
-    if campaign is None:
-        raise CampaignNotFound()
-
     subject = await _load_subject_for_results(db, subject_id, current_user)
+    campaign = await _load_completed_campaign(db, campaign_id)
 
     current_scores = await _overall_scores_for(db, subject_id, campaign_id)
 
@@ -725,17 +767,28 @@ async def get_subject_dynamics(
 # ---------- Срез 5e: агрегаты класса и покрытие кампании (БД) ----------
 
 
-async def latest_campaign_id_for_class(db: AsyncSession, class_id: int) -> int | None:
+async def latest_campaign_id_for_class(
+    db: AsyncSession, class_id: int, only_completed: bool = True
+) -> int | None:
     """Самая свежая кампания, где у класса есть анкеты (по снапшоту класса).
     Сортировка по `period` — та же причина, что у одноимённой функции для
     субъекта: id не отражает хронологию. Сравнение периодов — через
-    period_sort_key, не строкой (см. её докстринг)."""
-    rows = await db.execute(
+    period_sort_key, не строкой (см. её докстринг).
+
+    `only_completed=True` (для профиля класса) — только завершённые кампании.
+    Экраны МОНИТОРИНГА хода диагностики (состав класса с прогрессом,
+    покрытие) передают False: там смысл как раз в текущей, незакрытой
+    кампании — иначе учитель во время диагностики видел бы прошлый год и не
+    понимал, по кому анкеты ещё не заполнены."""
+    query = (
         select(Assessment.campaign_id, Campaign.period)
         .join(Campaign, Campaign.id == Assessment.campaign_id)
         .where(Assessment.subject_class_id == class_id)
         .distinct()
     )
+    if only_completed:
+        query = query.where(Campaign.status == CampaignStatus.CLOSED)
+    rows = await db.execute(query)
     candidates = rows.all()
     if not candidates:
         return None
@@ -802,10 +855,6 @@ async def get_class_results(
     db: AsyncSession, class_id: int, campaign_id: int, current_user: User
 ) -> dict:
     """Средний профиль класса, сравнение со школой и зоны роста класса."""
-    campaign = await db.get(Campaign, campaign_id)
-    if campaign is None:
-        raise CampaignNotFound()
-
     class_query = await db.execute(
         select(SchoolClass)
         .where(SchoolClass.id == class_id)
@@ -819,6 +868,8 @@ async def get_class_results(
     if not can_view_class_results(current_user.id, current_user.role, teacher_ids):
         raise NotAllowedToViewResults()
 
+    campaign = await _load_completed_campaign(db, campaign_id)
+
     class_map = await _subject_class_map(db, campaign_id)
     class_subject_ids = {sid for sid, cid in class_map.items() if cid == class_id}
 
@@ -826,7 +877,9 @@ async def get_class_results(
     # заводят на каждый класс отдельно, поэтому внутри одной кампании «школа»
     # выродилась бы в этот же класс, и сравнение всегда давало бы ноль.
     same_period_campaigns = await db.execute(
-        select(Campaign.id).where(Campaign.period == campaign.period)
+        select(Campaign.id)
+        .where(Campaign.period == campaign.period)
+        .where(Campaign.status == CampaignStatus.CLOSED)
     )
     campaign_ids = set(same_period_campaigns.scalars())
 
@@ -961,6 +1014,7 @@ async def _previous_campaign_by_subject(
         select(Assessment.subject_id, Assessment.campaign_id, Campaign.period)
         .join(Campaign, Campaign.id == Assessment.campaign_id)
         .where(Assessment.subject_id.in_(subject_ids))
+        .where(Campaign.status == CampaignStatus.CLOSED)
         .distinct()
     )
 

@@ -197,7 +197,9 @@ async def test_deactivate_user_requires_admin(client: AsyncClient, roster: dict)
 async def test_reset_password_returns_new_password_and_allows_login(
     client: AsyncClient, admin_headers: dict[str, str], roster: dict
 ) -> None:
-    response = await client.post(f"/users/{roster['teacher']}/reset-password", headers=admin_headers)
+    response = await client.post(
+        f"/users/{roster['teacher']}/reset-password", headers=admin_headers
+    )
 
     assert response.status_code == 200
     new_password = response.json()["new_password"]

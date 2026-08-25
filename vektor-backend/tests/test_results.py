@@ -42,7 +42,7 @@ from vektor.modules.results.service import (
     self_by_competency,
     shared_competencies,
 )
-from vektor.shared.enums import RaterRole, UserRole
+from vektor.shared.enums import CampaignStatus, RaterRole, UserRole
 
 
 def _peer(competency_id: int, respondent_id: int, value: int) -> ScoredAnswer:
@@ -418,6 +418,38 @@ async def _login(client: AsyncClient, email: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {login.json()['access_token']}"}
 
 
+async def _set_campaign_status(db_session, campaign_id: int, status: CampaignStatus) -> None:
+    await db_session.execute(
+        sa_update(Campaign).where(Campaign.id == campaign_id).values(status=status)
+    )
+    await db_session.commit()
+
+
+async def _post_answer(
+    client: AsyncClient, db_session, email: str, assessment_id: int, question_id: int, value: int
+) -> None:
+    """Подать ответ и оставить кампанию ЗАВЕРШЁННОЙ.
+
+    Два правила системы смотрят в разные стороны: ответы принимаются только в
+    активную кампанию (submit_answers), а результаты считаются только по
+    завершённой (_load_completed_campaign). Поэтому в тестах ответ подаётся в
+    активную, а сразу после кампания закрывается: дальше тест читает
+    результаты так же, как их читают в жизни — после закрытия диагностики.
+    """
+    campaign_id = await db_session.scalar(
+        select(Assessment.campaign_id).where(Assessment.id == assessment_id)
+    )
+    await _set_campaign_status(db_session, campaign_id, CampaignStatus.ACTIVE)
+    headers = await _login(client, email)
+    response = await client.post(
+        f"/assessments/{assessment_id}/answers",
+        json={"answers": [{"question_id": question_id, "value": value}]},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    await _set_campaign_status(db_session, campaign_id, CampaignStatus.CLOSED)
+
+
 async def _answer_as(
     client: AsyncClient,
     db_session,
@@ -433,13 +465,7 @@ async def _answer_as(
         )
     )
     aid = row.scalar_one()
-    headers = await _login(client, email)
-    response = await client.post(
-        f"/assessments/{aid}/answers",
-        json={"answers": [{"question_id": question_id, "value": value}]},
-        headers=headers,
-    )
-    assert response.status_code == 200
+    await _post_answer(client, db_session, email, aid, question_id, value)
 
 
 @pytest.fixture
@@ -520,10 +546,13 @@ async def test_results_forbidden_for_unrelated_student(
 
 
 async def test_results_visible_to_self_teacher_parent_and_admin(
-    client: AsyncClient, admin_headers, results_scenario
+    client: AsyncClient, admin_headers, results_scenario, db_session
 ) -> None:
     ids = results_scenario["ids"]
     campaign_id = results_scenario["campaign_id"]
+    # Ответов в этом тесте нет (проверяются только права), поэтому кампанию
+    # закрываем руками: по незавершённой результаты не отдаются вовсе.
+    await _set_campaign_status(db_session, campaign_id, CampaignStatus.CLOSED)
 
     for email in ["rs1@vektor.ru", "rt1@vektor.ru", "rp1@vektor.ru"]:
         headers = await _login(client, email)
@@ -708,6 +737,63 @@ async def test_gap_reflects_self_versus_others(
     assert comp["gap"] == pytest.approx(2.5)  # себя оценивает выше на 2.5
 
 
+async def test_results_rejected_while_campaign_is_not_completed(
+    client: AsyncClient, admin_headers, results_scenario, db_session
+) -> None:
+    """Результаты считаются только по ЗАВЕРШЁННОЙ кампании.
+
+    Пока диагностика идёт, агрегаты меняются с каждым пришедшим ответом:
+    критерий с двумя ответами уезжает в зоны роста, слой одноклассников то
+    раскрывается, то снова прячется по порогу. Показывать это как «результат»
+    нельзя, поэтому 409, а не половинчатые цифры.
+    """
+    ids = results_scenario["ids"]
+    campaign_id = results_scenario["campaign_id"]
+
+    for status_value in (CampaignStatus.DRAFT, CampaignStatus.ACTIVE):
+        await _set_campaign_status(db_session, campaign_id, status_value)
+        response = await client.get(
+            f"/results/{ids['s1']}?campaign_id={campaign_id}", headers=admin_headers
+        )
+        assert response.status_code == 409, status_value
+        assert response.json()["code"] == "campaign_not_completed"
+
+    await _set_campaign_status(db_session, campaign_id, CampaignStatus.CLOSED)
+    ok = await client.get(f"/results/{ids['s1']}?campaign_id={campaign_id}", headers=admin_headers)
+    assert ok.status_code == 200
+
+
+async def test_results_ignore_unfinished_campaign_when_resolving_latest(
+    client: AsyncClient, admin_headers, results_scenario, db_session
+) -> None:
+    """РЕГРЕССИЯ (находка 7g): пустая кампания-артефакт с более поздним
+    периодом подменяла собой реальные результаты. Незавершённая кампания в
+    резолюцию «последней» больше не попадает вовсе."""
+    ids = results_scenario["ids"]
+    comp_id = await _seed_competency(db_session, "LATEST", 1)
+    question_id = await _question_id_for(db_session, comp_id)
+    await _answer_as(client, db_session, "rs1@vektor.ru", ids["s1"], ids["s1"], question_id, 4)
+
+    artifact = (
+        await client.post(
+            "/campaigns",
+            json={"title": "E2E UI check", "period": "2026-09"},
+            headers=admin_headers,
+        )
+    ).json()
+    await client.post(
+        f"/campaigns/{artifact['id']}/generate",
+        json={"class_ids": [results_scenario["class_id"]]},
+        headers=admin_headers,
+    )
+
+    body = (await client.get(f"/results/{ids['s1']}", headers=admin_headers)).json()
+    assert body["campaign_id"] == results_scenario["campaign_id"]
+
+    campaigns = (await client.get(f"/results/{ids['s1']}/campaigns", headers=admin_headers)).json()
+    assert [c["campaign_id"] for c in campaigns] == [results_scenario["campaign_id"]]
+
+
 # --- Срез 5d: динамика между периодами (GET /results/{id}/dynamics) ---
 
 
@@ -731,13 +817,7 @@ async def _answer_in_campaign(
         )
     )
     aid = row.scalar_one()
-    headers = await _login(client, email)
-    response = await client.post(
-        f"/assessments/{aid}/answers",
-        json={"answers": [{"question_id": question_id, "value": value}]},
-        headers=headers,
-    )
-    assert response.status_code == 200
+    await _post_answer(client, db_session, email, aid, question_id, value)
 
 
 @pytest.fixture
@@ -1253,3 +1333,25 @@ async def test_roster_includes_current_student_without_assessments(
 async def test_roster_unknown_class_404(client: AsyncClient, admin_headers) -> None:
     response = await client.get("/results/class/99999/roster", headers=admin_headers)
     assert response.status_code == 404
+
+
+async def test_roster_still_works_for_campaign_in_progress(
+    client: AsyncClient, admin_headers, class_scenario, db_session
+) -> None:
+    """Мониторинг хода диагностики — исключение из правила «только завершённые».
+
+    Состав класса с прогрессом («по кому анкеты ещё не заполнены») имеет смысл
+    ИМЕННО во время идущей кампании, поэтому 409 тут был бы регрессией. Балльный
+    экран профиля класса на той же кампании — наоборот, закрыт.
+    """
+    class_id = class_scenario["class_id"]
+    await _set_campaign_status(db_session, class_scenario["campaign_id"], CampaignStatus.ACTIVE)
+
+    roster = await client.get(f"/results/class/{class_id}/roster", headers=admin_headers)
+    assert roster.status_code == 200
+    assert roster.json()["campaign_id"] == class_scenario["campaign_id"]
+
+    profile = await client.get(f"/results/class/{class_id}", headers=admin_headers)
+    # Незавершённая кампания в резолюцию профиля не попадает: других кампаний у
+    # класса нет, поэтому «результатов пока нет».
+    assert profile.status_code == 404

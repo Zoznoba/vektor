@@ -1,8 +1,6 @@
 import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
-import { Button } from '../../components/ui/Button';
 import { useApi } from '../../hooks/useApi';
 import { useAuth } from '../../auth/AuthContext';
 import { fetchUsers } from '../../api/users';
@@ -16,7 +14,6 @@ export function AdminDashboard() {
   const users = useApi(fetchUsers);
   const classes = useApi(fetchClasses);
   const campaigns = useApi(fetchCampaigns);
-  const navigate = useNavigate();
 
   const activeCampaigns = (campaigns.data ?? []).filter((c) => c.status === 'active');
 
@@ -74,20 +71,6 @@ export function AdminDashboard() {
             ))}
           </div>
         )}
-      </Panel>
-
-      <Panel title="Быстрые действия">
-        <div className="quick-actions">
-          <Button variant="secondary" onClick={() => navigate('/admin/users')}>
-            Пользователи
-          </Button>
-          <Button variant="secondary" onClick={() => navigate('/admin/classes')}>
-            Классы
-          </Button>
-          <Button variant="secondary" onClick={() => navigate('/admin/campaigns')}>
-            Кампании
-          </Button>
-        </div>
       </Panel>
     </AdminShell>
   );

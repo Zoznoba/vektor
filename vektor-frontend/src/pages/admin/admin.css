@@ -446,9 +446,3 @@
   color: var(--ink-soft);
   margin-top: 4px;
 }
-
-.quick-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
