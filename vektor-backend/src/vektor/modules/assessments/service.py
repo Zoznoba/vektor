@@ -5,7 +5,7 @@
 # Срез 4b-2 (следующий): generate_assessments — матрица «кто кого оценивает».
 
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -206,31 +206,47 @@ async def delete_campaign(db: AsyncSession, campaign_id: int) -> dict:
     Всё — в ОДНОЙ транзакции (один commit в конце): частично снесённая
     кампания — это осиротевшие ответы, которые уже ничем не найти.
 
-    TODO(Максим):
-      1. campaign = await db.get(Campaign, campaign_id); нет → raise CampaignNotFound()
-      2. Подзапрос с id анкет кампании:
-             assessment_ids = select(Assessment.id).where(Assessment.campaign_id == campaign_id)
-         Отдельным select'ом СНАЧАЛА посчитай, сколько ответов и анкет
-         удалится — после DELETE считать будет уже нечего, а числа нужны
-         в ответе (CampaignDeleteResult).
-      3. Удаление — bulk-DELETE, а не «загрузить объекты и db.delete(...)»:
-         анкет в кампании бывает под 400, грузить их в сессию незачем.
-             from sqlalchemy import delete  # добавь в импорты сверху
-             await db.execute(delete(Answer).where(Answer.assessment_id.in_(assessment_ids)))
-             await db.execute(delete(Assessment).where(Assessment.campaign_id == campaign_id))
-             await db.delete(campaign)   # он уже в сессии, отдельный DELETE не нужен
-      4. await db.commit()
-      5. Верни dict под CampaignDeleteResult:
-             {"campaign_id": ..., "assessments_deleted": ..., "answers_deleted": ...}
-
-    Вопрос, который надо решить тебе (я бы ответил «нет»): резать ли
-    удаление активной кампании (status == active)? Аргумент «за» — защита от
-    сноса идущего сбора. Аргумент «против» — мусорные кампании как раз
-    бывают в любом статусе, а подтверждение с числами уже показывает UI.
-    Если решишь резать — заведи отдельный DomainError на 409, не переиспользуй
-    CampaignNotActive (у него противоположный смысл).
+    Активную кампанию удалять НЕ запрещаем: мусорные кампании заводятся в
+    любом статусе (та самая «2026-e2e» была active), а подтверждение с
+    числами админ уже видит в UI. Отдельного 409 здесь нет намеренно.
     """
-    raise NotImplementedError
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise CampaignNotFound()
+
+    assessment_ids = select(Assessment.id).where(Assessment.campaign_id == campaign_id)
+
+    # Считаем ДО удаления: после DELETE считать уже нечего, а числа идут в
+    # ответ. scalar_subquery() — чтобы подзапрос лёг внутрь IN, а не поехал
+    # отдельным запросом.
+    answers_deleted = await db.scalar(
+        select(func.count())
+        .select_from(Answer)
+        .where(Answer.assessment_id.in_(assessment_ids.scalar_subquery()))
+    )
+    assessments_deleted = await db.scalar(
+        select(func.count()).select_from(Assessment).where(Assessment.campaign_id == campaign_id)
+    )
+
+    # bulk-DELETE, а не «загрузить объекты и db.delete(...)»: анкет в
+    # кампании бывает под 400, грузить их в сессию незачем.
+    await db.execute(
+        delete(Answer).where(Answer.assessment_id.in_(assessment_ids.scalar_subquery()))
+    )
+    await db.execute(delete(Assessment).where(Assessment.campaign_id == campaign_id))
+    # Саму кампанию тоже сносим bulk-DELETE, а не db.delete(campaign): у
+    # Campaign.assessments каскад дефолтный (save-update, merge), поэтому на
+    # ORM-удалении родителя SQLAlchemy полезла бы ЛЕНИВО грузить коллекцию
+    # анкет, чтобы занулить им FK, — а это MissingGreenlet в async-сессии (и
+    # FK всё равно NOT NULL). Анкеты к этому моменту уже удалены.
+    await db.execute(delete(Campaign).where(Campaign.id == campaign_id))
+    await db.commit()
+
+    return {
+        "campaign_id": campaign_id,
+        "assessments_deleted": assessments_deleted or 0,
+        "answers_deleted": answers_deleted or 0,
+    }
 
 
 # Приоритет ролей при коллизии: один человек может быть и родителем ученика,

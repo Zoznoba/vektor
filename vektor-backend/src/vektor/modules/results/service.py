@@ -468,32 +468,22 @@ async def latest_campaign_id_for_subject(db: AsyncSession, subject_id: int) -> i
     хронологии. Архив прошлого года импортируется после текущего, получает
     больший id — и «последняя по id» кампания оказывается прошлогодней.
     Ровно это и произошло при первом импорте.
-<<<<<<< HEAD
-
-    Сравнение периодов — в Python через period_sort_key, а не ORDER BY по
-    строке: см. её докстринг про "2026" против "2026-02".
 
     Считаем только ЗАВЕРШЁННЫЕ кампании (см. _load_completed_campaign):
     незакрытая кампания не должна подменять собой прошлые результаты, пока
     ответы по ней ещё собираются.
-=======
->>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
     """
     row = await db.execute(
         select(Assessment.campaign_id)
         .join(Campaign, Campaign.id == Assessment.campaign_id)
         .where(Assessment.subject_id == subject_id)
-<<<<<<< HEAD
         .where(Campaign.status == CampaignStatus.CLOSED)
-        .distinct()
-=======
         .order_by(
             Campaign.period_year.desc(),
             Campaign.period_month.desc(),
             Assessment.campaign_id.desc(),
         )
         .limit(1)
->>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
     )
     return row.scalar_one_or_none()
 
@@ -584,17 +574,12 @@ async def list_subject_campaigns(
     db: AsyncSession, subject_id: int, current_user: User
 ) -> list[dict]:
     """Периоды, за которые у субъекта вообще есть результаты — под переключатель
-<<<<<<< HEAD
-    кампаний на экране результатов. Порядок хронологический по `period`
+    кампаний на экране результатов. Порядок хронологический по периоду
     (см. latest_campaign_id_for_subject: id ≠ хронология).
 
     Только завершённые кампании — список должен совпадать с тем, что
     страница результатов реально умеет открыть, иначе выбор периода в
     селекторе приводил бы к 409."""
-=======
-    кампаний на экране результатов. Порядок хронологический по периоду
-    (см. latest_campaign_id_for_subject: id ≠ хронология)."""
->>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
     await _load_subject_for_results(db, subject_id, current_user)
 
     rows = await db.execute(
@@ -637,13 +622,9 @@ async def previous_campaign_id_for_subject(
     row = await db.execute(
         select(Assessment.campaign_id)
         .join(Campaign, Campaign.id == Assessment.campaign_id)
-<<<<<<< HEAD
-        .where(Assessment.subject_id == subject_id)
-        .where(Campaign.status == CampaignStatus.CLOSED)
-        .distinct()
-=======
         .where(
             Assessment.subject_id == subject_id,
+            Campaign.status == CampaignStatus.CLOSED,
             # Кортежное сравнение (год, месяц) — ровно «строго раньше» в одном
             # выражении, без разбора ярлыка в Python, как было до e7b3f9c2a815.
             tuple_(Campaign.period_year, Campaign.period_month)
@@ -655,7 +636,6 @@ async def previous_campaign_id_for_subject(
             Assessment.campaign_id.desc(),
         )
         .limit(1)
->>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
     )
     return row.scalar_one_or_none()
 
@@ -755,10 +735,8 @@ async def latest_campaign_id_for_class(
     db: AsyncSession, class_id: int, only_completed: bool = True
 ) -> int | None:
     """Самая свежая кампания, где у класса есть анкеты (по снапшоту класса).
-<<<<<<< HEAD
-    Сортировка по `period` — та же причина, что у одноимённой функции для
-    субъекта: id не отражает хронологию. Сравнение периодов — через
-    period_sort_key, не строкой (см. её докстринг).
+    Сортировка по периоду — та же причина, что у одноимённой функции для
+    субъекта: id не отражает хронологию.
 
     `only_completed=True` (для профиля класса) — только завершённые кампании.
     Экраны МОНИТОРИНГА хода диагностики (состав класса с прогрессом,
@@ -766,13 +744,7 @@ async def latest_campaign_id_for_class(
     кампании — иначе учитель во время диагностики видел бы прошлый год и не
     понимал, по кому анкеты ещё не заполнены."""
     query = (
-        select(Assessment.campaign_id, Campaign.period)
-=======
-    Сортировка по периоду — та же причина, что у одноимённой функции для
-    субъекта: id не отражает хронологию."""
-    row = await db.execute(
         select(Assessment.campaign_id)
->>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
         .join(Campaign, Campaign.id == Assessment.campaign_id)
         .where(Assessment.subject_class_id == class_id)
         .order_by(
@@ -782,19 +754,10 @@ async def latest_campaign_id_for_class(
         )
         .limit(1)
     )
-<<<<<<< HEAD
     if only_completed:
         query = query.where(Campaign.status == CampaignStatus.CLOSED)
-    rows = await db.execute(query)
-    candidates = rows.all()
-    if not candidates:
-        return None
-    return max(
-        candidates, key=lambda row: (period_sort_key(row.period), row.campaign_id)
-    ).campaign_id
-=======
+    row = await db.execute(query)
     return row.scalar_one_or_none()
->>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
 
 
 async def _subject_class_map(db: AsyncSession, campaign_id: int) -> dict[int, int | None]:
@@ -877,16 +840,11 @@ async def get_class_results(
     # заводят на каждый класс отдельно, поэтому внутри одной кампании «школа»
     # выродилась бы в этот же класс, и сравнение всегда давало бы ноль.
     same_period_campaigns = await db.execute(
-<<<<<<< HEAD
-        select(Campaign.id)
-        .where(Campaign.period == campaign.period)
-        .where(Campaign.status == CampaignStatus.CLOSED)
-=======
         select(Campaign.id).where(
             Campaign.period_year == campaign.period_year,
             Campaign.period_month == campaign.period_month,
+            Campaign.status == CampaignStatus.CLOSED,
         )
->>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
     )
     campaign_ids = set(same_period_campaigns.scalars())
 
@@ -946,12 +904,18 @@ async def get_class_results(
 
 
 async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
-    """«X из Y анкет» по классам — под админский экран кампании.
+    """«X из Y анкет» по классам + детализация по ученикам — админский экран
+    кампании.
 
     Группируем по снапшоту subject_class_id. Анкеты без снапшота (субъект вне
     класса, пилотная кампания на учителях) попадают в отдельную строку с
     class_id=None, а не выбрасываются: иначе итог по классам не сходился бы с
     общим числом анкет.
+
+    Детализация по ученикам (self / parents / teachers / peers) считается
+    ЗДЕСЬ ЖЕ, из тех же анкет, а не отдельным эндпоинтом: числа шапки и числа
+    внутри строки класса обязаны сходиться, а два независимых прохода по
+    одним и тем же данным расходятся (см. 5e про агрегаты поверх профилей).
     """
     campaign = await db.get(Campaign, campaign_id)
     if campaign is None:
@@ -973,6 +937,8 @@ async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
         .order_by(SchoolClass.grade.asc().nulls_last(), SchoolClass.section.asc().nulls_last())
     )
 
+    students_by_class = await _campaign_students_by_class(db, campaign_id)
+
     classes_out = []
     total_all = 0
     completed_all = 0
@@ -986,6 +952,7 @@ async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
                 "total": total,
                 "completed": done,
                 "percent": round(done / total * 100, 1) if total else 0.0,
+                "students": students_by_class.get(class_id, []),
             }
         )
 
@@ -999,6 +966,92 @@ async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
         "percent": round(completed_all / total_all * 100, 1) if total_all else 0.0,
         "classes": classes_out,
     }
+
+
+async def _campaign_students_by_class(
+    db: AsyncSession, campaign_id: int
+) -> dict[int | None, list[dict]]:
+    """subject_class_id (снапшот) → список строк учеников под
+    CampaignStudentRowOut. Ключ None — анкеты без снапшота класса.
+
+    Зачем отдельной функцией: get_campaign_coverage уже считает агрегат
+    группировкой в SQL, а здесь нужен разрез по РАТОРАМ внутри каждого
+    ученика. Это разные измерения одних и тех же анкет; смешивать их в один
+    запрос — получить строки вида (класс × ученик × роль) и всё равно
+    собирать словарь в Python.
+
+    ВАЖНО — слой берём из Assessment.rater_role, зафиксированной при
+    генерации (миграция a1c4e77b93f2), а НЕ из текущих связей класса и
+    родительства. Иначе перевод ученика в следующий класс — штатное
+    ежегодное событие — переписывал бы прошлую картину: учитель прошлого
+    года стал бы «одноклассником» и уехал из слоя teachers в peers. Та же
+    причина подробно расписана в CLAUDE.md, Этап 5.
+
+    Самооценку, наоборот, определяем сравнением respondent_id == subject_id,
+    а не ролью SELF: так делает _assessment_progress_by_subject, и в архивных
+    анкетах это работает даже там, где rater_role проставлена backfill'ом.
+    Своя анкета в слои не попадает вовсе — иначе ученик считался бы сам себе
+    ратором и «2 из 2 учителей» превращалось бы в «3 из 3».
+
+    Учеников, которые числятся в классе СЕЙЧАС, но анкет в кампании не
+    получили, здесь НЕТ — в отличие от get_class_roster. Там экран
+    мониторинга, и «диагностику не выдали» — главное, что учитель должен
+    увидеть. Здесь же таблица детализирует покрытие, посчитанное строго по
+    анкетам: строка «0 из 0» не соответствовала бы ни одной цифре выше.
+    """
+    rows = await db.execute(
+        select(
+            Assessment.subject_class_id,
+            Assessment.subject_id,
+            Assessment.respondent_id,
+            Assessment.rater_role,
+            Assessment.status,
+            User,
+        )
+        .join(User, User.id == Assessment.subject_id)
+        .where(Assessment.campaign_id == campaign_id)
+    )
+
+    _LAYER_BY_ROLE = {
+        RaterRole.PARENT: "parents",
+        RaterRole.TEACHER: "teachers",
+        RaterRole.PEER: "peers",
+    }
+
+    students: dict[int, dict] = {}
+    # subject_class_id — снапшот, у всех анкет про одного ученика он один и
+    # тот же; запоминаем отдельно, чтобы разложить готовые строки по классам.
+    class_of: dict[int, int | None] = {}
+
+    for class_id, subject_id, respondent_id, rater_role, status, subject in rows.all():
+        row = students.get(subject_id)
+        if row is None:
+            row = students[subject_id] = {
+                "subject": subject,
+                "self_status": None,
+                "parents": {"total": 0, "completed": 0},
+                "teachers": {"total": 0, "completed": 0},
+                "peers": {"total": 0, "completed": 0},
+            }
+            class_of[subject_id] = class_id
+
+        if respondent_id == subject_id:
+            row["self_status"] = status
+            continue
+
+        layer = row.get(_LAYER_BY_ROLE.get(rater_role, ""))
+        if layer is None:
+            continue
+        layer["total"] += 1
+        if status == AssessmentStatus.COMPLETED:
+            layer["completed"] += 1
+
+    by_class: dict[int | None, list[dict]] = {}
+    # Порядок внутри класса — по имени, как в get_class_roster: один и тот же
+    # класс на двух экранах должен читаться одинаково.
+    for subject_id in sorted(students, key=lambda sid: students[sid]["subject"].full_name):
+        by_class.setdefault(class_of[subject_id], []).append(students[subject_id])
+    return by_class
 
 
 # ---------- Состав класса с прогрессом (экран учителя «Мои классы») ----------
@@ -1032,15 +1085,11 @@ async def _previous_campaign_by_subject(
             Campaign.period_month,
         )
         .join(Campaign, Campaign.id == Assessment.campaign_id)
-<<<<<<< HEAD
-        .where(Assessment.subject_id.in_(subject_ids))
-        .where(Campaign.status == CampaignStatus.CLOSED)
-=======
         .where(
             Assessment.subject_id.in_(subject_ids),
+            Campaign.status == CampaignStatus.CLOSED,
             tuple_(Campaign.period_year, Campaign.period_month) < tuple_(period_year, period_month),
         )
->>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
         .distinct()
     )
 

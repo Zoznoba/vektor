@@ -85,7 +85,9 @@ async def get_class_roster(
     response_model=CampaignCoverageOut,
     summary="Покрытие кампании",
     description="«X из Y анкет» заполнено по каждому классу кампании "
-    "(снапшот subject_class_id на момент генерации анкет). Только админ.",
+    "(снапшот subject_class_id на момент генерации анкет), плюс детализация "
+    "по ученикам внутри класса: статус самооценки и сколько анкет заполнено "
+    "родителями и учителями. Только админ.",
 )
 async def get_campaign_coverage(
     campaign_id: int,

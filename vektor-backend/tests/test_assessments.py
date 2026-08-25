@@ -384,7 +384,7 @@ async def test_generate_requires_admin(client: AsyncClient, scenario, register_u
 from sqlalchemy import select  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 
-from vektor.modules.assessments.models import Assessment, Campaign  # noqa: E402
+from vektor.modules.assessments.models import Answer, Assessment, Campaign  # noqa: E402
 from vektor.modules.assessments.service import is_question_visible  # noqa: E402
 from vektor.modules.competencies.models import (  # noqa: E402
     Competency,
@@ -1057,4 +1057,52 @@ async def test_reopen_campaign_requires_admin(client: AsyncClient, scenario, reg
     login = await client.post("/auth/login", json=register_user)
     student_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     response = await client.patch(f"/campaigns/{cid}/reopen", headers=student_headers)
+    assert response.status_code == 403
+
+
+async def test_delete_campaign_removes_assessments_and_answers(
+    client: AsyncClient, admin_headers, db_session
+) -> None:
+    await _seed_two_questions(db_session)
+    setup = await _setup_scenario(client, admin_headers, grade=10)
+    cid = await _create_campaign(client, admin_headers)
+    await client.post(
+        f"/campaigns/{cid}/generate", json={"class_ids": [setup["class_id"]]}, headers=admin_headers
+    )
+    aid = await _self_assessment_id(db_session, setup["s1"])
+    headers = await _login(client, setup["s1_email"])
+    detail = (await client.get(f"/assessments/{aid}", headers=headers)).json()
+    await _submit(
+        client, aid, headers, [{"question_id": q["id"], "value": 4} for q in detail["questions"]]
+    )
+
+    response = await client.delete(f"/campaigns/{cid}", headers=admin_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["campaign_id"] == cid
+    assert body["assessments_deleted"] == 2  # самооценки двух учеников
+    assert body["answers_deleted"] == 2
+
+    # В БД не осталось ни кампании, ни анкет, ни ответов — иначе осиротевшие
+    # ответы уже ничем не найти.
+    assert await db_session.get(Campaign, cid) is None
+    left = await db_session.execute(select(Assessment.id).where(Assessment.campaign_id == cid))
+    assert left.scalars().all() == []
+    orphans = await db_session.execute(select(Answer.id).where(Answer.assessment_id == aid))
+    assert orphans.scalars().all() == []
+
+
+async def test_delete_campaign_unknown_404(client: AsyncClient, admin_headers) -> None:
+    response = await client.delete("/campaigns/99999", headers=admin_headers)
+    assert response.status_code == 404
+
+
+async def test_delete_campaign_requires_admin(client: AsyncClient, scenario, register_user) -> None:
+    cid = await _create_campaign(client, scenario["headers"])
+
+    login = await client.post("/auth/login", json=register_user)
+    student_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    response = await client.delete(f"/campaigns/{cid}", headers=student_headers)
+
     assert response.status_code == 403

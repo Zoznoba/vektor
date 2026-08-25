@@ -130,10 +130,9 @@ async def delete_campaign(
     db: AsyncSession = Depends(get_db),
     _admin=Depends(require_role(UserRole.ADMIN)),
 ) -> CampaignDeleteResult:
-    # TODO(Максим): сервис вернёт dict — отдай его как есть, FastAPI сам
-    # соберёт CampaignDeleteResult по response_model. Ловить исключения тут
-    # НЕ надо: CampaignNotFound — DomainError, его разбирает общий обработчик
-    # из core/errors.py (Этап 7a).
+    # Сервис возвращает dict — FastAPI собирает CampaignDeleteResult по
+    # response_model. Исключения тут не ловим: CampaignNotFound — DomainError,
+    # его разбирает общий обработчик из core/errors.py (Этап 7a).
     return await service.delete_campaign(db, campaign_id)
 
 

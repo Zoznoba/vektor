@@ -777,7 +777,7 @@ async def test_results_ignore_unfinished_campaign_when_resolving_latest(
     artifact = (
         await client.post(
             "/campaigns",
-            json={"title": "E2E UI check", "period": "2026-09"},
+            json={"title": "E2E UI check", "period_year": 2026, "period_month": 9},
             headers=admin_headers,
         )
     ).json()
@@ -1260,6 +1260,126 @@ async def test_coverage_keeps_assessments_without_class_snapshot(
 async def test_coverage_unknown_campaign_404(client: AsyncClient, admin_headers) -> None:
     response = await client.get("/results/campaigns/99999/coverage", headers=admin_headers)
     assert response.status_code == 404
+
+
+def _student_row(body: dict, class_id: int | None, subject_id: int) -> dict:
+    row = next(c for c in body["classes"] if c["class_id"] == class_id)
+    return next(st for st in row["students"] if st["subject"]["id"] == subject_id)
+
+
+async def test_coverage_details_students_by_layer(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    """Детализация покрытия: по каждому ученику — самооценка и слои раторов.
+
+    В фикстуре s1 оценивают трое (сам, учитель, родитель), s2 — только сам
+    плюс выданная, но не начатая анкета учителя.
+    """
+    body = (
+        await client.get(
+            f"/results/campaigns/{class_scenario['campaign_id']}/coverage", headers=admin_headers
+        )
+    ).json()
+    ids = class_scenario["ids"]
+
+    s1 = _student_row(body, class_scenario["class_id"], ids["s1"])
+    assert s1["self_status"] == "completed"
+    # Учитель и родитель ответили на один вопрос из двух — анкета выдана и
+    # начата, но не завершена.
+    assert s1["teachers"] == {"total": 1, "completed": 0}
+    assert s1["parents"] == {"total": 1, "completed": 0}
+    # Пиров не генерировали, и своя анкета в слои не попала — иначе учителей
+    # оказалось бы двое.
+    assert s1["peers"] == {"total": 0, "completed": 0}
+
+    s2 = _student_row(body, class_scenario["class_id"], ids["s2"])
+    assert s2["self_status"] == "completed"
+    assert s2["teachers"] == {"total": 1, "completed": 0}
+    # Родителя у s2 нет вовсе — это «слой не выдавали», а не «не заполнили».
+    assert s2["parents"] == {"total": 0, "completed": 0}
+
+
+async def test_coverage_details_count_completed_in_layer(
+    client: AsyncClient, admin_headers, class_scenario, db_session
+) -> None:
+    # Учитель дозаполняет второй вопрос — анкета про s1 становится completed.
+    q_b = await _question_id_for(db_session, class_scenario["comp_b"])
+    await _answer_in_campaign(
+        client,
+        db_session,
+        "ct1@vektor.ru",
+        class_scenario["ids"]["t1"],
+        class_scenario["ids"]["s1"],
+        class_scenario["campaign_id"],
+        q_b,
+        3,
+    )
+
+    body = (
+        await client.get(
+            f"/results/campaigns/{class_scenario['campaign_id']}/coverage", headers=admin_headers
+        )
+    ).json()
+
+    s1 = _student_row(body, class_scenario["class_id"], class_scenario["ids"]["s1"])
+    assert s1["teachers"] == {"total": 1, "completed": 1}
+    # Родитель свою анкету не трогал — слои считаются независимо.
+    assert s1["parents"] == {"total": 1, "completed": 0}
+
+
+async def test_coverage_details_follow_class_snapshot(
+    client: AsyncClient, admin_headers, class_scenario, db_session
+) -> None:
+    # Ученик без снапшота класса уезжает в строку «без класса» вместе со
+    # своими слоями, а не теряется и не остаётся в прежнем классе.
+    await db_session.execute(
+        sa_update(Assessment)
+        .where(
+            Assessment.campaign_id == class_scenario["campaign_id"],
+            Assessment.subject_id == class_scenario["ids"]["s2"],
+        )
+        .values(subject_class_id=None)
+    )
+    await db_session.commit()
+
+    body = (
+        await client.get(
+            f"/results/campaigns/{class_scenario['campaign_id']}/coverage", headers=admin_headers
+        )
+    ).json()
+
+    orphan = _student_row(body, None, class_scenario["ids"]["s2"])
+    assert orphan["self_status"] == "completed"
+    assert orphan["teachers"] == {"total": 1, "completed": 0}
+
+    in_class = next(c for c in body["classes"] if c["class_id"] == class_scenario["class_id"])
+    assert [st["subject"]["id"] for st in in_class["students"]] == [class_scenario["ids"]["s1"]]
+
+
+async def test_coverage_details_keep_layer_fixed_at_generation(
+    client: AsyncClient, admin_headers, class_scenario, db_session
+) -> None:
+    """РЕГРЕССИЯ: слой берётся из Assessment.rater_role, а не из текущих связей.
+
+    Учителя откручиваем от класса уже после генерации — его анкета обязана
+    остаться в слое teachers. Иначе перевод ученика или смена состава класса
+    задним числом переписывали бы картину прошлой кампании.
+    """
+    await client.request(
+        "DELETE",
+        f"/classes/{class_scenario['class_id']}/teachers/{class_scenario['ids']['t1']}",
+        headers=admin_headers,
+    )
+
+    body = (
+        await client.get(
+            f"/results/campaigns/{class_scenario['campaign_id']}/coverage", headers=admin_headers
+        )
+    ).json()
+
+    s1 = _student_row(body, class_scenario["class_id"], class_scenario["ids"]["s1"])
+    assert s1["teachers"] == {"total": 1, "completed": 0}
+    assert s1["peers"] == {"total": 0, "completed": 0}
 
 
 # ---------- Состав класса с прогрессом (экран учителя «Мои классы») ----------
