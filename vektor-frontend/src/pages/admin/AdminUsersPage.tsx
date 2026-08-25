@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
 import { Badge } from '../../components/ui/Badge';
@@ -42,8 +42,8 @@ function buildClassIndex(classes: SchoolClass[] | null): Map<number, string> {
   for (const cls of classes) {
     const label = classLabel(cls);
     for (const s of cls.students) index.set(s.id, label);
-    for (const t of cls.teachers) {
-      index.set(t.id, index.has(t.id) ? `${index.get(t.id)}, ${label}` : label);
+    for (const { teacher } of cls.teachers) {
+      index.set(teacher.id, index.has(teacher.id) ? `${index.get(teacher.id)}, ${label}` : label);
     }
   }
   return index;
@@ -51,13 +51,18 @@ function buildClassIndex(classes: SchoolClass[] | null): Map<number, string> {
 
 export function AdminUsersPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user: currentUser } = useAuth();
   const users = useApi(fetchUsers);
   const classes = useApi(fetchClasses);
 
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [search, setSearch] = useState('');
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  // «Открыть профиль» из состава класса (AdminClassesPage) кладёт id в state —
+  // карточка раскрывается сразу, тем же приёмом, что переход «Классы» отсюда.
+  const [selectedId, setSelectedId] = useState<number | null>(
+    () => (location.state as { userId?: number } | null)?.userId ?? null,
+  );
   const [showCreate, setShowCreate] = useState(false);
 
   const classIndex = useMemo(() => buildClassIndex(classes.data), [classes.data]);
@@ -303,7 +308,7 @@ function UserActionsPanel({
   const [showResetPassword, setShowResetPassword] = useState(false);
 
   const teacherClasses = useMemo(
-    () => classes.filter((c) => c.teachers.some((t) => t.id === user.id)),
+    () => classes.filter((c) => c.teachers.some((t) => t.teacher.id === user.id)),
     [classes, user.id],
   );
 

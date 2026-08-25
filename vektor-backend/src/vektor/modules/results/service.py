@@ -19,10 +19,9 @@
 # дальше (overall, зоны роста, разрыв самооценки), работает с уже
 # отредактированными данными и поэтому не может случайно «протечь».
 
-import re
 from dataclasses import dataclass
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -460,48 +459,16 @@ async def _load_scored_answers(
     ]
 
 
-_PERIOD_RE = re.compile(r"(\d{4})(?:-(\d{2}))?")
-
-
-def period_sort_key(period: str) -> tuple[int, int]:
-    """Числовой ключ хронологического порядка периода кампании (год, месяц).
-
-    `period` — свободный ярлык, который вводит админ («2026» или «2026-06»),
-    формат не зафиксирован (см. CampaignCreate.period). Сравнивать его как
-    строку нельзя: "2026" короче "2026-02" и потому лексикографически
-    МЕНЬШЕ ("2026" — префикс "2026-02"), хотя по смыслу это не более ранний
-    период. На проде это уже приводило к тому, что «последней» кампанией
-    класса выбиралась не та: период "2026" (реальная кампания класса)
-    проигрывал "2026-02" от отдельной кампании-артефакта.
-
-    Год без месяца — ярлык учебного года целиком (так реально заводят
-    кампании класса: "2025", "2026"), а не «начало года». Поэтому
-    отсутствующий месяц кодируем как 13 (позже декабря), а не 0: иначе
-    любая кампания-артефакт с указанным месяцем внутри того же года
-    перебивала бы годовую кампанию класса — ровно это и произошло на
-    проде с "2026-02". Обратная сторона: если для одного класса в одном
-    году когда-нибудь заведут вторую, помесячную кампанию ПОСЛЕ годовой —
-    годовая всё равно останется «самой поздней». В реальном сценарии
-    кампанию класса не переиздают повторно в том же году, поэтому это не
-    встречается.
-    """
-    match = _PERIOD_RE.match(period)
-    if not match:
-        return (0, 0)
-    year = int(match.group(1))
-    month = int(match.group(2)) if match.group(2) else 13
-    return (year, month)
-
-
 async def latest_campaign_id_for_subject(db: AsyncSession, subject_id: int) -> int | None:
     """Самая свежая кампания, в которой у субъекта есть анкеты. None — их нет.
 
     Нужна дашборду: он показывает «мои результаты», не зная про кампании.
 
-    Сортируем по `period`, а НЕ по id: порядок создания кампаний не равен
+    Сортируем по периоду, а НЕ по id: порядок создания кампаний не равен
     хронологии. Архив прошлого года импортируется после текущего, получает
     больший id — и «последняя по id» кампания оказывается прошлогодней.
     Ровно это и произошло при первом импорте.
+<<<<<<< HEAD
 
     Сравнение периодов — в Python через period_sort_key, а не ORDER BY по
     строке: см. её докстринг про "2026" против "2026-02".
@@ -509,20 +476,26 @@ async def latest_campaign_id_for_subject(db: AsyncSession, subject_id: int) -> i
     Считаем только ЗАВЕРШЁННЫЕ кампании (см. _load_completed_campaign):
     незакрытая кампания не должна подменять собой прошлые результаты, пока
     ответы по ней ещё собираются.
+=======
+>>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
     """
-    rows = await db.execute(
-        select(Assessment.campaign_id, Campaign.period)
+    row = await db.execute(
+        select(Assessment.campaign_id)
         .join(Campaign, Campaign.id == Assessment.campaign_id)
         .where(Assessment.subject_id == subject_id)
+<<<<<<< HEAD
         .where(Campaign.status == CampaignStatus.CLOSED)
         .distinct()
+=======
+        .order_by(
+            Campaign.period_year.desc(),
+            Campaign.period_month.desc(),
+            Assessment.campaign_id.desc(),
+        )
+        .limit(1)
+>>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
     )
-    candidates = rows.all()
-    if not candidates:
-        return None
-    return max(
-        candidates, key=lambda row: (period_sort_key(row.period), row.campaign_id)
-    ).campaign_id
+    return row.scalar_one_or_none()
 
 
 async def get_subject_results(
@@ -611,12 +584,17 @@ async def list_subject_campaigns(
     db: AsyncSession, subject_id: int, current_user: User
 ) -> list[dict]:
     """Периоды, за которые у субъекта вообще есть результаты — под переключатель
+<<<<<<< HEAD
     кампаний на экране результатов. Порядок хронологический по `period`
     (см. latest_campaign_id_for_subject: id ≠ хронология).
 
     Только завершённые кампании — список должен совпадать с тем, что
     страница результатов реально умеет открыть, иначе выбор периода в
     селекторе приводил бы к 409."""
+=======
+    кампаний на экране результатов. Порядок хронологический по периоду
+    (см. latest_campaign_id_for_subject: id ≠ хронология)."""
+>>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
     await _load_subject_for_results(db, subject_id, current_user)
 
     rows = await db.execute(
@@ -625,22 +603,17 @@ async def list_subject_campaigns(
         .where(Assessment.subject_id == subject_id)
         .where(Campaign.status == CampaignStatus.CLOSED)
         .distinct()
-    )
-    # Сортировка периода — через period_sort_key, не строкой ORDER BY: см. её
-    # докстринг про "2026" против "2026-02".
-    campaigns = sorted(
-        rows.scalars(),
-        key=lambda campaign: (period_sort_key(campaign.period), campaign.id),
-        reverse=True,
+        .order_by(Campaign.period_year.desc(), Campaign.period_month.desc(), Campaign.id.desc())
     )
     return [
         {
             "campaign_id": campaign.id,
             "title": campaign.title,
-            "period": campaign.period,
+            "period_year": campaign.period_year,
+            "period_month": campaign.period_month,
             "status": campaign.status,
         }
-        for campaign in campaigns
+        for campaign in rows.scalars()
     ]
 
 
@@ -649,37 +622,42 @@ async def previous_campaign_id_for_subject(
 ) -> int | None:
     """Предыдущий период субъекта относительно указанной кампании.
 
-    Ищем по `Campaign.period`, а не по id — по той же причине, что и
+    Ищем по периоду, а не по id — по той же причине, что и
     latest_campaign_id_for_subject: архив импортируется позже и получает
     больший id, хотя относится к прошлому году.
 
-    Строго МЕНЬШЕ текущего периода: две кампании одного года (например, разные
-    классы) предыдущими друг другу не являются, сравнивать их бессмысленно.
+    Строго МЕНЬШЕ текущего периода: две кампании одного периода (например,
+    разные классы) предыдущими друг другу не являются, сравнивать их
+    бессмысленно.
     """
     current = await db.get(Campaign, campaign_id)
     if current is None:
         raise CampaignNotFound()
 
-    # "Строго меньше" и "самая свежая из меньших" — через period_sort_key, не
-    # строкой (Campaign.period < current.period ломалась на разноформатных
-    # периодах: см. докстринг period_sort_key).
-    rows = await db.execute(
-        select(Assessment.campaign_id, Campaign.period)
+    row = await db.execute(
+        select(Assessment.campaign_id)
         .join(Campaign, Campaign.id == Assessment.campaign_id)
+<<<<<<< HEAD
         .where(Assessment.subject_id == subject_id)
         .where(Campaign.status == CampaignStatus.CLOSED)
         .distinct()
+=======
+        .where(
+            Assessment.subject_id == subject_id,
+            # Кортежное сравнение (год, месяц) — ровно «строго раньше» в одном
+            # выражении, без разбора ярлыка в Python, как было до e7b3f9c2a815.
+            tuple_(Campaign.period_year, Campaign.period_month)
+            < tuple_(current.period_year, current.period_month),
+        )
+        .order_by(
+            Campaign.period_year.desc(),
+            Campaign.period_month.desc(),
+            Assessment.campaign_id.desc(),
+        )
+        .limit(1)
+>>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
     )
-    current_key = period_sort_key(current.period)
-    best: tuple[int, int, int] | None = None
-    for row_campaign_id, row_period in rows.all():
-        key = period_sort_key(row_period)
-        if key >= current_key:
-            continue
-        candidate = (*key, row_campaign_id)
-        if best is None or candidate > best:
-            best = candidate
-    return best[2] if best else None
+    return row.scalar_one_or_none()
 
 
 async def get_subject_dynamics(
@@ -745,10 +723,16 @@ async def get_subject_dynamics(
         "subject": subject,
         "campaign_id": campaign_id,
         "campaign_title": campaign.title,
-        "campaign_period": campaign.period,
+        "campaign_period_year": campaign.period_year,
+        "campaign_period_month": campaign.period_month,
         "previous_campaign_id": previous_id,
         "previous_campaign_title": previous_campaign.title if previous_campaign else None,
-        "previous_campaign_period": previous_campaign.period if previous_campaign else None,
+        "previous_campaign_period_year": (
+            previous_campaign.period_year if previous_campaign else None
+        ),
+        "previous_campaign_period_month": (
+            previous_campaign.period_month if previous_campaign else None
+        ),
         "versions_differ": versions_differ,
         "version_note": version_note,
         # Итог по общему ядру, а НЕ overall_average из get_subject_results.
@@ -771,6 +755,7 @@ async def latest_campaign_id_for_class(
     db: AsyncSession, class_id: int, only_completed: bool = True
 ) -> int | None:
     """Самая свежая кампания, где у класса есть анкеты (по снапшоту класса).
+<<<<<<< HEAD
     Сортировка по `period` — та же причина, что у одноимённой функции для
     субъекта: id не отражает хронологию. Сравнение периодов — через
     period_sort_key, не строкой (см. её докстринг).
@@ -782,10 +767,22 @@ async def latest_campaign_id_for_class(
     понимал, по кому анкеты ещё не заполнены."""
     query = (
         select(Assessment.campaign_id, Campaign.period)
+=======
+    Сортировка по периоду — та же причина, что у одноимённой функции для
+    субъекта: id не отражает хронологию."""
+    row = await db.execute(
+        select(Assessment.campaign_id)
+>>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
         .join(Campaign, Campaign.id == Assessment.campaign_id)
         .where(Assessment.subject_class_id == class_id)
-        .distinct()
+        .order_by(
+            Campaign.period_year.desc(),
+            Campaign.period_month.desc(),
+            Assessment.campaign_id.desc(),
+        )
+        .limit(1)
     )
+<<<<<<< HEAD
     if only_completed:
         query = query.where(Campaign.status == CampaignStatus.CLOSED)
     rows = await db.execute(query)
@@ -795,6 +792,9 @@ async def latest_campaign_id_for_class(
     return max(
         candidates, key=lambda row: (period_sort_key(row.period), row.campaign_id)
     ).campaign_id
+=======
+    return row.scalar_one_or_none()
+>>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
 
 
 async def _subject_class_map(db: AsyncSession, campaign_id: int) -> dict[int, int | None]:
@@ -877,9 +877,16 @@ async def get_class_results(
     # заводят на каждый класс отдельно, поэтому внутри одной кампании «школа»
     # выродилась бы в этот же класс, и сравнение всегда давало бы ноль.
     same_period_campaigns = await db.execute(
+<<<<<<< HEAD
         select(Campaign.id)
         .where(Campaign.period == campaign.period)
         .where(Campaign.status == CampaignStatus.CLOSED)
+=======
+        select(Campaign.id).where(
+            Campaign.period_year == campaign.period_year,
+            Campaign.period_month == campaign.period_month,
+        )
+>>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
     )
     campaign_ids = set(same_period_campaigns.scalars())
 
@@ -907,7 +914,8 @@ async def get_class_results(
         "class_label": f"{school_class.grade}-{school_class.section}",
         "campaign_id": campaign_id,
         "campaign_title": campaign.title,
-        "campaign_period": campaign.period,
+        "campaign_period_year": campaign.period_year,
+        "campaign_period_month": campaign.period_month,
         "students_with_results": len(class_profiles),
         "class_average": (sum(class_scores.values()) / len(class_scores) if class_scores else None),
         "school_average": (
@@ -984,7 +992,8 @@ async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
     return {
         "campaign_id": campaign_id,
         "campaign_title": campaign.title,
-        "campaign_period": campaign.period,
+        "campaign_period_year": campaign.period_year,
+        "campaign_period_month": campaign.period_month,
         "total": total_all,
         "completed": completed_all,
         "percent": round(completed_all / total_all * 100, 1) if total_all else 0.0,
@@ -996,7 +1005,7 @@ async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
 
 
 async def _previous_campaign_by_subject(
-    db: AsyncSession, subject_ids: set[int], period: str
+    db: AsyncSession, subject_ids: set[int], period_year: int, period_month: int
 ) -> dict[int, int]:
     """subject_id → id его предыдущей кампании, одним запросом на весь класс.
 
@@ -1010,25 +1019,34 @@ async def _previous_campaign_by_subject(
     if not subject_ids:
         return {}
 
+    # "Строго раньше" отсекается в БД кортежным сравнением (год, месяц) — так
+    # же, как в поштучной previous_campaign_id_for_subject. А вот "самая
+    # свежая из оставшихся ПО КАЖДОМУ субъекту" считается в Python: это
+    # group-by-максимум, в SQL он потребовал бы DISTINCT ON или оконной
+    # функции ради выборки, где кампаний на субъекта единицы.
     rows = await db.execute(
-        select(Assessment.subject_id, Assessment.campaign_id, Campaign.period)
+        select(
+            Assessment.subject_id,
+            Assessment.campaign_id,
+            Campaign.period_year,
+            Campaign.period_month,
+        )
         .join(Campaign, Campaign.id == Assessment.campaign_id)
+<<<<<<< HEAD
         .where(Assessment.subject_id.in_(subject_ids))
         .where(Campaign.status == CampaignStatus.CLOSED)
+=======
+        .where(
+            Assessment.subject_id.in_(subject_ids),
+            tuple_(Campaign.period_year, Campaign.period_month) < tuple_(period_year, period_month),
+        )
+>>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8
         .distinct()
     )
 
-    # "Раньше period" и "самая свежая из более ранних" — оба через
-    # period_sort_key, а не строкой (Campaign.period < period ломалась на
-    # разноформатных периодах: см. докстринг period_sort_key). Считаем в
-    # Python: кампаний на субъекта единицы, фильтрация в БД тут не нужна.
-    current_key = period_sort_key(period)
     best: dict[int, tuple[int, int, int]] = {}
-    for subject_id, campaign_id, row_period in rows.all():
-        key = period_sort_key(row_period)
-        if key >= current_key:
-            continue
-        candidate = (*key, campaign_id)
+    for subject_id, campaign_id, row_year, row_month in rows.all():
+        candidate = (row_year, row_month, campaign_id)
         if subject_id not in best or candidate > best[subject_id]:
             best[subject_id] = candidate
 
@@ -1106,7 +1124,9 @@ async def get_class_roster(
 
     progress = await _assessment_progress_by_subject(db, campaign_id, subject_ids)
 
-    previous_campaign_ids = await _previous_campaign_by_subject(db, subject_ids, campaign.period)
+    previous_campaign_ids = await _previous_campaign_by_subject(
+        db, subject_ids, campaign.period_year, campaign.period_month
+    )
     profiles = await _profiles_by_campaign_and_subject(
         db, {campaign_id} | set(previous_campaign_ids.values())
     )
@@ -1166,7 +1186,8 @@ async def get_class_roster(
         "class_label": f"{school_class.grade}-{school_class.section}",
         "campaign_id": campaign_id,
         "campaign_title": campaign.title,
-        "campaign_period": campaign.period,
+        "campaign_period_year": campaign.period_year,
+        "campaign_period_month": campaign.period_month,
         "students_count": len(rows_out),
         "assessments_total": total_all,
         "assessments_completed": completed_all,

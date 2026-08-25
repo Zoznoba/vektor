@@ -7,6 +7,7 @@ from vektor.modules.assessments.schemas import (
     AssessmentDetailOut,
     AssessmentListItemOut,
     CampaignCreate,
+    CampaignDeleteResult,
     CampaignListItemOut,
     CampaignOut,
     GenerateIn,
@@ -37,9 +38,7 @@ async def create_campaign(
     db: AsyncSession = Depends(get_db),
     _admin=Depends(require_role(UserRole.ADMIN)),
 ) -> CampaignOut:
-    campaign = await service.create_campaign(
-        db, data.title, data.period, data.opens_at, data.closes_at
-    )
+    campaign = await service.create_campaign(db, data.title, data.period_year, data.period_month)
     return campaign
 
 
@@ -63,8 +62,10 @@ async def list_campaigns(
     response_model=GenerateResult,
     summary="Сгенерировать анкеты",
     description="Построить матрицу «кто кого оценивает» по указанным классам "
-    "(самооценка и родители/учителя всегда, одноклассники — при "
-    "`include_peers`) и идемпотентно создать недостающие анкеты. "
+    "и идемпотентно создать недостающие анкеты. Самооценка и родители — "
+    "всегда; учителя — все учителя класса либо только выбранные, если класс "
+    "указан в `teacher_ids_by_class` (в школе ученика оценивают 2–4 учителя, "
+    "а не весь педсостав); одноклассники — при `include_peers`. "
     "Переводит кампанию в `active`. Только админ.",
 )
 async def generate_assessments(
@@ -74,7 +75,7 @@ async def generate_assessments(
     _admin=Depends(require_role(UserRole.ADMIN)),
 ) -> GenerateResult:
     assessments = await service.generate_assessments(
-        db, campaign_id, data.class_ids, data.include_peers
+        db, campaign_id, data.class_ids, data.include_peers, data.teacher_ids_by_class
     )
 
     campaign, created = assessments
@@ -112,6 +113,28 @@ async def reopen_campaign(
     campaign = await service.reopen_campaign(db, campaign_id)
 
     return campaign
+
+
+@router.delete(
+    "/{campaign_id}",
+    response_model=CampaignDeleteResult,
+    summary="Удалить кампанию",
+    description="Удалить кампанию вместе со всеми её анкетами и ответами. "
+    "Необратимо. Нужно, чтобы убирать тестовые и ошибочно заведённые "
+    "кампании: «последний период» на экране результатов резолвится по дате "
+    "кампании, и забытая пустая кампания скрывает настоящую диагностику. "
+    "Только админ.",
+)
+async def delete_campaign(
+    campaign_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_role(UserRole.ADMIN)),
+) -> CampaignDeleteResult:
+    # TODO(Максим): сервис вернёт dict — отдай его как есть, FastAPI сам
+    # соберёт CampaignDeleteResult по response_model. Ловить исключения тут
+    # НЕ надо: CampaignNotFound — DomainError, его разбирает общий обработчик
+    # из core/errors.py (Этап 7a).
+    return await service.delete_campaign(db, campaign_id)
 
 
 @assessment_router.get(

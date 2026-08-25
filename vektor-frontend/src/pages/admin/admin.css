@@ -282,16 +282,6 @@
   margin-top: 7px;
 }
 
-.class-detail__teachers {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  font-size: 13px;
-  color: var(--ink-soft);
-  margin-bottom: 12px;
-}
-
 /* --- список назначения в модалке --- */
 .assign-list {
   max-height: 300px;
@@ -446,3 +436,28 @@
   color: var(--ink-soft);
   margin-top: 4px;
 }
+<<<<<<< HEAD
+=======
+
+.quick-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Вкладки состава класса: чипы слева, контекстная кнопка добавления справа. */
+.class-tabs {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+/* Колонка с дропдауном действий: узкая, прижата вправо. */
+.admin-table__actions-col {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+>>>>>>> 98b73e7b74b881f2a54987c0ec3b71efecfdbff8

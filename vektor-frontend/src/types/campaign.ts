@@ -8,10 +8,10 @@ export type CampaignStatus = 'draft' | 'active' | 'closed';
 export interface Campaign {
   id: number;
   title: string;
-  period: string;
+  /** Период — год + месяц числами. Название месяца собирает formatPeriod. */
+  period_year: number;
+  period_month: number;
   status: CampaignStatus;
-  opens_at: string | null;
-  closes_at: string | null;
   created_at: string;
 }
 
@@ -35,10 +35,18 @@ export interface ClassCoverageRow {
   percent: number;
 }
 
+/** Итог удаления кампании — сколько анкет и ответов ушло вместе с ней. */
+export interface CampaignDeleteResult {
+  campaign_id: number;
+  assessments_deleted: number;
+  answers_deleted: number;
+}
+
 export interface CampaignCoverage {
   campaign_id: number;
   campaign_title: string;
-  campaign_period: string;
+  campaign_period_year: number;
+  campaign_period_month: number;
   total: number;
   completed: number;
   percent: number;

@@ -53,7 +53,8 @@ class ResultsOut(BaseModel):
 class SubjectCampaignOut(BaseModel):
     campaign_id: int
     title: str
-    period: str
+    period_year: int
+    period_month: int
     status: CampaignStatus
 
 
@@ -74,13 +75,15 @@ class DynamicsOut(BaseModel):
     subject: UserOut
     campaign_id: int
     campaign_title: str
-    campaign_period: str
+    campaign_period_year: int
+    campaign_period_month: int
 
     # None — предыдущего периода нет. Это штатное состояние (первый год
     # ученика), а не ошибка: 404 здесь был бы неверен.
     previous_campaign_id: int | None
     previous_campaign_title: str | None
-    previous_campaign_period: str | None
+    previous_campaign_period_year: int | None
+    previous_campaign_period_month: int | None
 
     # Редакция анкеты сменилась между периодами → сравнение приблизительное.
     versions_differ: bool
@@ -122,7 +125,8 @@ class ClassResultsOut(BaseModel):
     class_label: str
     campaign_id: int
     campaign_title: str
-    campaign_period: str
+    campaign_period_year: int
+    campaign_period_month: int
 
     students_with_results: int
     class_average: float | None
@@ -145,7 +149,8 @@ class ClassCoverageRowOut(BaseModel):
 class CampaignCoverageOut(BaseModel):
     campaign_id: int
     campaign_title: str
-    campaign_period: str
+    campaign_period_year: int
+    campaign_period_month: int
     total: int
     completed: int
     percent: float
@@ -184,7 +189,8 @@ class ClassRosterOut(BaseModel):
     class_label: str
     campaign_id: int
     campaign_title: str
-    campaign_period: str
+    campaign_period_year: int
+    campaign_period_month: int
 
     # Метрики шапки экрана. Считаются здесь, а не на фронте: покрытие берётся
     # по снапшоту subject_class_id, и второе место подсчёта разошлось бы с

@@ -1,0 +1,67 @@
+.action-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.action-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.action-menu__trigger:hover,
+.action-menu__trigger[aria-expanded='true'] {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+
+.action-menu__list {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 210px;
+  padding: 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.action-menu__item {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.action-menu__item:hover:not(:disabled) {
+  background: var(--soft);
+}
+
+.action-menu__item:disabled {
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+.action-menu__item--danger {
+  color: var(--red-ink);
+}
+
+.action-menu__item--danger:hover:not(:disabled) {
+  background: var(--red-tint);
+}

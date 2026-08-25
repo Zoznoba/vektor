@@ -23,7 +23,7 @@ export function TeacherStudentPage() {
   const classes = useApi(fetchClasses);
 
   const myClasses = useMemo(
-    () => (classes.data ?? []).filter((c) => c.teachers.some((t) => t.id === user?.id)),
+    () => (classes.data ?? []).filter((c) => c.teachers.some((t) => t.teacher.id === user?.id)),
     [classes.data, user?.id],
   );
 

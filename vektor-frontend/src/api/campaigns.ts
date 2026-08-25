@@ -1,5 +1,11 @@
 import { apiRequest } from './client';
-import type { Campaign, CampaignCoverage, CampaignListItem, GenerateResult } from '../types/campaign';
+import type {
+  Campaign,
+  CampaignCoverage,
+  CampaignDeleteResult,
+  CampaignListItem,
+  GenerateResult,
+} from '../types/campaign';
 
 export function fetchCampaigns(): Promise<CampaignListItem[]> {
   return apiRequest<CampaignListItem[]>('/campaigns');
@@ -7,24 +13,36 @@ export function fetchCampaigns(): Promise<CampaignListItem[]> {
 
 export interface CreateCampaignIn {
   title: string;
-  period: string;
-  opens_at?: string | null;
-  closes_at?: string | null;
+  period_year: number;
+  period_month: number;
 }
 
 export function createCampaign(data: CreateCampaignIn): Promise<Campaign> {
   return apiRequest<Campaign>('/campaigns', { method: 'POST', body: data });
 }
 
+/**
+ * teacherIdsByClass — какие учителя класса участвуют: {classId: [teacherId]}.
+ * Класса нет в объекте → участвуют ВСЕ его учителя (прежнее поведение);
+ * пустой массив → учительских анкет по классу не будет.
+ */
 export function generateAssessments(
   campaignId: number,
   classIds: number[],
-  includePeers: boolean,
+  teacherIdsByClass: Record<number, number[]>,
 ): Promise<GenerateResult> {
   return apiRequest<GenerateResult>(`/campaigns/${campaignId}/generate`, {
     method: 'POST',
-    body: { class_ids: classIds, include_peers: includePeers },
+    body: { class_ids: classIds, teacher_ids_by_class: teacherIdsByClass },
   });
+}
+
+/**
+ * Удаляет кампанию вместе со всеми анкетами и ответами. Необратимо —
+ * вызывать только после подтверждения пользователем.
+ */
+export function deleteCampaign(campaignId: number): Promise<CampaignDeleteResult> {
+  return apiRequest<CampaignDeleteResult>(`/campaigns/${campaignId}`, { method: 'DELETE' });
 }
 
 export function closeCampaign(campaignId: number): Promise<Campaign> {
