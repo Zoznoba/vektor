@@ -1,33 +1,57 @@
 import { useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import { Icon } from '../../components/icons/Icon';
+import { ActionMenu } from '../../components/ui/ActionMenu';
+import type { ActionMenuItem } from '../../components/ui/ActionMenu';
 import { useApi } from '../../hooks/useApi';
 import {
   fetchClasses,
   createClass,
   assignStudents,
   assignTeachers,
-  assignHomeroom,
+  updateTeacherInClass,
+  removeTeacherFromClass,
+  removeStudentFromClass,
 } from '../../api/classes';
 import { fetchUsers, bulkCreateUsers } from '../../api/users';
 import type { BulkUserIn } from '../../api/users';
 import { ApiError } from '../../api/client';
-import { classLabel } from '../../types/school';
-import type { SchoolClass } from '../../types/school';
+import { classLabel, homeroomTeachers } from '../../types/school';
+import type { SchoolClass, TeacherInClass } from '../../types/school';
 import type { User } from '../../types/auth';
 import './admin.css';
+
+/** Вкладки состава класса. Определяют и таблицу, и контекстную кнопку добавления. */
+type CompositionTab = 'students' | 'teachers' | 'homeroom';
+
+const TABS: { key: CompositionTab; label: string }[] = [
+  { key: 'students', label: 'Ученики' },
+  { key: 'teachers', label: 'Учителя' },
+  { key: 'homeroom', label: 'Классное руководство' },
+];
 
 export function AdminClassesPage() {
   const classes = useApi(fetchClasses);
   const users = useApi(fetchUsers);
+  const location = useLocation();
 
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  // Переход «Классы» из карточки учителя (AdminUsersPage) кладёт id класса
+  // в state — так сразу открывается нужный класс, а не первый по сортировке.
+  const [selectedId, setSelectedId] = useState<number | null>(
+    () => (location.state as { classId?: number } | null)?.classId ?? null,
+  );
+  const [tab, setTab] = useState<CompositionTab>('students');
   const [showCreate, setShowCreate] = useState(false);
-  const [assignRole, setAssignRole] = useState<'student' | 'teacher' | null>(null);
-  const [showHomeroom, setShowHomeroom] = useState(false);
+  // Модалка назначения: режим совпадает с активной вкладкой — «добавить» на
+  // вкладке всегда добавляет именно тех, кого эта вкладка показывает.
+  const [assignMode, setAssignMode] = useState<CompositionTab | null>(null);
+  const [editSubjectFor, setEditSubjectFor] = useState<TeacherInClass | null>(null);
+  const [transferStudent, setTransferStudent] = useState<User | null>(null);
+  const [detaching, setDetaching] = useState<DetachTarget | null>(null);
 
   const sorted = useMemo(
     () =>
@@ -40,6 +64,12 @@ export function AdminClassesPage() {
   // Выбранный класс всегда берём из свежих данных (после reload объект новый);
   // пока ничего не выбрано — показываем первый, чтобы состав не был пустым экраном
   const selected = sorted.find((c) => c.id === selectedId) ?? sorted[0] ?? null;
+
+  const addLabel: Record<CompositionTab, string> = {
+    students: 'Добавить учеников',
+    teachers: 'Добавить учителя',
+    homeroom: 'Назначить руководителя',
+  };
 
   return (
     <AdminShell activeNavKey="classes">
@@ -54,7 +84,10 @@ export function AdminClassesPage() {
 
       {classes.error && <div className="form-error">{classes.error}</div>}
 
-      {classes.loading ? (
+      {/* Спиннер только на ПЕРВОЙ загрузке: reload после мутации оставляет
+          данные на экране, а подмена всего блока размонтировала бы панель
+          вместе с её состоянием — сообщение о результате исчезало. */}
+      {classes.loading && !classes.data ? (
         <Panel>
           <div className="admin-empty">Загрузка…</div>
         </Panel>
@@ -75,57 +108,56 @@ export function AdminClassesPage() {
               >
                 <div className="class-card__name">{classLabel(cls)}</div>
                 <div className="class-card__count">{studentsCountLabel(cls.students.length)}</div>
-                <div className="class-card__teachers">
-                  {cls.homeroom_teacher
-                    ? `Кл. рук.: ${cls.homeroom_teacher.full_name}`
-                    : 'Кл. рук. не назначен'}
-                </div>
+                <div className="class-card__teachers">{teachersCountLabel(cls.teachers.length)}</div>
               </button>
             ))}
           </div>
 
           {selected && (
             <Panel title={`Состав класса ${classLabel(selected)}`}>
-              <div className="class-detail__teachers">
-                <span>{teachersSummary(selected)}</span>
+              <div className="class-tabs">
+                <div className="filter-chips">
+                  {TABS.map((t) => (
+                    <button
+                      key={t.key}
+                      className={`filter-chip ${tab === t.key ? 'filter-chip--active' : ''}`.trim()}
+                      onClick={() => setTab(t.key)}
+                    >
+                      {t.label} · {countFor(selected, t.key)}
+                    </button>
+                  ))}
+                </div>
                 <div className="admin-toolbar__spacer" />
-                <Button variant="secondary" onClick={() => setShowHomeroom(true)}>
-                  Кл. руководитель
-                </Button>
-                <Button variant="secondary" onClick={() => setAssignRole('teacher')}>
-                  Добавить учителя
-                </Button>
-                <Button variant="secondary" onClick={() => setAssignRole('student')}>
-                  Добавить учеников
+                <Button variant="secondary" onClick={() => setAssignMode(tab)}>
+                  <Icon name="plus" size={15} />
+                  {addLabel[tab]}
                 </Button>
               </div>
 
-              {selected.students.length === 0 ? (
-                <div className="admin-empty">В классе пока нет учеников</div>
+              {tab === 'students' ? (
+                <StudentsTable
+                  schoolClass={selected}
+                  onTransfer={setTransferStudent}
+                  onDetach={(student) =>
+                    setDetaching({ kind: 'student', user: student, schoolClass: selected })
+                  }
+                />
               ) : (
-                <table className="admin-table">
-                  <thead>
-                    <tr>
-                      <th>Ученик</th>
-                      <th>Email</th>
-                      <th>Статус</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selected.students.map((s) => (
-                      <tr key={s.id}>
-                        <td>{s.full_name}</td>
-                        <td>{s.email}</td>
-                        <td>
-                          <span
-                            className={`status-dot ${s.is_active ? 'status-dot--on' : ''}`.trim()}
-                          />
-                          {s.is_active ? 'Активен' : 'Неактивен'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <TeachersTable
+                  schoolClass={selected}
+                  rows={tab === 'homeroom' ? homeroomTeachers(selected) : selected.teachers}
+                  showHomeroomColumn={tab === 'teachers'}
+                  onEditSubject={setEditSubjectFor}
+                  onToggleHomeroom={async (link) => {
+                    await updateTeacherInClass(selected.id, link.teacher.id, {
+                      is_homeroom: !link.is_homeroom,
+                    });
+                    classes.reload();
+                  }}
+                  onDetach={(link) =>
+                    setDetaching({ kind: 'teacher', user: link.teacher, schoolClass: selected })
+                  }
+                />
               )}
             </Panel>
           )}
@@ -145,27 +177,51 @@ export function AdminClassesPage() {
         />
       )}
 
-      {showHomeroom && selected && (
-        <HomeroomModal
+      {assignMode && selected && (
+        <AssignModal
+          mode={assignMode}
           schoolClass={selected}
           allUsers={users.data ?? []}
-          onClose={() => setShowHomeroom(false)}
+          allClasses={classes.data ?? []}
+          onClose={() => setAssignMode(null)}
           onAssigned={() => {
-            setShowHomeroom(false);
+            setAssignMode(null);
             classes.reload();
           }}
         />
       )}
 
-      {assignRole && selected && (
-        <AssignModal
-          role={assignRole}
+      {editSubjectFor && selected && (
+        <SubjectModal
           schoolClass={selected}
-          allUsers={users.data ?? []}
-          allClasses={classes.data ?? []}
-          onClose={() => setAssignRole(null)}
-          onAssigned={() => {
-            setAssignRole(null);
+          link={editSubjectFor}
+          onClose={() => setEditSubjectFor(null)}
+          onSaved={() => {
+            setEditSubjectFor(null);
+            classes.reload();
+          }}
+        />
+      )}
+
+      {transferStudent && selected && (
+        <TransferModal
+          student={transferStudent}
+          from={selected}
+          allClasses={sorted}
+          onClose={() => setTransferStudent(null)}
+          onTransferred={() => {
+            setTransferStudent(null);
+            classes.reload();
+          }}
+        />
+      )}
+
+      {detaching && (
+        <DetachModal
+          target={detaching}
+          onClose={() => setDetaching(null)}
+          onDetached={() => {
+            setDetaching(null);
             classes.reload();
           }}
         />
@@ -174,15 +230,188 @@ export function AdminClassesPage() {
   );
 }
 
-/** «Классный руководитель: X · Также ведут: Y, Z» — как в концепте. */
-function teachersSummary(cls: SchoolClass): string {
-  const homeroom = cls.homeroom_teacher;
-  const others = cls.teachers.filter((t) => t.id !== homeroom?.id);
-  const parts: string[] = [];
-  if (homeroom) parts.push(`Классный руководитель: ${homeroom.full_name}`);
-  else parts.push('Классный руководитель не назначен');
-  if (others.length > 0) parts.push(`Также ведут: ${others.map((t) => t.full_name).join(', ')}`);
-  return parts.join(' · ');
+interface DetachTarget {
+  kind: 'student' | 'teacher';
+  user: User;
+  schoolClass: SchoolClass;
+}
+
+function countFor(cls: SchoolClass, tab: CompositionTab): number {
+  if (tab === 'students') return cls.students.length;
+  if (tab === 'teachers') return cls.teachers.length;
+  return homeroomTeachers(cls).length;
+}
+
+/** Пункты «профиль» и «результаты» — общие для любой роли в составе класса. */
+function commonUserActions(user: User, navigate: ReturnType<typeof useNavigate>): ActionMenuItem[] {
+  const items: ActionMenuItem[] = [
+    {
+      key: 'profile',
+      label: 'Открыть профиль',
+      onSelect: () => navigate('/admin/users', { state: { userId: user.id } }),
+    },
+  ];
+  // Результаты есть только у ученика: субъект диагностики — он, учитель
+  // выступает оценивающим и собственного профиля результатов не имеет.
+  if (user.role === 'student') {
+    items.push({
+      key: 'results',
+      label: 'Посмотреть результаты',
+      onSelect: () => navigate(`/admin/results/${user.id}`),
+    });
+  }
+  return items;
+}
+
+function StudentsTable({
+  schoolClass,
+  onTransfer,
+  onDetach,
+}: {
+  schoolClass: SchoolClass;
+  onTransfer: (student: User) => void;
+  onDetach: (student: User) => void;
+}) {
+  const navigate = useNavigate();
+
+  if (schoolClass.students.length === 0) {
+    return <div className="admin-empty">В классе пока нет учеников</div>;
+  }
+
+  return (
+    <table className="admin-table">
+      <thead>
+        <tr>
+          <th>Ученик</th>
+          <th>Email</th>
+          <th>Статус</th>
+          <th className="admin-table__actions-col" />
+        </tr>
+      </thead>
+      <tbody>
+        {schoolClass.students.map((s) => (
+          <tr key={s.id}>
+            <td>{s.full_name}</td>
+            <td>{s.email}</td>
+            <td>
+              <span className={`status-dot ${s.is_active ? 'status-dot--on' : ''}`.trim()} />
+              {s.is_active ? 'Активен' : 'Неактивен'}
+            </td>
+            <td className="admin-table__actions-col">
+              <ActionMenu
+                trigger={<Icon name="chevronDown" size={15} />}
+                items={[
+                  ...commonUserActions(s, navigate),
+                  {
+                    key: 'transfer',
+                    label: 'Перевести в другой класс',
+                    onSelect: () => onTransfer(s),
+                  },
+                  {
+                    key: 'detach',
+                    label: 'Открепить от класса',
+                    danger: true,
+                    onSelect: () => onDetach(s),
+                  },
+                ]}
+              />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function TeachersTable({
+  schoolClass,
+  rows,
+  showHomeroomColumn,
+  onEditSubject,
+  onToggleHomeroom,
+  onDetach,
+}: {
+  schoolClass: SchoolClass;
+  rows: TeacherInClass[];
+  showHomeroomColumn: boolean;
+  onEditSubject: (link: TeacherInClass) => void;
+  onToggleHomeroom: (link: TeacherInClass) => Promise<void>;
+  onDetach: (link: TeacherInClass) => void;
+}) {
+  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+
+  if (rows.length === 0) {
+    return (
+      <div className="admin-empty">
+        {showHomeroomColumn
+          ? 'К классу пока не привязан ни один учитель'
+          : 'Классный руководитель не назначен'}
+      </div>
+    );
+  }
+
+  const toggle = async (link: TeacherInClass) => {
+    setError(null);
+    try {
+      await onToggleHomeroom(link);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось изменить руководство');
+    }
+  };
+
+  return (
+    <>
+      {error && <div className="form-error">{error}</div>}
+      <table className="admin-table">
+        <thead>
+          <tr>
+            <th>Учитель</th>
+            <th>Email</th>
+            <th>Предмет</th>
+            {showHomeroomColumn && <th>Роль в классе</th>}
+            <th className="admin-table__actions-col" />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((link) => (
+            <tr key={link.teacher.id}>
+              <td>{link.teacher.full_name}</td>
+              <td>{link.teacher.email}</td>
+              <td>{link.subject ?? <span className="roster-cell--empty">не указан</span>}</td>
+              {showHomeroomColumn && <td>{link.is_homeroom ? 'Кл. руководитель' : 'Предметник'}</td>}
+              <td className="admin-table__actions-col">
+                <ActionMenu
+                  trigger={<Icon name="chevronDown" size={15} />}
+                  items={[
+                    ...commonUserActions(link.teacher, navigate),
+                    {
+                      key: 'subject',
+                      label: link.subject ? 'Изменить предмет' : 'Указать предмет',
+                      onSelect: () => onEditSubject(link),
+                    },
+                    {
+                      key: 'homeroom',
+                      label: link.is_homeroom
+                        ? 'Снять классное руководство'
+                        : 'Назначить классным руководителем',
+                      onSelect: () => void toggle(link),
+                    },
+                    {
+                      key: 'detach',
+                      label: `Открепить от ${classLabel(schoolClass)}`,
+                      danger: true,
+                      onSelect: () => onDetach(link),
+                    },
+                  ]}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  );
 }
 
 function studentsCountLabel(n: number): string {
@@ -193,6 +422,13 @@ function studentsCountLabel(n: number): string {
   return `${n} учеников`;
 }
 
+function teachersCountLabel(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${n} учитель`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${n} учителя`;
+  return `${n} учителей`;
+}
 /** Одна распарсенная строка ростера. error !== null → строку нельзя отправлять. */
 interface RosterRow {
   fullName: string;
@@ -282,7 +518,11 @@ function CreateClassModal({
         classId = cls.id;
         setCreatedClassId(classId); // ретрай не пересоздаёт класс
       }
-      if (homeroomId !== null) await assignHomeroom(classId, homeroomId);
+      if (homeroomId !== null) {
+        // Кл. рук — это учитель класса с флагом, поэтому назначение и есть
+        // привязка к классу: отдельного шага «добавить в учителя» не нужно.
+        await assignTeachers(classId, [homeroomId], { isHomeroom: true });
+      }
       const users: BulkUserIn[] = rows.map((r) => ({
         email: r.email,
         full_name: r.fullName,
@@ -337,7 +577,7 @@ function CreateClassModal({
             />
           </label>
           <label className="form-field">
-            <span>Классный руководитель (необязательно)</span>
+            <span>Классный руководитель (необязательно, можно добавить ещё позже)</span>
             <select
               value={homeroomId ?? ''}
               onChange={(e) => setHomeroomId(e.target.value ? Number(e.target.value) : null)}
@@ -435,88 +675,24 @@ function CreateClassModal({
   );
 }
 
-function HomeroomModal({
-  schoolClass,
-  allUsers,
-  onClose,
-  onAssigned,
-}: {
-  schoolClass: SchoolClass;
-  allUsers: User[];
-  onClose: () => void;
-  onAssigned: () => void;
-}) {
-  const [teacherId, setTeacherId] = useState<number | null>(
-    schoolClass.homeroom_teacher?.id ?? null,
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
-  // Кандидат — любой учитель школы: если он ещё не ведёт класс,
-  // бэкенд добавит его в учителя автоматически.
-  const teachers = useMemo(() => allUsers.filter((u) => u.role === 'teacher'), [allUsers]);
-
-  const handleSubmit = async () => {
-    if (teacherId === null) return;
-    setError(null);
-    setSubmitting(true);
-    try {
-      await assignHomeroom(schoolClass.id, teacherId);
-      onAssigned();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Не удалось назначить руководителя');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Modal title={`Классный руководитель ${classLabel(schoolClass)}`} onClose={onClose}>
-      {teachers.length === 0 ? (
-        <div className="admin-empty">В школе пока нет ни одного учителя</div>
-      ) : (
-        <div className="assign-list">
-          {teachers.map((t) => (
-            <label key={t.id} className="assign-item">
-              <input
-                type="radio"
-                name="homeroom"
-                checked={teacherId === t.id}
-                onChange={() => setTeacherId(t.id)}
-              />
-              <span className="assign-item__name">{t.full_name}</span>
-              <span className="assign-item__email">{t.email}</span>
-            </label>
-          ))}
-        </div>
-      )}
-
-      {error && <div className="form-error">{error}</div>}
-
-      <div className="modal__actions">
-        <Button type="button" variant="secondary" onClick={onClose}>
-          Отмена
-        </Button>
-        <Button
-          onClick={handleSubmit}
-          disabled={submitting || teacherId === null || teacherId === schoolClass.homeroom_teacher?.id}
-        >
-          {submitting ? 'Сохраняем…' : 'Назначить'}
-        </Button>
-      </div>
-    </Modal>
-  );
-}
-
+/**
+ * Назначение в класс. Режим совпадает с активной вкладкой, поэтому кандидаты
+ * и текст кнопки всегда соответствуют тому, что админ видит перед собой:
+ *  students — ученики без класса (у ученика класс один);
+ *  teachers — учителя, ещё не привязанные к ЭТОМУ классу (+ предмет на пачку);
+ *  homeroom — учителя класса без флага и любые другие учителя школы: привязка
+ *             и назначение руководителем делаются одним вызовом.
+ */
 function AssignModal({
-  role,
+  mode,
   schoolClass,
   allUsers,
   allClasses,
   onClose,
   onAssigned,
 }: {
-  role: 'student' | 'teacher';
+  mode: CompositionTab;
   schoolClass: SchoolClass;
   allUsers: User[];
   allClasses: SchoolClass[];
@@ -524,19 +700,30 @@ function AssignModal({
   onAssigned: () => void;
 }) {
   const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [subject, setSubject] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Кандидаты: ученики — без класса вообще (у ученика класс один),
-  // учителя — все, кто ещё не ведёт ЭТОТ класс (учитель может вести несколько).
+  const inThisClass = useMemo(
+    () => new Map(schoolClass.teachers.map((t) => [t.teacher.id, t])),
+    [schoolClass],
+  );
+
   const candidates = useMemo(() => {
-    if (role === 'student') {
+    // Неактивные не предлагаются вовсе: под этим флагом ходят и
+    // деактивированные админом люди, и служебные респонденты архивного
+    // импорта («Педагог 1 (архив…)», is_placeholder) — ни тех, ни других
+    // назначать в живой класс нельзя.
+    const active = allUsers.filter((u) => u.is_active);
+    if (mode === 'students') {
       const assigned = new Set(allClasses.flatMap((c) => c.students.map((s) => s.id)));
-      return allUsers.filter((u) => u.role === 'student' && !assigned.has(u.id));
+      return active.filter((u) => u.role === 'student' && !assigned.has(u.id));
     }
-    const inThisClass = new Set(schoolClass.teachers.map((t) => t.id));
-    return allUsers.filter((u) => u.role === 'teacher' && !inThisClass.has(u.id));
-  }, [role, allUsers, allClasses, schoolClass]);
+    const teachers = active.filter((u) => u.role === 'teacher');
+    if (mode === 'teachers') return teachers.filter((u) => !inThisClass.has(u.id));
+    // homeroom: уже руководящих не предлагаем, остальных учителей школы — да
+    return teachers.filter((u) => !inThisClass.get(u.id)?.is_homeroom);
+  }, [mode, allUsers, allClasses, inThisClass]);
 
   const toggle = (id: number) => {
     setChecked((prev) => {
@@ -552,8 +739,20 @@ function AssignModal({
     setSubmitting(true);
     try {
       const ids = [...checked];
-      if (role === 'student') await assignStudents(schoolClass.id, ids);
-      else await assignTeachers(schoolClass.id, ids);
+      if (mode === 'students') {
+        await assignStudents(schoolClass.id, ids);
+      } else if (mode === 'teachers') {
+        await assignTeachers(schoolClass.id, ids, { subject: subject.trim() || null });
+      } else {
+        // Часть выбранных уже в классе — им нужен PATCH, остальных привязываем.
+        // Иначе бэкенд ответит 409 «учитель уже прикреплён» на всю пачку.
+        const existing = ids.filter((id) => inThisClass.has(id));
+        const fresh = ids.filter((id) => !inThisClass.has(id));
+        if (fresh.length > 0) await assignTeachers(schoolClass.id, fresh, { isHomeroom: true });
+        for (const id of existing) {
+          await updateTeacherInClass(schoolClass.id, id, { is_homeroom: true });
+        }
+      }
       onAssigned();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Не удалось сохранить назначение');
@@ -562,29 +761,49 @@ function AssignModal({
     }
   };
 
-  const title =
-    role === 'student'
-      ? `Ученики в класс ${classLabel(schoolClass)}`
-      : `Учителя класса ${classLabel(schoolClass)}`;
+  const title = {
+    students: `Ученики в класс ${classLabel(schoolClass)}`,
+    teachers: `Учителя класса ${classLabel(schoolClass)}`,
+    homeroom: `Классное руководство ${classLabel(schoolClass)}`,
+  }[mode];
+
+  const emptyText = {
+    students: 'Свободных учеников нет — все уже распределены по классам',
+    teachers: 'Все учителя уже ведут этот класс (или учителей нет вовсе)',
+    homeroom: 'Все учителя школы уже руководят этим классом (или учителей нет вовсе)',
+  }[mode];
 
   return (
     <Modal title={title} onClose={onClose}>
       {candidates.length === 0 ? (
-        <div className="admin-empty">
-          {role === 'student'
-            ? 'Свободных учеников нет — все уже распределены по классам'
-            : 'Все учителя уже ведут этот класс (или учителей нет вовсе)'}
-        </div>
+        <div className="admin-empty">{emptyText}</div>
       ) : (
-        <div className="assign-list">
-          {candidates.map((u) => (
-            <label key={u.id} className="assign-item">
-              <input type="checkbox" checked={checked.has(u.id)} onChange={() => toggle(u.id)} />
-              <span className="assign-item__name">{u.full_name}</span>
-              <span className="assign-item__email">{u.email}</span>
+        <>
+          {mode === 'teachers' && (
+            <label className="form-field">
+              <span>Предмет (необязательно, общий для выбранных)</span>
+              <input
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="литература"
+                maxLength={100}
+              />
             </label>
-          ))}
-        </div>
+          )}
+          <div className="assign-list">
+            {candidates.map((u) => (
+              <label key={u.id} className="assign-item">
+                <input type="checkbox" checked={checked.has(u.id)} onChange={() => toggle(u.id)} />
+                <span className="assign-item__name">{u.full_name}</span>
+                <span className="assign-item__email">
+                  {mode === 'homeroom' && inThisClass.has(u.id)
+                    ? 'уже учитель класса'
+                    : u.email}
+                </span>
+              </label>
+            ))}
+          </div>
+        </>
       )}
 
       {error && <div className="form-error">{error}</div>}
@@ -595,6 +814,197 @@ function AssignModal({
         </Button>
         <Button onClick={handleSubmit} disabled={submitting || checked.size === 0}>
           {submitting ? 'Сохраняем…' : `Назначить (${checked.size})`}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+/** Правка предмета одного учителя в одном классе. */
+function SubjectModal({
+  schoolClass,
+  link,
+  onClose,
+  onSaved,
+}: {
+  schoolClass: SchoolClass;
+  link: TeacherInClass;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [subject, setSubject] = useState(link.subject ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      // Пустая строка — это «стереть предмет», отправляем null: бэкенд
+      // различает отсутствие ключа и явный null.
+      await updateTeacherInClass(schoolClass.id, link.teacher.id, {
+        subject: subject.trim() || null,
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось сохранить предмет');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal title={`Предмет · ${link.teacher.full_name}`} onClose={onClose}>
+      <label className="form-field">
+        <span>Что ведёт в классе {classLabel(schoolClass)}</span>
+        <input
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          placeholder="литература"
+          maxLength={100}
+          autoFocus
+        />
+      </label>
+      <p className="roster-hint">
+        Предмет относится только к этому классу — в другом классе у того же учителя он свой.
+      </p>
+
+      {error && <div className="form-error">{error}</div>}
+
+      <div className="modal__actions">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Отмена
+        </Button>
+        <Button onClick={handleSubmit} disabled={submitting}>
+          {submitting ? 'Сохраняем…' : 'Сохранить'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Перевод ученика в другой класс. Отдельного эндпоинта нет и не нужно: класс
+ * у ученика один, поэтому привязка к новому просто перезаписывает старый.
+ */
+function TransferModal({
+  student,
+  from,
+  allClasses,
+  onClose,
+  onTransferred,
+}: {
+  student: User;
+  from: SchoolClass;
+  allClasses: SchoolClass[];
+  onClose: () => void;
+  onTransferred: () => void;
+}) {
+  const targets = useMemo(() => allClasses.filter((c) => c.id !== from.id), [allClasses, from.id]);
+  const [targetId, setTargetId] = useState<number | null>(targets[0]?.id ?? null);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (targetId === null) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await assignStudents(targetId, [student.id]);
+      onTransferred();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось перевести ученика');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal title={`Перевод · ${student.full_name}`} onClose={onClose}>
+      {targets.length === 0 ? (
+        <div className="admin-empty">Других классов пока нет — переводить некуда</div>
+      ) : (
+        <label className="form-field">
+          <span>Из {classLabel(from)} в класс</span>
+          <select
+            value={targetId ?? ''}
+            onChange={(e) => setTargetId(Number(e.target.value))}
+            autoFocus
+          >
+            {targets.map((c) => (
+              <option key={c.id} value={c.id}>
+                {classLabel(c)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <p className="roster-hint">
+        Уже собранные результаты останутся за прежним классом: анкеты хранят класс на момент
+        кампании.
+      </p>
+
+      {error && <div className="form-error">{error}</div>}
+
+      <div className="modal__actions">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Отмена
+        </Button>
+        <Button onClick={handleSubmit} disabled={submitting || targetId === null}>
+          {submitting ? 'Переводим…' : 'Перевести'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+/** Подтверждение открепления — действие видимое, но обратимое: не удаление. */
+function DetachModal({
+  target,
+  onClose,
+  onDetached,
+}: {
+  target: DetachTarget;
+  onClose: () => void;
+  onDetached: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      if (target.kind === 'student') {
+        await removeStudentFromClass(target.schoolClass.id, target.user.id);
+      } else {
+        await removeTeacherFromClass(target.schoolClass.id, target.user.id);
+      }
+      onDetached();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось открепить');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal title="Открепить от класса" onClose={onClose}>
+      <p className="roster-hint">
+        {target.user.full_name} будет откреплён от класса {classLabel(target.schoolClass)}.
+        Пользователь останется в системе со всей историей — при необходимости его можно привязать
+        обратно.
+        {target.kind === 'teacher' && ' Классное руководство, если оно было, тоже снимется.'}
+      </p>
+
+      {error && <div className="form-error">{error}</div>}
+
+      <div className="modal__actions">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Отмена
+        </Button>
+        <Button onClick={handleSubmit} disabled={submitting}>
+          {submitting ? 'Открепляем…' : 'Открепить'}
         </Button>
       </div>
     </Modal>

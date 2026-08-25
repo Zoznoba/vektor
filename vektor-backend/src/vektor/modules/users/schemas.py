@@ -11,6 +11,17 @@ class AssignChildrenIn(BaseModel):
     child_ids: list[int]
 
 
+class SetUserActiveIn(BaseModel):
+    is_active: bool
+
+
+class ResetPasswordOut(BaseModel):
+    """Новый пароль — эхом один раз, как default_password в BulkCreateOut:
+    другого способа его узнать не будет, рассылки почтой в системе пока нет."""
+
+    new_password: str
+
+
 # ── Массовая загрузка (bulk) ──────────────────────────────────────────────
 # Пароль в строке НЕ принимаем. ВРЕМЕННО (для тестов) всем создаваемым юзерам
 # ставится один общий пароль из настроек (settings.bulk_default_password).
@@ -63,9 +74,15 @@ class ParentWithChildrenOut(UserOut):
 
 
 class MeOut(UserOut):
-    """/users/me — то же, что UserOut, плюс класс для шапки дашборда.
+    """/users/me — то же, что UserOut, плюс класс и учебный год для шапки
+    дашборда.
 
     None у class_label — штатно: у учителя, родителя и админа класса нет.
+    academic_year — не хранится нигде (период кампании — календарные год и
+    месяц, а не учебный год: «2026-06» относится к 2025/2026), считается от
+    текущей даты через
+    shared/academic_year.py и относится к школе целиком, а не к пользователю.
     """
 
     class_label: str | None = None
+    academic_year: str

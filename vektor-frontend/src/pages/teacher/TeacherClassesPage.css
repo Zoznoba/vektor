@@ -1,0 +1,228 @@
+.teacher-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.teacher-head h2 {
+  margin: 0;
+}
+
+.teacher-head__note {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
+.teacher-chips {
+  display: flex;
+  gap: 6px;
+  margin-left: 6px;
+}
+
+.teacher-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-d);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.teacher-chip--active {
+  border-color: var(--blue);
+  background: var(--blue-tint);
+  color: var(--blue-ink);
+}
+
+.teacher-chip__tag {
+  font-family: var(--font-b);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ink-faint);
+}
+
+.teacher-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.teacher-metric {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 15px 17px;
+}
+
+.teacher-metric__value {
+  font-family: var(--font-d);
+  font-size: 25px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.teacher-metric__value--blue {
+  color: var(--blue-ink);
+}
+
+.teacher-metric__value--sage {
+  color: var(--lime-ink);
+}
+
+.teacher-metric__label {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 3px;
+}
+
+/* Таблица шире панели на узком экране — скроллим её саму, а не страницу. */
+/* Фильтры над составом класса. Тот же пилюльный паттерн, что и .filter-chip
+   в админке: экран другой, но элемент для пользователя один и тот же. */
+.roster-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.roster-filter {
+  font-family: var(--font-b);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 7px 14px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.roster-filter--active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--surface);
+}
+
+.roster-scroll {
+  overflow-x: auto;
+}
+
+.roster {
+  width: 100%;
+  min-width: 600px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.roster th {
+  text-align: left;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.roster td {
+  padding: 11px 12px;
+  border-bottom: 0.5px solid var(--border);
+  vertical-align: middle;
+}
+
+.roster tr:last-child td {
+  border-bottom: none;
+}
+
+.roster__name {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.roster__muted {
+  color: var(--ink-soft);
+}
+
+.roster__score {
+  font-family: var(--font-d);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.roster__delta {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
+.roster__delta--up {
+  color: var(--lime-ink);
+}
+
+.roster__action {
+  text-align: right;
+}
+
+.roster__status {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: var(--fog);
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.roster__status--completed {
+  background: var(--lime-tint);
+  color: var(--lime-ink);
+}
+
+.roster__status--in_progress {
+  background: var(--blue-tint);
+  color: var(--blue-ink);
+}
+
+.growth-zone {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 0.5px solid var(--border);
+}
+
+.growth-zone__score {
+  font-family: var(--font-d);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sage-ink);
+  width: 34px;
+}
+
+.growth-zone__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+}
+
+.growth-zone__count {
+  font-size: 11px;
+  color: var(--sage-ink);
+}
+
+@media (max-width: 900px) {
+  .teacher-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

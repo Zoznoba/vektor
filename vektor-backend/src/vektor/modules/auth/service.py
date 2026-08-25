@@ -4,13 +4,18 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from vektor.core.errors import DomainError
 from vektor.core.security import hash_password, verify_password
 from vektor.modules.auth.schemas import RegisterIn
 from vektor.modules.users.models import User
 
 
-class EmailAlreadyRegistered(Exception):
+class EmailAlreadyRegistered(DomainError):
     """Пользователь с таким email уже существует."""
+
+    status_code = 409
+    code = "email_already_registered"
+    message = "Пользователь с таким email уже существует"
 
 
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:

@@ -1,0 +1,315 @@
+/* Стили экрана «Кампании 360°» (AdminCampaignsPage). */
+
+.campaign-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.campaign-card {
+  font-family: var(--font-b);
+  text-align: left;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  background: var(--surface);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.campaign-card--selected {
+  border-color: var(--blue);
+  background: var(--blue-tint);
+}
+
+.campaign-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.campaign-card__period {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.campaign-card__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.campaign-card__bar {
+  margin-top: 5px;
+}
+
+.campaign-card__progress {
+  font-size: 10.5px;
+  color: var(--ink-faint);
+}
+
+/* --- детали выбранной кампании: покрытие + генерация --- */
+.campaign-detail {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .campaign-detail {
+    grid-template-columns: 1fr;
+  }
+}
+
+.campaign-coverage__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.campaign-coverage__total {
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
+.coverage-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.coverage-group {
+  border-top: 1px solid var(--border);
+}
+
+.coverage-group:first-child {
+  border-top: none;
+}
+
+.coverage-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+}
+
+/* Строка класса — кнопка-раскрывашка: сбрасываем всё, что браузер рисует у
+   button, и растягиваем на всю ширину, чтобы попадать по ней целиком. */
+.coverage-row--toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.coverage-row--toggle:disabled {
+  cursor: default;
+}
+
+.coverage-row__chevron {
+  flex-shrink: 0;
+  color: var(--ink-soft);
+  transition: transform 0.15s ease;
+}
+
+.coverage-row__chevron--open {
+  transform: rotate(180deg);
+}
+
+.coverage-row--toggle:disabled .coverage-row__chevron {
+  opacity: 0.3;
+}
+
+/* Таблица учеников внутри класса: узкая и с отступом слева, чтобы читалась
+   как вложенная в строку класса, а не как отдельный блок. */
+.coverage-students {
+  padding: 0 0 12px 27px;
+  overflow-x: auto;
+}
+
+.coverage-students__table {
+  font-size: 12.5px;
+}
+
+.coverage-students__row {
+  cursor: pointer;
+}
+
+.coverage-students__row:hover {
+  background: var(--bg-soft, var(--blue-tint));
+}
+
+/* Отметка «сделано / частично / не начато / не выдано». Цвет несёт смысл, но
+   рядом всегда есть текст («2 из 2», «в процессе») — по одному цвету ничего
+   различать не приходится. */
+.cover-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.cover-mark--done {
+  color: var(--lime-ink);
+  font-weight: 600;
+}
+
+.cover-mark--partial {
+  color: var(--amber-ink);
+}
+
+.cover-mark--none {
+  color: var(--ink-soft);
+}
+
+.cover-mark--missing {
+  color: var(--ink-soft);
+  opacity: 0.65;
+}
+
+.coverage-row__label {
+  width: 60px;
+  flex-shrink: 0;
+  font-family: var(--font-d);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.coverage-row__bar {
+  flex: 1;
+}
+
+.coverage-row__counts {
+  width: 90px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
+
+.coverage-row__pct {
+  width: 40px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* --- панель «кто кого оценивает» --- */
+.rater-rules {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 14px;
+}
+
+.rater-rule {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.rater-rule:first-child {
+  border-top: none;
+}
+
+.rater-rule--toggle {
+  cursor: pointer;
+}
+
+.rater-rule__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.rater-rule__label {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.rater-rule__note {
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-top: 1px;
+}
+
+.rater-rule__badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.class-picker {
+  margin-bottom: 14px;
+}
+
+.class-picker__label {
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 7px;
+}
+
+.campaign-generate__result {
+  font-size: 12px;
+  color: var(--lime-ink);
+  margin-bottom: 10px;
+}
+
+.campaign-generate__hint {
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-top: 9px;
+  line-height: 1.55;
+}
+
+/* Учителя-оценщики внутри отмеченного класса. */
+.teacher-picker {
+  margin: 2px 0 8px 26px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--border-strong);
+}
+
+.teacher-picker__hint {
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.teacher-picker__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.teacher-picker__name {
+  flex: 1;
+  font-size: 13px;
+}
+
+.teacher-picker__role {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.campaign-generate__warning {
+  margin-top: 10px;
+  padding: 8px 11px;
+  border-radius: var(--r-sm);
+  background: var(--amber-tint);
+  color: var(--amber-ink);
+  font-size: 13px;
+}

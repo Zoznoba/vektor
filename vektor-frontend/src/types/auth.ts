@@ -16,6 +16,11 @@ export interface User {
    * Приходит из /users/me; в списках пользователей поля нет.
    */
   class_label?: string | null;
+  /**
+   * «2025/2026 учебный год» — считается на бэке от текущей даты, не привязан
+   * к роли. Приходит из /users/me; в списках пользователей поля нет.
+   */
+  academic_year?: string;
 }
 
 export interface TokenResponse {

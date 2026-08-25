@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict npECu8ikt3LfyCw4MMZAIcXjQbtMzrW6q5lvEF1a92eYjwdv6VrE9Qi5Rfa2AZ0
+\restrict sw0NKubZYLhFOEmDbUuzabKWM7r0vvgnUZpt8cTMPEZrKnC9hHWc5GpLUv2eGXG
 
 -- Dumped from database version 17.10 (Debian 17.10-1.pgdg13+1)
 -- Dumped by pg_dump version 17.10 (Debian 17.10-1.pgdg13+1)
@@ -24,7 +24,7 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
--- Name: alembic_version; Type: TABLE; Schema: public; Owner: -
+-- Name: alembic_version; Type: TABLE; Schema: public; Owner: vektor
 --
 
 CREATE TABLE public.alembic_version (
@@ -32,8 +32,9 @@ CREATE TABLE public.alembic_version (
 );
 
 
+
 --
--- Name: answers; Type: TABLE; Schema: public; Owner: -
+-- Name: answers; Type: TABLE; Schema: public; Owner: vektor
 --
 
 CREATE TABLE public.answers (
@@ -45,8 +46,9 @@ CREATE TABLE public.answers (
 );
 
 
+
 --
--- Name: answers_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: answers_id_seq; Type: SEQUENCE; Schema: public; Owner: vektor
 --
 
 CREATE SEQUENCE public.answers_id_seq
@@ -58,15 +60,16 @@ CREATE SEQUENCE public.answers_id_seq
     CACHE 1;
 
 
+
 --
--- Name: answers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: answers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: vektor
 --
 
 ALTER SEQUENCE public.answers_id_seq OWNED BY public.answers.id;
 
 
 --
--- Name: assessments; Type: TABLE; Schema: public; Owner: -
+-- Name: assessments; Type: TABLE; Schema: public; Owner: vektor
 --
 
 CREATE TABLE public.assessments (
@@ -81,8 +84,9 @@ CREATE TABLE public.assessments (
 );
 
 
+
 --
--- Name: assessments_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: assessments_id_seq; Type: SEQUENCE; Schema: public; Owner: vektor
 --
 
 CREATE SEQUENCE public.assessments_id_seq
@@ -94,15 +98,16 @@ CREATE SEQUENCE public.assessments_id_seq
     CACHE 1;
 
 
+
 --
--- Name: assessments_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: assessments_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: vektor
 --
 
 ALTER SEQUENCE public.assessments_id_seq OWNED BY public.assessments.id;
 
 
 --
--- Name: campaigns; Type: TABLE; Schema: public; Owner: -
+-- Name: campaigns; Type: TABLE; Schema: public; Owner: vektor
 --
 
 CREATE TABLE public.campaigns (
@@ -117,8 +122,9 @@ CREATE TABLE public.campaigns (
 );
 
 
+
 --
--- Name: campaigns_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: campaigns_id_seq; Type: SEQUENCE; Schema: public; Owner: vektor
 --
 
 CREATE SEQUENCE public.campaigns_id_seq
@@ -130,15 +136,16 @@ CREATE SEQUENCE public.campaigns_id_seq
     CACHE 1;
 
 
+
 --
--- Name: campaigns_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: campaigns_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: vektor
 --
 
 ALTER SEQUENCE public.campaigns_id_seq OWNED BY public.campaigns.id;
 
 
 --
--- Name: competencies; Type: TABLE; Schema: public; Owner: -
+-- Name: competencies; Type: TABLE; Schema: public; Owner: vektor
 --
 
 CREATE TABLE public.competencies (
@@ -153,8 +160,9 @@ CREATE TABLE public.competencies (
 );
 
 
+
 --
--- Name: competencies_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: competencies_id_seq; Type: SEQUENCE; Schema: public; Owner: vektor
 --
 
 CREATE SEQUENCE public.competencies_id_seq
@@ -166,15 +174,16 @@ CREATE SEQUENCE public.competencies_id_seq
     CACHE 1;
 
 
+
 --
--- Name: competencies_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: competencies_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: vektor
 --
 
 ALTER SEQUENCE public.competencies_id_seq OWNED BY public.competencies.id;
 
 
 --
--- Name: outcome_areas; Type: TABLE; Schema: public; Owner: -
+-- Name: outcome_areas; Type: TABLE; Schema: public; Owner: vektor
 --
 
 CREATE TABLE public.outcome_areas (
@@ -185,8 +194,9 @@ CREATE TABLE public.outcome_areas (
 );
 
 
+
 --
--- Name: outcome_areas_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: outcome_areas_id_seq; Type: SEQUENCE; Schema: public; Owner: vektor
 --
 
 CREATE SEQUENCE public.outcome_areas_id_seq
@@ -198,15 +208,16 @@ CREATE SEQUENCE public.outcome_areas_id_seq
     CACHE 1;
 
 
+
 --
--- Name: outcome_areas_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: outcome_areas_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: vektor
 --
 
 ALTER SEQUENCE public.outcome_areas_id_seq OWNED BY public.outcome_areas.id;
 
 
 --
--- Name: parent_children; Type: TABLE; Schema: public; Owner: -
+-- Name: parent_children; Type: TABLE; Schema: public; Owner: vektor
 --
 
 CREATE TABLE public.parent_children (
@@ -215,8 +226,9 @@ CREATE TABLE public.parent_children (
 );
 
 
+
 --
--- Name: questionnaire_versions; Type: TABLE; Schema: public; Owner: -
+-- Name: questionnaire_versions; Type: TABLE; Schema: public; Owner: vektor
 --
 
 CREATE TABLE public.questionnaire_versions (
@@ -229,8 +241,9 @@ CREATE TABLE public.questionnaire_versions (
 );
 
 
+
 --
--- Name: questionnaire_versions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: questionnaire_versions_id_seq; Type: SEQUENCE; Schema: public; Owner: vektor
 --
 
 CREATE SEQUENCE public.questionnaire_versions_id_seq
@@ -242,15 +255,16 @@ CREATE SEQUENCE public.questionnaire_versions_id_seq
     CACHE 1;
 
 
+
 --
--- Name: questionnaire_versions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: questionnaire_versions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: vektor
 --
 
 ALTER SEQUENCE public.questionnaire_versions_id_seq OWNED BY public.questionnaire_versions.id;
 
 
 --
--- Name: questions; Type: TABLE; Schema: public; Owner: -
+-- Name: questions; Type: TABLE; Schema: public; Owner: vektor
 --
 
 CREATE TABLE public.questions (
@@ -262,8 +276,9 @@ CREATE TABLE public.questions (
 );
 
 
+
 --
--- Name: questions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: questions_id_seq; Type: SEQUENCE; Schema: public; Owner: vektor
 --
 
 CREATE SEQUENCE public.questions_id_seq
@@ -275,15 +290,16 @@ CREATE SEQUENCE public.questions_id_seq
     CACHE 1;
 
 
+
 --
--- Name: questions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: questions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: vektor
 --
 
 ALTER SEQUENCE public.questions_id_seq OWNED BY public.questions.id;
 
 
 --
--- Name: school_classes; Type: TABLE; Schema: public; Owner: -
+-- Name: school_classes; Type: TABLE; Schema: public; Owner: vektor
 --
 
 CREATE TABLE public.school_classes (
@@ -295,8 +311,9 @@ CREATE TABLE public.school_classes (
 );
 
 
+
 --
--- Name: school_classes_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: school_classes_id_seq; Type: SEQUENCE; Schema: public; Owner: vektor
 --
 
 CREATE SEQUENCE public.school_classes_id_seq
@@ -308,15 +325,16 @@ CREATE SEQUENCE public.school_classes_id_seq
     CACHE 1;
 
 
+
 --
--- Name: school_classes_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: school_classes_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: vektor
 --
 
 ALTER SEQUENCE public.school_classes_id_seq OWNED BY public.school_classes.id;
 
 
 --
--- Name: teacher_classes; Type: TABLE; Schema: public; Owner: -
+-- Name: teacher_classes; Type: TABLE; Schema: public; Owner: vektor
 --
 
 CREATE TABLE public.teacher_classes (
@@ -325,8 +343,9 @@ CREATE TABLE public.teacher_classes (
 );
 
 
+
 --
--- Name: users; Type: TABLE; Schema: public; Owner: -
+-- Name: users; Type: TABLE; Schema: public; Owner: vektor
 --
 
 CREATE TABLE public.users (
@@ -337,12 +356,14 @@ CREATE TABLE public.users (
     role character varying(20) NOT NULL,
     is_active boolean NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    school_class_id integer
+    school_class_id integer,
+    is_placeholder boolean DEFAULT false NOT NULL
 );
 
 
+
 --
--- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: vektor
 --
 
 CREATE SEQUENCE public.users_id_seq
@@ -354,87 +375,88 @@ CREATE SEQUENCE public.users_id_seq
     CACHE 1;
 
 
+
 --
--- Name: users_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: users_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: vektor
 --
 
 ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;
 
 
 --
--- Name: answers id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: answers id; Type: DEFAULT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.answers ALTER COLUMN id SET DEFAULT nextval('public.answers_id_seq'::regclass);
 
 
 --
--- Name: assessments id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: assessments id; Type: DEFAULT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.assessments ALTER COLUMN id SET DEFAULT nextval('public.assessments_id_seq'::regclass);
 
 
 --
--- Name: campaigns id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: campaigns id; Type: DEFAULT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.campaigns ALTER COLUMN id SET DEFAULT nextval('public.campaigns_id_seq'::regclass);
 
 
 --
--- Name: competencies id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: competencies id; Type: DEFAULT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.competencies ALTER COLUMN id SET DEFAULT nextval('public.competencies_id_seq'::regclass);
 
 
 --
--- Name: outcome_areas id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: outcome_areas id; Type: DEFAULT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.outcome_areas ALTER COLUMN id SET DEFAULT nextval('public.outcome_areas_id_seq'::regclass);
 
 
 --
--- Name: questionnaire_versions id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: questionnaire_versions id; Type: DEFAULT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.questionnaire_versions ALTER COLUMN id SET DEFAULT nextval('public.questionnaire_versions_id_seq'::regclass);
 
 
 --
--- Name: questions id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: questions id; Type: DEFAULT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.questions ALTER COLUMN id SET DEFAULT nextval('public.questions_id_seq'::regclass);
 
 
 --
--- Name: school_classes id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: school_classes id; Type: DEFAULT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.school_classes ALTER COLUMN id SET DEFAULT nextval('public.school_classes_id_seq'::regclass);
 
 
 --
--- Name: users id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: users id; Type: DEFAULT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_id_seq'::regclass);
 
 
 --
--- Data for Name: alembic_version; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: alembic_version; Type: TABLE DATA; Schema: public; Owner: vektor
 --
 
 COPY public.alembic_version (version_num) FROM stdin;
-e7b2065d94ac
+b9d41f7c2a08
 \.
 
 
 --
--- Data for Name: answers; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: answers; Type: TABLE DATA; Schema: public; Owner: vektor
 --
 
 COPY public.answers (id, value, assessment_id, question_id) FROM stdin;
@@ -3802,7 +3824,7 @@ COPY public.answers (id, value, assessment_id, question_id) FROM stdin;
 
 
 --
--- Data for Name: assessments; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: assessments; Type: TABLE DATA; Schema: public; Owner: vektor
 --
 
 COPY public.assessments (id, status, campaign_id, respondent_id, subject_id, created_at, rater_role, subject_class_id) FROM stdin;
@@ -3922,7 +3944,7 @@ COPY public.assessments (id, status, campaign_id, respondent_id, subject_id, cre
 
 
 --
--- Data for Name: campaigns; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: campaigns; Type: TABLE DATA; Schema: public; Owner: vektor
 --
 
 COPY public.campaigns (id, title, period, status, opens_at, closes_at, created_at, questionnaire_version_id) FROM stdin;
@@ -3934,7 +3956,7 @@ COPY public.campaigns (id, title, period, status, opens_at, closes_at, created_a
 
 
 --
--- Data for Name: competencies; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: competencies; Type: TABLE DATA; Schema: public; Owner: vektor
 --
 
 COPY public.competencies (id, code, name, description, "order", outcome_area_id, min_grade, max_grade) FROM stdin;
@@ -3953,7 +3975,7 @@ COPY public.competencies (id, code, name, description, "order", outcome_area_id,
 
 
 --
--- Data for Name: outcome_areas; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: outcome_areas; Type: TABLE DATA; Schema: public; Owner: vektor
 --
 
 COPY public.outcome_areas (id, code, name, "order") FROM stdin;
@@ -3966,7 +3988,7 @@ COPY public.outcome_areas (id, code, name, "order") FROM stdin;
 
 
 --
--- Data for Name: parent_children; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: parent_children; Type: TABLE DATA; Schema: public; Owner: vektor
 --
 
 COPY public.parent_children (parent_id, child_id) FROM stdin;
@@ -3998,7 +4020,7 @@ COPY public.parent_children (parent_id, child_id) FROM stdin;
 
 
 --
--- Data for Name: questionnaire_versions; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: questionnaire_versions; Type: TABLE DATA; Schema: public; Owner: vektor
 --
 
 COPY public.questionnaire_versions (id, code, title, note, is_current, created_at) FROM stdin;
@@ -4008,7 +4030,7 @@ COPY public.questionnaire_versions (id, code, title, note, is_current, created_a
 
 
 --
--- Data for Name: questions; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: questions; Type: TABLE DATA; Schema: public; Owner: vektor
 --
 
 COPY public.questions (id, competency_id, text, "order", version_id) FROM stdin;
@@ -4082,7 +4104,7 @@ COPY public.questions (id, competency_id, text, "order", version_id) FROM stdin;
 
 
 --
--- Data for Name: school_classes; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: school_classes; Type: TABLE DATA; Schema: public; Owner: vektor
 --
 
 COPY public.school_classes (id, grade, section, homeroom_teacher_id) FROM stdin;
@@ -4093,190 +4115,190 @@ COPY public.school_classes (id, grade, section, homeroom_teacher_id) FROM stdin;
 
 
 --
--- Data for Name: teacher_classes; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: teacher_classes; Type: TABLE DATA; Schema: public; Owner: vektor
 --
 
 COPY public.teacher_classes (teacher_id, class_id) FROM stdin;
-110	11
-111	11
-112	11
-113	11
-114	11
-115	11
-116	11
-117	11
-118	11
-119	11
-120	11
-145	12
-111	12
-146	12
-112	12
-147	12
-113	12
-148	12
-116	12
-118	12
-149	12
-150	12
-151	12
-120	12
-152	12
+163	11
+164	11
+164	12
+165	11
+165	12
+166	11
+166	12
+167	11
+168	11
+169	11
+169	12
+170	11
+171	11
+171	12
+172	11
+173	11
+173	12
+174	12
+175	12
+176	12
+177	12
+178	12
+179	12
+180	12
+181	12
 \.
 
 
 --
--- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: -
+-- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: vektor
 --
 
-COPY public.users (id, email, hashed_password, full_name, role, is_active, created_at, school_class_id) FROM stdin;
-1	admin@admin.ru	$argon2id$v=19$m=65536,t=3,p=4$t6akXcLo4l2lUxhaOSSsJQ$CQEvXHHTEpUdDp+wXMjp1YehtjTpgWA5FmxTvgb/shE	Администратор	admin	t	2026-07-29 12:59:02.858367	\N
-18	astahova.alina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Астахова Алина	student	t	2026-08-03 14:53:16.468403	11
-19	astahov.artem@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Астахов Артём	student	t	2026-08-03 14:53:16.468403	11
-20	belova.vera@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Белова Вера	student	t	2026-08-03 14:53:16.468403	11
-21	vetrova.galina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Ветрова Галина	student	t	2026-08-03 14:53:16.468403	11
-22	gordeeva.darya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Гордеева Дарья	student	t	2026-08-03 14:53:16.468403	11
-23	belov.boris@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Белов Борис	student	t	2026-08-03 14:53:16.468403	11
-24	vetrov.viktor@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$5VTBVGFVx0bZ1/03gKoh0Q$3iEW3WfDAYtpOlOPiAKdfbF9utu89KzUy1PF9o91xjw	Ветров Виктор	student	t	2026-08-03 14:53:16.468403	\N
-25	dyakova.eva@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Дьякова Ева	student	t	2026-08-03 14:53:16.468403	11
-26	gordeev.gleb@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Гордеев Глеб	student	t	2026-08-03 14:53:16.468403	11
-27	dyakov.denis@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Дьяков Денис	student	t	2026-08-03 14:53:16.468403	11
-28	ershova.zhanna@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Ершова Жанна	student	t	2026-08-03 14:53:16.468403	11
-97	zimina.irina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$XQUNFH0QHFI/H7zD2vTH5Q$+18vIpYnikz+3rRrcJCIjtWBWHjak8R/qfyloC6DPNU	Зимина Ирина Кирилловна	parent	t	2026-08-05 16:50:03.592998	\N
-109	ushakova.faina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$hjZ4S2AiWZZ+8zj6cQPOQQ$Us07DtMPUBa+Wvo1umJ5txjKqI04N/fblVeTuZL9tKE	Ушакова Фаина Львовна	parent	t	2026-08-05 16:50:03.592998	\N
-110	fadeeva.yuliya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$YRP5JmTlwzO0TjG2cYLW/A$OmkVoaT0DhTIjWAnOIkVTrRgw6CtfCm7ySfMWwV3+XM	Фадеева Юлия Матвеевна	teacher	t	2026-08-05 16:50:03.592998	\N
-111	astahova.vera@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$2aAnKwndnpWAzDPfP56GAg$YH4ay0dR/1Gk9aT0LKTI3XZhbmmgPf/5akwoWL4XGTs	Астахова Вера Андреевна	teacher	t	2026-08-05 16:50:03.592998	\N
-112	belova.galina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$IIOYaOojwf5Sfomx9vMMeA$tEKa6KT/Lrf2XRghBXx6paXroReA8WcpnP3LgB44cyI	Белова Галина Борисовна	teacher	t	2026-08-05 16:50:03.592998	\N
-113	zhukov.ilya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$sRa5GKYEMmFvGdMOMN1Nzg$F8XTXovIfY/sHbXxapQog/k7lTJXNp4opDScZnglqI4	Жуков Илья Ильич	teacher	t	2026-08-05 16:50:03.592998	\N
-114	vetrova.darya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$KyqYJSSIm/w0ZWSqkxIAkg$Fe1RtPvOxyVqjcwrganmpXyzPx+eAml0vYsWbw8wttM	Ветрова Дарья Викторовна	teacher	t	2026-08-05 16:50:03.592998	\N
-115	gordeeva.eva@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$+CQAhuAQIewNIjCqOcQ3JA$7MpKmhqjzlONpjqZvH6j5EEJGYhTB5+sztnvnkm3+aE	Гордеева Ева Глебовна	teacher	t	2026-08-05 16:50:03.592998	\N
-116	dyakova.zhanna@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$6OWtoARAn7WbfBo3tAv1qw$mm2ZiodVMMc5/4LuVJC9Sd9Ha1Q2kfyPzz0AZy0AlBA	Дьякова Жанна Денисовна	teacher	t	2026-08-05 16:50:03.592998	\N
-153	parent-1-5-1-2026@archive.vektor.local	$argon2id$v=19$m=65536,t=3,p=4$OGcOZbKBstp11kG2pkb31w$78++Tt/1VmyrfnrSqhetI1nSGFlDpXWUmEJlnyqPCY4	Родитель 1 (архив, 5.1 2026)	parent	f	2026-08-05 16:50:03.592998	\N
-154	teacher-1-5-1-2026@archive.vektor.local	$argon2id$v=19$m=65536,t=3,p=4$CANdgaA7+W69eFlRi8i7Mg$I7D6zkbZAas7bCBQy2RjsZDY4g9VIofurxOwvwcK1Ps	Педагог 1 (архив, 5.1 2026)	teacher	f	2026-08-05 16:50:03.592998	\N
-155	teacher-2-5-1-2026@archive.vektor.local	$argon2id$v=19$m=65536,t=3,p=4$GSHwBzP9QHE2TaJSZs9iNQ$0bniZztCr2OfkPH+NySGs8KXMWYaQwHAzE8Z+ne/fpc	Педагог 2 (архив, 5.1 2026)	teacher	f	2026-08-05 16:50:03.592998	\N
-156	teacher-3-5-1-2026@archive.vektor.local	$argon2id$v=19$m=65536,t=3,p=4$SATB0w2GEJmoP4TmE/beRQ$dqYqKXnDt+ko22HRhhNJx9AyLfNb4Rk7vShgYna8kw8	Педагог 3 (архив, 5.1 2026)	teacher	f	2026-08-05 16:50:03.592998	\N
-157	teacher-1-8-1-2026@archive.vektor.local	$argon2id$v=19$m=65536,t=3,p=4$0Zw4iqxiQIYeBGTD8UqynQ$M2qYgyipT4+vngNnEKIWm7+1OVqZcece8l2GRkzwSro	Педагог 1 (архив, 8.1 2026)	teacher	f	2026-08-05 16:50:03.592998	\N
-158	teacher-2-8-1-2026@archive.vektor.local	$argon2id$v=19$m=65536,t=3,p=4$eF+6k7FQu+7KJ3ofCkhH6g$ebs7o2d7JlXD5WFfdfXurvVqI6riydSduMMGtRlzL4U	Педагог 2 (архив, 8.1 2026)	teacher	f	2026-08-05 16:50:03.592998	\N
-159	parent-1-8-1-2026@archive.vektor.local	$argon2id$v=19$m=65536,t=3,p=4$spc/mGCqVw3qxB7gU2tNgA$Jhv5bL5ZsX5Pa6D95dj75tFustjy4KQU4EcNJD2mGCI	Родитель 1 (архив, 8.1 2026)	parent	f	2026-08-05 16:50:03.592998	\N
-160	parent-2-8-1-2026@archive.vektor.local	$argon2id$v=19$m=65536,t=3,p=4$9V5KUkAj2d/kGi5J3kU21w$i8eMTtIR6fWwKGJuHEXDal2Szfc8gck4rwxvHS16YE0	Родитель 2 (архив, 8.1 2026)	parent	f	2026-08-05 16:50:03.592998	\N
-161	teacher-1-7-1@archive.vektor.local	$argon2id$v=19$m=65536,t=3,p=4$VRxHl6Fnv5XKcoQEndUntg$dS0n8Jxm36SopNPS6857KcrFVUYfVjPL5DL9xSs5XXg	Педагог 1 (архив, 7.1)	teacher	f	2026-08-05 16:50:03.592998	\N
-162	teacher-2-7-1@archive.vektor.local	$argon2id$v=19$m=65536,t=3,p=4$SoKkC/Y45d2uWEezjYVMbw$B6PjH01ggMRflbQH1+Sgl5FRlYLmmcOhYJ13GOu5SUo	Педагог 2 (архив, 7.1)	teacher	f	2026-08-05 16:50:03.592998	\N
-29	zhukova.zoya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Жукова Зоя	student	t	2026-08-03 14:53:16.468403	11
-98	ilina.kseniya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$kHhru6YtEgGgUm7eyWJ29A$51kmPal+se+DMTpPOGOr5LqqnCKUotW0OpOw4t6g0h0	Ильина Ксения Львовна	parent	t	2026-08-05 16:50:03.592998	\N
-99	klenova.lidiya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$cKnjyNoGINQ4FdR345Arvw$+6ZimEJeD0nPEhv1Hr/yTX3RSzFY9KRAGcjI5HauJDE	Кленова Лидия Матвеевна	parent	t	2026-08-05 16:50:03.592998	\N
-100	lapshina.marina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$FJhUsNvgT2TrRI+M9P5IYA$AKFABYrHBL9UjJu5mnvuVNfFX1WrQMmi+FZo98lSGHA	Лапшина Марина Андреевна	parent	t	2026-08-05 16:50:03.592998	\N
-101	meshkova.nina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$tMhSDAcfkxRQBiYe+y+7bg$8UftTnWIQI0pQclEv680c+p609tlkZ+x5pEsZuV7OoE	Мешкова Нина Борисовна	parent	t	2026-08-05 16:50:03.592998	\N
-102	nosova.olga@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$FhwRotU8aK5DYkiZjq2GXg$exuh+D/YpbQkghuPviKLZQ5HtpP4q3GrLxULZDKYLYw	Носова Ольга Викторовна	parent	t	2026-08-05 16:50:03.592998	\N
-103	orlova.polina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$p/5X1nnfA7PRG1xmIZaiQg$KRRDP92s7VSlWqdyS27WOLdq8xgezbihd6Bq8ELpV9k	Орлова Полина Глебовна	parent	t	2026-08-05 16:50:03.592998	\N
-104	pestova.rita@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$uIAVmX5yRoqwuVS8yhE3OQ$CXwkPqWAzmA2SOG1T6nhK+D7zbb/rQDfl7rvzzvBhbw	Пестова Рита Денисовна	parent	t	2026-08-05 16:50:03.592998	\N
-105	rogova.sofiya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$a+At5OzZRtk34rSKLY+8JQ$DBvbmNJM0z83BmtsD9xHCl1xBor86hmYnM8YkLnbw+Q	Рогова София Егоровна	parent	t	2026-08-05 16:50:03.592998	\N
-106	ershov.egor@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$KU6PTXlALIj8OoklrA5FCg$SBlSbKoTR7AmbPxOJkN3UK7SwpJS5CbmcnKburLwxLw	Ершов Егор	student	t	2026-08-05 16:50:03.592998	11
-107	sotnikova.taisiya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$sKelG93DG0kau7SjXdK8xw$kELNLE4W2VUlcqv6xhI1WLfW7qVvJ8tF6t8dThCkNRQ	Сотникова Таисия Ильинична	parent	t	2026-08-05 16:50:03.592998	\N
-108	tihonova.ulyana@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$4ttGVLkFDbcpK5IJ6RssMg$pqrJp59tP0uBmEZquqSOetwCUtsH/my+NvS7V99K3h0	Тихонова Ульяна Кирилловна	parent	t	2026-08-05 16:50:03.592998	\N
-117	ershova.zoya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$3QkeSidEVxUunTwffhh4fQ$aC5GzzGxeuavOt11IQG44t2PWzAtBnYgtckfe8VD1Hk	Ершова Зоя Егоровна	teacher	t	2026-08-05 16:50:03.592998	\N
-118	zhukova.irina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$x7WnIBkTXWJ5q7xG5IucWA$peT09dDMm5fqABBdAFHaz6h8DzqnaPCDGoqKYnT/a8k	Жукова Ирина Ильинична	teacher	t	2026-08-05 16:50:03.592998	\N
-119	zimin.kirill@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$uTU1edZe9tpSnGHCHIpQqg$Dqb90UUuRkxF3jSQ65z8+JBzQU5BCDuWXEZzugnbTCE	Зимин Кирилл Кириллович	teacher	t	2026-08-05 16:50:03.592998	\N
-120	ilin.lev@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$R4CkkuhB6Y1dXH5gcMoLqw$eWrRgMbe3fotYP/1EqsjVH7Jo62jCRFAk+kRydKzEKI	Ильин Лев Львович	teacher	t	2026-08-05 16:50:03.592998	\N
-121	klenov.matvey@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$ZkUkyEIgZZMTkAp3NWIo/g$9Nh3T81hnGXLZ3EuK1JFHodGOtv4fnTugzi1tysO2GQ	Кленов Матвей	student	t	2026-08-05 16:50:03.592998	12
-122	zimina.kseniya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$bObK7yAs0ejUfq24TRGFOA$dtkdm+Q73yL0Db8YrI3m84co6CrYnmXt6u4S+7DPFzw	Зимина Ксения Кирилловна	parent	t	2026-08-05 16:50:03.592998	\N
-123	lapshin.nikita@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$47VE8vWTsz3Yu62fPpBifQ$K2YU/wAjhOH8FK9FV3tvsyr2SAhXPKp8aUETxI6ZsLk	Лапшин Никита	student	t	2026-08-05 16:50:03.592998	12
-124	ilina.lidiya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$pIKNhnAi1b97dRZEXo869A$nvUujLIqtE6XvKT1ZGPmorn66lGLsrIhm+Es3aupbtg	Ильина Лидия Львовна	parent	t	2026-08-05 16:50:03.592998	\N
-125	klenova.marina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$YAO9wmux9GyBpCEJFc7Lvw$i/gRtGO52xkyHdd3ITLZGBZI2Cr7wRPlrXKS9NSLO4g	Кленова Марина	student	t	2026-08-05 16:50:03.592998	12
-126	lapshina.nina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$vGIUMvtSxAwXWsaSzO147A$uIJqUTV6SUb7ovc+uN8WaOPurYBewp0cMWjbNgaaigg	Лапшина Нина Андреевна	parent	t	2026-08-05 16:50:03.592998	\N
-127	meshkova.olga@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$cBQTtA0hfIwDJo88JNthgQ$ySIh7CgJJ0MmTydUzDgm0pygg5lqsnmhBj6aY2WgiKA	Мешкова Ольга	student	t	2026-08-05 16:50:03.592998	12
-128	nosova.polina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$hlYdFfIU7WDrV4DHbYx/FQ$1Y6+m9TfqQAU+Rt8+mGvYKdGMlOEpGvymy0AnBXXVTI	Носова Полина Викторовна	parent	t	2026-08-05 16:50:03.592998	\N
-129	meshkov.oleg@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$2VeddhPc0wFM8Vo65SBXmQ$MkE214OcBQu/qcAY1wULcXShc54Zbx9ldWzPdN2+RsY	Мешков Олег	student	t	2026-08-05 16:50:03.592998	12
-130	nosov.pavel@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$FJdMwn5BVplwYsDmyIrfLQ$iUy/3+t7m//Foha07iRp7MqIunZkR6jF6kp0VPq8bCA	Носов Павел Викторович	parent	t	2026-08-05 16:50:03.592998	\N
-131	orlov.roman@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$sPrCNZ+Mtlyvi2qAbRZJqQ$0TWflr8XPxgM7x/9rk4EtvHDn9iwJOdAy0pqKL1tltw	Орлов Роман	student	t	2026-08-05 16:50:03.592998	12
-132	pestov.semen@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$MuqJ7hbDD3Wwr7yuWtLlRA$oRchVwIc220CgJxjXKYczZ/pDeI6y2I+9PNU2c6jhww	Пестов Семён Денисович	parent	t	2026-08-05 16:50:03.592998	\N
-133	orlova.rita@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$iKrt56Fr8uBtFHXLVEu8Nw$mXInKJpKwSC40xWNsvygg2VN3kp8xQcLBv5w2RMYu6U	Орлова Рита	student	t	2026-08-05 16:50:03.592998	12
-134	pestova.sofiya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$t7TuoIhhwdfKeTm6L6idGg$XIS5WtdxWzt5bfeU7KhYk9C5jlRn2Fb7B/Z62q0Ubls	Пестова София Денисовна	parent	t	2026-08-05 16:50:03.592998	\N
-135	rogov.timur@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$qHeoQHecHB4Yblo8cT7jWA$6gv8iluL9Lp9FwKZZz3RSXflJatnD4ggkImR1lKxIKU	Рогов Тимур	student	t	2026-08-05 16:50:03.592998	12
-136	sotnikov.fedor@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$PTk9j6xCVgdOrlvwK+ySuw$ZqzgwHYxVyiLdu/LHreJ/N0BKq1RkcHgEZ+AL4EgzFk	Сотников Фёдор Ильич	parent	t	2026-08-05 16:50:03.592998	\N
-137	tihonov.yuriy@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$qGLIRNEF/dHZQqn/v8qhLA$ES9JpgM+wKvGSxH8kD+JG9oE1c34bbvwM1zcXFFHIhY	Тихонов Юрий	student	t	2026-08-05 16:50:03.592998	12
-138	rogova.taisiya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$uIxQITSqmvTlG+tHgeqDQg$5mRlZxAc+UOlRwfzjb9z+bFy7++GQPEl2Yhgofjewfo	Рогова Таисия	student	t	2026-08-05 16:50:03.592998	12
-139	sotnikova.ulyana@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$pbTtN6fM5r29vP8U7H4E4w$Ig9o3Qp6YMA87lz9pXxbouTHLccq7RoPnpvkvj+mwXk	Сотникова Ульяна Ильинична	parent	t	2026-08-05 16:50:03.592998	\N
-140	tihonova.faina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$X/4SqpmPluMm5lDmg66y1w$Uzq6yIzwMxHgr73sdaEcBJFmkx8Hd6Kvdir/C1RYg80	Тихонова Фаина	student	t	2026-08-05 16:50:03.592998	12
-141	ushakova.yuliya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$p7W0yUdpk87c09j0bGZCdQ$wSaoGyH309E5ZHQm3DcA4AjFDXr7KxfgAt6PlkjYFuU	Ушакова Юлия Львовна	parent	t	2026-08-05 16:50:03.592998	\N
-142	ushakov.yaroslav@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$b5bhF5vSHED08A/03052Uw$yw7V4jDziPgKuD/0IFfMmyrlYlEhH2roXk6eK+2ivWY	Ушаков Ярослав	student	t	2026-08-05 16:50:03.592998	12
-143	fadeeva.alina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$D3B8YVmkqIU50wUHiC8r1Q$Ex6T2XelTWwN0HrBvhjlEU7z22ZCvc+QFvYiSxRCgLE	Фадеева Алина Матвеевна	parent	t	2026-08-05 16:50:03.592998	\N
-144	fadeev.anton@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$YQMK9l3x+8N82Oyb2NcpWQ$XMQSDXLGEoMnKtsBbjsZ158elsWIRzpakbGcY9UlzJc	Фадеев Антон	student	t	2026-08-05 16:50:03.592998	12
-145	astahova.galina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$anRMGPvVq4Ek3He3hHSDiA$u1ZRslT4rjvJhtdZtL3TUKvdXo/F00d4gqLYtzbZ5X0	Астахова Галина Андреевна	teacher	t	2026-08-05 16:50:03.592998	\N
-146	astahov.boris@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$BBZQYHBxUNbkcI6OrxDgaQ$Y36RKSvrMpkiYpsJdiTigbf9ITVbsmgzwnqKYqUZyaM	Астахов Борис Андреевич	teacher	t	2026-08-05 16:50:03.592998	\N
-147	belova.darya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$zbKNQrqJUE/IkzPG43nqaw$l2RIAixYusMJY+r2eLSzuDDO+4Z3qyHpIF688+PU/pg	Белова Дарья Борисовна	teacher	t	2026-08-05 16:50:03.592998	\N
-148	vetrova.eva@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$txWpPSys7pvUDOaBcLCyXQ$iwZg0NXu+q8rL8tWtFgNo/Y1idte300Bn2VacCcryoQ	Ветрова Ева Викторовна	teacher	t	2026-08-05 16:50:03.592998	\N
-149	belov.viktor@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$0bMS7yELT7tgroprMe/Ruw$/MXbBH9A0kIy2jTv7xwHLvqJZYIgaC000SVzwHybtcs	Белов Виктор Борисович	teacher	t	2026-08-05 16:50:03.592998	\N
-150	gordeeva.zhanna@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$fetL4EKE4DtE71Ifxi8elg$o5Sic9Whwskitbb9ql7WUQPeuc2as7FHAeWCnGrsC7E	Гордеева Жанна Глебовна	teacher	t	2026-08-05 16:50:03.592998	\N
-151	vetrov.gleb@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$tQ/RwpHbNWpFS/1qNGWWRw$OjJlt1uIuV/vbia/Vw+dZRsRsLNgtIMmxgrVffRjieo	Ветров Глеб Викторович	teacher	t	2026-08-05 16:50:03.592998	\N
-152	dyakova.zoya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$DyJPq81iaTl04Cn0LzrAYQ$D7Vx29l4LdYR/zxxichCcSRzSRJTrGDEZm/nxMVc8gI	Дьякова Зоя Денисовна	teacher	t	2026-08-05 16:50:03.592998	\N
+COPY public.users (id, email, hashed_password, full_name, role, is_active, created_at, school_class_id, is_placeholder) FROM stdin;
+1	admin@admin.ru	$argon2id$v=19$m=65536,t=3,p=4$t6akXcLo4l2lUxhaOSSsJQ$CQEvXHHTEpUdDp+wXMjp1YehtjTpgWA5FmxTvgb/shE	Администратор	admin	t	2026-07-29 12:59:02.858367	\N	f
+18	astahova.alina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Астахова Алина	student	t	2026-08-03 14:53:16.468403	11	f
+163	larina.veronika@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Ларина Вероника Павловна	teacher	t	2026-08-06 12:25:14.471329	\N	f
+19	astahov.artem@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Астахов Артём	student	t	2026-08-03 14:53:16.468403	11	f
+164	sokolova-mirnaya.yuliya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Соколова-Мирная Юлия Тимофеевна	teacher	t	2026-08-06 12:25:14.471329	\N	f
+20	belova.vera@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Белова Вера	student	t	2026-08-03 14:53:16.468403	11	f
+165	mescheryakova.irina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Мещерякова Ирина Олеговна	teacher	t	2026-08-06 12:25:14.471329	\N	f
+21	vetrova.galina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Ветрова Галина	student	t	2026-08-03 14:53:16.468403	11	f
+166	kruglova.anastasiya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Круглова Анастасия Романовна	teacher	t	2026-08-06 12:25:14.471329	\N	f
+22	gordeeva.darya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Гордеева Дарья	student	t	2026-08-03 14:53:16.468403	11	f
+167	pahomova.nataliya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Пахомова Наталия Игоревна	teacher	t	2026-08-06 12:25:14.471329	\N	f
+23	belov.boris@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Белов Борис	student	t	2026-08-03 14:53:16.468403	11	f
+168	suhareva.ekaterina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Сухарева Екатерина Юрьевна	teacher	t	2026-08-06 12:25:14.471329	\N	f
+24	vetrov.viktor@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$5VTBVGFVx0bZ1/03gKoh0Q$3iEW3WfDAYtpOlOPiAKdfbF9utu89KzUy1PF9o91xjw	Ветров Виктор	student	t	2026-08-03 14:53:16.468403	\N	f
+169	odincova.aleksandra@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Одинцова Александра Львовна	teacher	t	2026-08-06 12:25:14.471329	\N	f
+25	dyakova.eva@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Дьякова Ева	student	t	2026-08-03 14:53:16.468403	11	f
+170	timoshenko.anastasiya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Тимошенко Анастасия Данииловна	teacher	t	2026-08-06 12:25:14.471329	\N	f
+171	vereschagina.zlata@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Верещагина Злата Марковна	teacher	t	2026-08-06 12:25:14.471329	\N	f
+172	pankratov.dmitriy@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Панкратов Дмитрий Артёмович	teacher	t	2026-08-06 12:25:14.471329	\N	f
+173	ahmedov.eldar@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Ахмедов Эльдар Русланович	teacher	t	2026-08-06 12:25:14.471329	\N	f
+174	shestakova.anastasiya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Шестакова Анастасия Валентиновна	teacher	t	2026-08-06 12:25:14.471329	\N	f
+175	avanesyan.mariam@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Аванесян Мариам Гургеновна	teacher	t	2026-08-06 12:25:14.471329	\N	f
+176	lapteva.elena@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Лаптева Елена Николаевна	teacher	t	2026-08-06 12:25:14.471329	\N	f
+177	gorelova.anastasiya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Горелова Анастасия Аркадьевна	teacher	t	2026-08-06 12:25:14.471329	\N	f
+178	kovtun.vladimir@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Ковтун Владимир Владимирович	teacher	t	2026-08-06 12:25:14.471329	\N	f
+179	prokofeva.yana@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Прокофьева Яна Викторовна	teacher	t	2026-08-06 12:25:14.471329	\N	f
+180	degtyarev.nikita@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Дегтярёв Никита Геннадьевич	teacher	t	2026-08-06 12:25:14.471329	\N	f
+181	kuzmina.irina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$UHESWQuKk77FB86DcOMdew$LWTGv6+iOVhRXE6vJ5Rkuk+76SadAq2eow4WS7R0AhI	Кузьмина Ирина Владимировна	teacher	t	2026-08-06 12:25:14.471329	\N	f
+26	gordeev.gleb@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Гордеев Глеб	student	t	2026-08-03 14:53:16.468403	11	f
+27	dyakov.denis@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Дьяков Денис	student	t	2026-08-03 14:53:16.468403	11	f
+28	ershova.zhanna@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Ершова Жанна	student	t	2026-08-03 14:53:16.468403	11	f
+97	zimina.irina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$XQUNFH0QHFI/H7zD2vTH5Q$+18vIpYnikz+3rRrcJCIjtWBWHjak8R/qfyloC6DPNU	Зимина Ирина Кирилловна	parent	t	2026-08-05 16:50:03.592998	\N	f
+161	teacher-1-7-1@archive.vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$VRxHl6Fnv5XKcoQEndUntg$dS0n8Jxm36SopNPS6857KcrFVUYfVjPL5DL9xSs5XXg	Педагог 1 (архив, 7.1)	teacher	f	2026-08-05 16:50:03.592998	\N	t
+162	teacher-2-7-1@archive.vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$SoKkC/Y45d2uWEezjYVMbw$B6PjH01ggMRflbQH1+Sgl5FRlYLmmcOhYJ13GOu5SUo	Педагог 2 (архив, 7.1)	teacher	f	2026-08-05 16:50:03.592998	\N	t
+109	ushakova.faina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$hjZ4S2AiWZZ+8zj6cQPOQQ$Us07DtMPUBa+Wvo1umJ5txjKqI04N/fblVeTuZL9tKE	Ушакова Фаина Львовна	parent	t	2026-08-05 16:50:03.592998	\N	f
+153	parent-1-5-1-2026@archive.vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGcOZbKBstp11kG2pkb31w$78++Tt/1VmyrfnrSqhetI1nSGFlDpXWUmEJlnyqPCY4	Родитель 1 (архив, 5.1 2026)	parent	f	2026-08-05 16:50:03.592998	\N	t
+154	teacher-1-5-1-2026@archive.vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$CANdgaA7+W69eFlRi8i7Mg$I7D6zkbZAas7bCBQy2RjsZDY4g9VIofurxOwvwcK1Ps	Педагог 1 (архив, 5.1 2026)	teacher	f	2026-08-05 16:50:03.592998	\N	t
+155	teacher-2-5-1-2026@archive.vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$GSHwBzP9QHE2TaJSZs9iNQ$0bniZztCr2OfkPH+NySGs8KXMWYaQwHAzE8Z+ne/fpc	Педагог 2 (архив, 5.1 2026)	teacher	f	2026-08-05 16:50:03.592998	\N	t
+156	teacher-3-5-1-2026@archive.vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$SATB0w2GEJmoP4TmE/beRQ$dqYqKXnDt+ko22HRhhNJx9AyLfNb4Rk7vShgYna8kw8	Педагог 3 (архив, 5.1 2026)	teacher	f	2026-08-05 16:50:03.592998	\N	t
+157	teacher-1-8-1-2026@archive.vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$0Zw4iqxiQIYeBGTD8UqynQ$M2qYgyipT4+vngNnEKIWm7+1OVqZcece8l2GRkzwSro	Педагог 1 (архив, 8.1 2026)	teacher	f	2026-08-05 16:50:03.592998	\N	t
+29	zhukova.zoya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$OGRyiUUHIUkAq7QAV6Vcvg$jwYesq8DZmWE6ZTmzIMqnOMLS+qu6Gm9NsDakzFC1fE	Жукова Зоя	student	t	2026-08-03 14:53:16.468403	11	f
+98	ilina.kseniya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$kHhru6YtEgGgUm7eyWJ29A$51kmPal+se+DMTpPOGOr5LqqnCKUotW0OpOw4t6g0h0	Ильина Ксения Львовна	parent	t	2026-08-05 16:50:03.592998	\N	f
+99	klenova.lidiya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$cKnjyNoGINQ4FdR345Arvw$+6ZimEJeD0nPEhv1Hr/yTX3RSzFY9KRAGcjI5HauJDE	Кленова Лидия Матвеевна	parent	t	2026-08-05 16:50:03.592998	\N	f
+100	lapshina.marina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$FJhUsNvgT2TrRI+M9P5IYA$AKFABYrHBL9UjJu5mnvuVNfFX1WrQMmi+FZo98lSGHA	Лапшина Марина Андреевна	parent	t	2026-08-05 16:50:03.592998	\N	f
+101	meshkova.nina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$tMhSDAcfkxRQBiYe+y+7bg$8UftTnWIQI0pQclEv680c+p609tlkZ+x5pEsZuV7OoE	Мешкова Нина Борисовна	parent	t	2026-08-05 16:50:03.592998	\N	f
+102	nosova.olga@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$FhwRotU8aK5DYkiZjq2GXg$exuh+D/YpbQkghuPviKLZQ5HtpP4q3GrLxULZDKYLYw	Носова Ольга Викторовна	parent	t	2026-08-05 16:50:03.592998	\N	f
+103	orlova.polina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$p/5X1nnfA7PRG1xmIZaiQg$KRRDP92s7VSlWqdyS27WOLdq8xgezbihd6Bq8ELpV9k	Орлова Полина Глебовна	parent	t	2026-08-05 16:50:03.592998	\N	f
+158	teacher-2-8-1-2026@archive.vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$eF+6k7FQu+7KJ3ofCkhH6g$ebs7o2d7JlXD5WFfdfXurvVqI6riydSduMMGtRlzL4U	Педагог 2 (архив, 8.1 2026)	teacher	f	2026-08-05 16:50:03.592998	\N	t
+159	parent-1-8-1-2026@archive.vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$spc/mGCqVw3qxB7gU2tNgA$Jhv5bL5ZsX5Pa6D95dj75tFustjy4KQU4EcNJD2mGCI	Родитель 1 (архив, 8.1 2026)	parent	f	2026-08-05 16:50:03.592998	\N	t
+160	parent-2-8-1-2026@archive.vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$9V5KUkAj2d/kGi5J3kU21w$i8eMTtIR6fWwKGJuHEXDal2Szfc8gck4rwxvHS16YE0	Родитель 2 (архив, 8.1 2026)	parent	f	2026-08-05 16:50:03.592998	\N	t
+104	pestova.rita@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$uIAVmX5yRoqwuVS8yhE3OQ$CXwkPqWAzmA2SOG1T6nhK+D7zbb/rQDfl7rvzzvBhbw	Пестова Рита Денисовна	parent	t	2026-08-05 16:50:03.592998	\N	f
+105	rogova.sofiya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$a+At5OzZRtk34rSKLY+8JQ$DBvbmNJM0z83BmtsD9xHCl1xBor86hmYnM8YkLnbw+Q	Рогова София Егоровна	parent	t	2026-08-05 16:50:03.592998	\N	f
+106	ershov.egor@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$KU6PTXlALIj8OoklrA5FCg$SBlSbKoTR7AmbPxOJkN3UK7SwpJS5CbmcnKburLwxLw	Ершов Егор	student	t	2026-08-05 16:50:03.592998	11	f
+107	sotnikova.taisiya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$sKelG93DG0kau7SjXdK8xw$kELNLE4W2VUlcqv6xhI1WLfW7qVvJ8tF6t8dThCkNRQ	Сотникова Таисия Ильинична	parent	t	2026-08-05 16:50:03.592998	\N	f
+108	tihonova.ulyana@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$4ttGVLkFDbcpK5IJ6RssMg$pqrJp59tP0uBmEZquqSOetwCUtsH/my+NvS7V99K3h0	Тихонова Ульяна Кирилловна	parent	t	2026-08-05 16:50:03.592998	\N	f
+121	klenov.matvey@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$ZkUkyEIgZZMTkAp3NWIo/g$9Nh3T81hnGXLZ3EuK1JFHodGOtv4fnTugzi1tysO2GQ	Кленов Матвей	student	t	2026-08-05 16:50:03.592998	12	f
+122	zimina.kseniya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$bObK7yAs0ejUfq24TRGFOA$dtkdm+Q73yL0Db8YrI3m84co6CrYnmXt6u4S+7DPFzw	Зимина Ксения Кирилловна	parent	t	2026-08-05 16:50:03.592998	\N	f
+123	lapshin.nikita@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$47VE8vWTsz3Yu62fPpBifQ$K2YU/wAjhOH8FK9FV3tvsyr2SAhXPKp8aUETxI6ZsLk	Лапшин Никита	student	t	2026-08-05 16:50:03.592998	12	f
+124	ilina.lidiya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$pIKNhnAi1b97dRZEXo869A$nvUujLIqtE6XvKT1ZGPmorn66lGLsrIhm+Es3aupbtg	Ильина Лидия Львовна	parent	t	2026-08-05 16:50:03.592998	\N	f
+125	klenova.marina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$YAO9wmux9GyBpCEJFc7Lvw$i/gRtGO52xkyHdd3ITLZGBZI2Cr7wRPlrXKS9NSLO4g	Кленова Марина	student	t	2026-08-05 16:50:03.592998	12	f
+126	lapshina.nina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$vGIUMvtSxAwXWsaSzO147A$uIJqUTV6SUb7ovc+uN8WaOPurYBewp0cMWjbNgaaigg	Лапшина Нина Андреевна	parent	t	2026-08-05 16:50:03.592998	\N	f
+127	meshkova.olga@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$cBQTtA0hfIwDJo88JNthgQ$ySIh7CgJJ0MmTydUzDgm0pygg5lqsnmhBj6aY2WgiKA	Мешкова Ольга	student	t	2026-08-05 16:50:03.592998	12	f
+128	nosova.polina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$hlYdFfIU7WDrV4DHbYx/FQ$1Y6+m9TfqQAU+Rt8+mGvYKdGMlOEpGvymy0AnBXXVTI	Носова Полина Викторовна	parent	t	2026-08-05 16:50:03.592998	\N	f
+129	meshkov.oleg@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$2VeddhPc0wFM8Vo65SBXmQ$MkE214OcBQu/qcAY1wULcXShc54Zbx9ldWzPdN2+RsY	Мешков Олег	student	t	2026-08-05 16:50:03.592998	12	f
+130	nosov.pavel@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$FJdMwn5BVplwYsDmyIrfLQ$iUy/3+t7m//Foha07iRp7MqIunZkR6jF6kp0VPq8bCA	Носов Павел Викторович	parent	t	2026-08-05 16:50:03.592998	\N	f
+131	orlov.roman@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$sPrCNZ+Mtlyvi2qAbRZJqQ$0TWflr8XPxgM7x/9rk4EtvHDn9iwJOdAy0pqKL1tltw	Орлов Роман	student	t	2026-08-05 16:50:03.592998	12	f
+132	pestov.semen@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$MuqJ7hbDD3Wwr7yuWtLlRA$oRchVwIc220CgJxjXKYczZ/pDeI6y2I+9PNU2c6jhww	Пестов Семён Денисович	parent	t	2026-08-05 16:50:03.592998	\N	f
+133	orlova.rita@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$iKrt56Fr8uBtFHXLVEu8Nw$mXInKJpKwSC40xWNsvygg2VN3kp8xQcLBv5w2RMYu6U	Орлова Рита	student	t	2026-08-05 16:50:03.592998	12	f
+134	pestova.sofiya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$t7TuoIhhwdfKeTm6L6idGg$XIS5WtdxWzt5bfeU7KhYk9C5jlRn2Fb7B/Z62q0Ubls	Пестова София Денисовна	parent	t	2026-08-05 16:50:03.592998	\N	f
+135	rogov.timur@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$qHeoQHecHB4Yblo8cT7jWA$6gv8iluL9Lp9FwKZZz3RSXflJatnD4ggkImR1lKxIKU	Рогов Тимур	student	t	2026-08-05 16:50:03.592998	12	f
+136	sotnikov.fedor@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$PTk9j6xCVgdOrlvwK+ySuw$ZqzgwHYxVyiLdu/LHreJ/N0BKq1RkcHgEZ+AL4EgzFk	Сотников Фёдор Ильич	parent	t	2026-08-05 16:50:03.592998	\N	f
+137	tihonov.yuriy@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$qGLIRNEF/dHZQqn/v8qhLA$ES9JpgM+wKvGSxH8kD+JG9oE1c34bbvwM1zcXFFHIhY	Тихонов Юрий	student	t	2026-08-05 16:50:03.592998	12	f
+138	rogova.taisiya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$uIxQITSqmvTlG+tHgeqDQg$5mRlZxAc+UOlRwfzjb9z+bFy7++GQPEl2Yhgofjewfo	Рогова Таисия	student	t	2026-08-05 16:50:03.592998	12	f
+139	sotnikova.ulyana@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$pbTtN6fM5r29vP8U7H4E4w$Ig9o3Qp6YMA87lz9pXxbouTHLccq7RoPnpvkvj+mwXk	Сотникова Ульяна Ильинична	parent	t	2026-08-05 16:50:03.592998	\N	f
+140	tihonova.faina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$X/4SqpmPluMm5lDmg66y1w$Uzq6yIzwMxHgr73sdaEcBJFmkx8Hd6Kvdir/C1RYg80	Тихонова Фаина	student	t	2026-08-05 16:50:03.592998	12	f
+141	ushakova.yuliya@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$p7W0yUdpk87c09j0bGZCdQ$wSaoGyH309E5ZHQm3DcA4AjFDXr7KxfgAt6PlkjYFuU	Ушакова Юлия Львовна	parent	t	2026-08-05 16:50:03.592998	\N	f
+142	ushakov.yaroslav@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$b5bhF5vSHED08A/03052Uw$yw7V4jDziPgKuD/0IFfMmyrlYlEhH2roXk6eK+2ivWY	Ушаков Ярослав	student	t	2026-08-05 16:50:03.592998	12	f
+143	fadeeva.alina@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$D3B8YVmkqIU50wUHiC8r1Q$Ex6T2XelTWwN0HrBvhjlEU7z22ZCvc+QFvYiSxRCgLE	Фадеева Алина Матвеевна	parent	t	2026-08-05 16:50:03.592998	\N	f
+144	fadeev.anton@vektor.ru	$argon2id$v=19$m=65536,t=3,p=4$YQMK9l3x+8N82Oyb2NcpWQ$XMQSDXLGEoMnKtsBbjsZ158elsWIRzpakbGcY9UlzJc	Фадеев Антон	student	t	2026-08-05 16:50:03.592998	12	f
 \.
 
 
 --
--- Name: answers_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+-- Name: answers_id_seq; Type: SEQUENCE SET; Schema: public; Owner: vektor
 --
 
 SELECT pg_catalog.setval('public.answers_id_seq', 3360, true);
 
 
 --
--- Name: assessments_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+-- Name: assessments_id_seq; Type: SEQUENCE SET; Schema: public; Owner: vektor
 --
 
 SELECT pg_catalog.setval('public.assessments_id_seq', 131, true);
 
 
 --
--- Name: campaigns_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+-- Name: campaigns_id_seq; Type: SEQUENCE SET; Schema: public; Owner: vektor
 --
 
 SELECT pg_catalog.setval('public.campaigns_id_seq', 8, true);
 
 
 --
--- Name: competencies_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+-- Name: competencies_id_seq; Type: SEQUENCE SET; Schema: public; Owner: vektor
 --
 
 SELECT pg_catalog.setval('public.competencies_id_seq', 111, true);
 
 
 --
--- Name: outcome_areas_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+-- Name: outcome_areas_id_seq; Type: SEQUENCE SET; Schema: public; Owner: vektor
 --
 
 SELECT pg_catalog.setval('public.outcome_areas_id_seq', 5, true);
 
 
 --
--- Name: questionnaire_versions_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+-- Name: questionnaire_versions_id_seq; Type: SEQUENCE SET; Schema: public; Owner: vektor
 --
 
 SELECT pg_catalog.setval('public.questionnaire_versions_id_seq', 2, true);
 
 
 --
--- Name: questions_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+-- Name: questions_id_seq; Type: SEQUENCE SET; Schema: public; Owner: vektor
 --
 
 SELECT pg_catalog.setval('public.questions_id_seq', 231, true);
 
 
 --
--- Name: school_classes_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+-- Name: school_classes_id_seq; Type: SEQUENCE SET; Schema: public; Owner: vektor
 --
 
 SELECT pg_catalog.setval('public.school_classes_id_seq', 13, true);
 
 
 --
--- Name: users_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+-- Name: users_id_seq; Type: SEQUENCE SET; Schema: public; Owner: vektor
 --
 
-SELECT pg_catalog.setval('public.users_id_seq', 162, true);
+SELECT pg_catalog.setval('public.users_id_seq', 181, true);
 
 
 --
--- Name: alembic_version alembic_version_pkc; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: alembic_version alembic_version_pkc; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.alembic_version
@@ -4284,7 +4306,7 @@ ALTER TABLE ONLY public.alembic_version
 
 
 --
--- Name: answers pk_answers; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: answers pk_answers; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.answers
@@ -4292,7 +4314,7 @@ ALTER TABLE ONLY public.answers
 
 
 --
--- Name: assessments pk_assessments; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: assessments pk_assessments; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.assessments
@@ -4300,7 +4322,7 @@ ALTER TABLE ONLY public.assessments
 
 
 --
--- Name: campaigns pk_campaigns; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: campaigns pk_campaigns; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.campaigns
@@ -4308,7 +4330,7 @@ ALTER TABLE ONLY public.campaigns
 
 
 --
--- Name: competencies pk_competencies; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: competencies pk_competencies; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.competencies
@@ -4316,7 +4338,7 @@ ALTER TABLE ONLY public.competencies
 
 
 --
--- Name: outcome_areas pk_outcome_areas; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: outcome_areas pk_outcome_areas; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.outcome_areas
@@ -4324,7 +4346,7 @@ ALTER TABLE ONLY public.outcome_areas
 
 
 --
--- Name: parent_children pk_parent_children; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: parent_children pk_parent_children; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.parent_children
@@ -4332,7 +4354,7 @@ ALTER TABLE ONLY public.parent_children
 
 
 --
--- Name: questionnaire_versions pk_questionnaire_versions; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: questionnaire_versions pk_questionnaire_versions; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.questionnaire_versions
@@ -4340,7 +4362,7 @@ ALTER TABLE ONLY public.questionnaire_versions
 
 
 --
--- Name: questions pk_questions; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: questions pk_questions; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.questions
@@ -4348,7 +4370,7 @@ ALTER TABLE ONLY public.questions
 
 
 --
--- Name: school_classes pk_school_classes; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: school_classes pk_school_classes; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.school_classes
@@ -4356,7 +4378,7 @@ ALTER TABLE ONLY public.school_classes
 
 
 --
--- Name: teacher_classes pk_teacher_classes; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: teacher_classes pk_teacher_classes; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.teacher_classes
@@ -4364,7 +4386,7 @@ ALTER TABLE ONLY public.teacher_classes
 
 
 --
--- Name: users pk_users; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: users pk_users; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.users
@@ -4372,7 +4394,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: answers uq_answer_assessment_question; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: answers uq_answer_assessment_question; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.answers
@@ -4380,7 +4402,7 @@ ALTER TABLE ONLY public.answers
 
 
 --
--- Name: assessments uq_assessment_campaign_respondent_subject; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: assessments uq_assessment_campaign_respondent_subject; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.assessments
@@ -4388,7 +4410,7 @@ ALTER TABLE ONLY public.assessments
 
 
 --
--- Name: competencies uq_competencies_code; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: competencies uq_competencies_code; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.competencies
@@ -4396,7 +4418,7 @@ ALTER TABLE ONLY public.competencies
 
 
 --
--- Name: outcome_areas uq_outcome_areas_code; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: outcome_areas uq_outcome_areas_code; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.outcome_areas
@@ -4404,7 +4426,7 @@ ALTER TABLE ONLY public.outcome_areas
 
 
 --
--- Name: questionnaire_versions uq_questionnaire_versions_code; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: questionnaire_versions uq_questionnaire_versions_code; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.questionnaire_versions
@@ -4412,7 +4434,7 @@ ALTER TABLE ONLY public.questionnaire_versions
 
 
 --
--- Name: school_classes uq_school_classes_grade_section; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: school_classes uq_school_classes_grade_section; Type: CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.school_classes
@@ -4420,21 +4442,21 @@ ALTER TABLE ONLY public.school_classes
 
 
 --
--- Name: ix_users_email; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_users_email; Type: INDEX; Schema: public; Owner: vektor
 --
 
 CREATE UNIQUE INDEX ix_users_email ON public.users USING btree (email);
 
 
 --
--- Name: uq_questionnaire_versions_current; Type: INDEX; Schema: public; Owner: -
+-- Name: uq_questionnaire_versions_current; Type: INDEX; Schema: public; Owner: vektor
 --
 
 CREATE UNIQUE INDEX uq_questionnaire_versions_current ON public.questionnaire_versions USING btree (is_current) WHERE is_current;
 
 
 --
--- Name: answers fk_answers_assessment_id_assessments; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: answers fk_answers_assessment_id_assessments; Type: FK CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.answers
@@ -4442,7 +4464,7 @@ ALTER TABLE ONLY public.answers
 
 
 --
--- Name: answers fk_answers_question_id_questions; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: answers fk_answers_question_id_questions; Type: FK CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.answers
@@ -4450,7 +4472,7 @@ ALTER TABLE ONLY public.answers
 
 
 --
--- Name: assessments fk_assessments_campaign_id_campaigns; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: assessments fk_assessments_campaign_id_campaigns; Type: FK CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.assessments
@@ -4458,7 +4480,7 @@ ALTER TABLE ONLY public.assessments
 
 
 --
--- Name: assessments fk_assessments_respondent_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: assessments fk_assessments_respondent_id_users; Type: FK CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.assessments
@@ -4466,7 +4488,7 @@ ALTER TABLE ONLY public.assessments
 
 
 --
--- Name: assessments fk_assessments_subject_class_id_school_classes; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: assessments fk_assessments_subject_class_id_school_classes; Type: FK CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.assessments
@@ -4474,7 +4496,7 @@ ALTER TABLE ONLY public.assessments
 
 
 --
--- Name: assessments fk_assessments_subject_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: assessments fk_assessments_subject_id_users; Type: FK CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.assessments
@@ -4482,7 +4504,7 @@ ALTER TABLE ONLY public.assessments
 
 
 --
--- Name: campaigns fk_campaigns_questionnaire_version_id_questionnaire_versions; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: campaigns fk_campaigns_questionnaire_version_id_questionnaire_versions; Type: FK CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.campaigns
@@ -4490,7 +4512,7 @@ ALTER TABLE ONLY public.campaigns
 
 
 --
--- Name: competencies fk_competencies_outcome_area_id_outcome_areas; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: competencies fk_competencies_outcome_area_id_outcome_areas; Type: FK CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.competencies
@@ -4498,7 +4520,7 @@ ALTER TABLE ONLY public.competencies
 
 
 --
--- Name: parent_children fk_parent_children_child_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: parent_children fk_parent_children_child_id_users; Type: FK CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.parent_children
@@ -4506,7 +4528,7 @@ ALTER TABLE ONLY public.parent_children
 
 
 --
--- Name: parent_children fk_parent_children_parent_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: parent_children fk_parent_children_parent_id_users; Type: FK CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.parent_children
@@ -4514,7 +4536,7 @@ ALTER TABLE ONLY public.parent_children
 
 
 --
--- Name: questions fk_questions_competency_id_competencies; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: questions fk_questions_competency_id_competencies; Type: FK CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.questions
@@ -4522,7 +4544,7 @@ ALTER TABLE ONLY public.questions
 
 
 --
--- Name: questions fk_questions_version_id_questionnaire_versions; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: questions fk_questions_version_id_questionnaire_versions; Type: FK CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.questions
@@ -4530,7 +4552,7 @@ ALTER TABLE ONLY public.questions
 
 
 --
--- Name: school_classes fk_school_classes_homeroom_teacher_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: school_classes fk_school_classes_homeroom_teacher_id_users; Type: FK CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.school_classes
@@ -4538,7 +4560,7 @@ ALTER TABLE ONLY public.school_classes
 
 
 --
--- Name: teacher_classes fk_teacher_classes_class_id_school_classes; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: teacher_classes fk_teacher_classes_class_id_school_classes; Type: FK CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.teacher_classes
@@ -4546,7 +4568,7 @@ ALTER TABLE ONLY public.teacher_classes
 
 
 --
--- Name: teacher_classes fk_teacher_classes_teacher_id_users; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: teacher_classes fk_teacher_classes_teacher_id_users; Type: FK CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.teacher_classes
@@ -4554,7 +4576,7 @@ ALTER TABLE ONLY public.teacher_classes
 
 
 --
--- Name: users fk_users_school_class_id_school_classes; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: users fk_users_school_class_id_school_classes; Type: FK CONSTRAINT; Schema: public; Owner: vektor
 --
 
 ALTER TABLE ONLY public.users
@@ -4565,5 +4587,5 @@ ALTER TABLE ONLY public.users
 -- PostgreSQL database dump complete
 --
 
-\unrestrict npECu8ikt3LfyCw4MMZAIcXjQbtMzrW6q5lvEF1a92eYjwdv6VrE9Qi5Rfa2AZ0
+\unrestrict sw0NKubZYLhFOEmDbUuzabKWM7r0vvgnUZpt8cTMPEZrKnC9hHWc5GpLUv2eGXG
 

@@ -1,0 +1,33 @@
+.child-switcher {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.child-switcher__item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--font-b);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 14px 7px 7px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.child-switcher__item--active {
+  border-color: var(--blue);
+  background: var(--blue-tint);
+  color: var(--blue-ink);
+}
+
+.child-switcher__avatar {
+  width: 26px;
+  height: 26px;
+  font-size: 11px;
+}

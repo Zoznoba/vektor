@@ -17,82 +17,99 @@
   color: var(--ink);
 }
 
-.assessment-fill__progress {
+.assessment-fill__head {
   display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.assessment-fill__subject {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  margin: 8px 0 18px;
-}
-
-.assessment-fill__progress-bar {
-  width: 220px;
-}
-
-.assessment-fill__progress span {
+  gap: 6px;
   font-size: 12px;
-  font-weight: 600;
-  color: var(--ink-faint);
-}
-
-.assessment-question {
-  border-bottom: 0.5px solid var(--border);
-  padding: 16px 0;
-}
-
-.assessment-question:first-child {
-  padding-top: 0;
-}
-
-.assessment-question:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.assessment-question__text {
-  font-size: 14.5px;
-  font-weight: 500;
-  margin-bottom: 12px;
-}
-
-.assessment-question__scale {
-  display: flex;
-  gap: 8px;
-}
-
-.assessment-question__option {
-  width: 38px;
-  height: 38px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--border-strong);
-  background: var(--soft);
   color: var(--ink-soft);
+  margin-top: 3px;
+}
+
+.assessment-fill__mode {
+  margin-left: auto;
+  display: flex;
+  gap: 3px;
+  background: var(--surface);
+  padding: 3px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+}
+
+.assessment-fill__mode button {
+  border: none;
+  background: none;
   font-family: var(--font-b);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  padding: 7px 13px;
+  border-radius: var(--r-pill);
   cursor: pointer;
 }
 
-.assessment-question__option:hover {
-  border-color: var(--blue);
+.assessment-fill__mode-btn--active {
+  background: var(--ink) !important;
+  color: #fff !important;
 }
 
-.assessment-question__option--selected {
-  background: var(--blue);
-  border-color: var(--blue);
-  color: #fff;
-}
-
-.assessment-fill__saved {
-  background: var(--lime-tint);
-  color: var(--lime-ink);
-  font-size: 13px;
-  border-radius: var(--r-sm);
-  padding: 9px 13px;
+.assessment-fill__peer-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 13px 16px;
+  border-radius: var(--r-md);
+  background: var(--sage-tint);
+  border: 1px solid rgba(63, 126, 121, 0.2);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.6;
   margin-bottom: 14px;
 }
 
-.assessment-fill__actions {
+.assessment-fill__peer-banner svg {
+  color: var(--sage-ink);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.assessment-fill__save-error {
+  margin-bottom: 12px;
+}
+
+.assessment-fill__status {
   display: flex;
-  justify-content: flex-end;
-  margin-top: 18px;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  font-size: 11.5px;
+  color: var(--lime-ink);
+}
+
+/* Возврат к финалу из режима проверки — прижат вправо, чтобы не сливаться с
+   отметкой «Сохранено» слева. */
+.assessment-fill__to-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--blue-ink);
+  cursor: pointer;
+}
+
+.assessment-fill__to-summary:hover {
+  text-decoration: underline;
 }

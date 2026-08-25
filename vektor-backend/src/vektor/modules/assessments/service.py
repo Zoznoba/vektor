@@ -4,51 +4,90 @@
 # Срез 4b-1: создание кампании.
 # Срез 4b-2 (следующий): generate_assessments — матрица «кто кого оценивает».
 
-from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from vektor.core.errors import DomainError
 from vektor.modules.assessments.models import Answer, Assessment, Campaign
 from vektor.modules.classes.models import SchoolClass
-from vektor.modules.competencies.models import Question, QuestionnaireVersion
+from vektor.modules.competencies.models import Competency, Question, QuestionnaireVersion
 from vektor.modules.users.models import User
 from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole
 
 
-class CampaignNotFound(Exception):
+class CampaignNotFound(DomainError):
     """Кампания с таким id не найдена."""
 
+    status_code = 404
+    code = "campaign_not_found"
+    message = "Кампания не найдена"
 
-class AssessmentNotFound(Exception):
+
+class AssessmentNotFound(DomainError):
     """Анкета с таким id не найдена."""
 
+    status_code = 404
+    code = "assessment_not_found"
+    message = "Анкета не найдена"
 
-class NotAssessmentOwner(Exception):
+
+class NotAssessmentOwner(DomainError):
     """Пользователь пытается открыть/заполнить не свою анкету."""
 
+    status_code = 403
+    code = "not_assessment_owner"
+    message = "Пользователь не является владельцем анкеты"
 
-class CampaignNotActive(Exception):
-    """Кампания не в статусе active — приём ответов закрыт."""
+
+class CampaignNotClosed(DomainError):
+    """Возобновить можно только завершённую кампанию."""
+
+    status_code = 409
+    code = "campaign_not_closed"
+    message = "Возобновить можно только завершённую кампанию"
 
 
-class QuestionNotAllowed(Exception):
+class CampaignNotActive(DomainError):
+    """Кампания не в статусе active.
+
+    Сообщение переопределяется в точке возбуждения: для приёма ответов это
+    «прием закрыт», для закрытия кампании — «закрыть можно только активную».
+    """
+
+    status_code = 409
+    code = "campaign_not_active"
+    message = "Кампания не активна"
+
+
+class QuestionNotAllowed(DomainError):
     """Ответ на вопрос, которого нет в видимом наборе этой анкеты."""
 
+    status_code = 422
+    code = "question_not_allowed"
+    message = "Ответ на недоступный вопрос"
 
-class NoCurrentQuestionnaireVersion(Exception):
+
+class NoCurrentQuestionnaireVersion(DomainError):
     """Ни одна редакция анкеты не помечена действующей — не по чему создавать
     кампанию. В норме недостижимо: миграция c3f81ad0e7b5 ставит флаг, а
-    частичный уникальный индекс не даёт завести вторую действующую."""
+    частичный уникальный индекс не даёт завести вторую действующую.
+
+    Раньше это исключение не ловил никто, и вместо осмысленного ответа клиент
+    получал 500 — ровно тот случай, ради которого заведён общий обработчик.
+    """
+
+    status_code = 409
+    code = "no_current_questionnaire_version"
+    message = "Нет действующей редакции анкеты"
 
 
 async def create_campaign(
     db: AsyncSession,
     title: str,
-    period: str,
-    opens_at: datetime | None,
-    closes_at: datetime | None,
+    period_year: int,
+    period_month: int,
 ) -> Campaign:
     # Новая кампания всегда идёт по ДЕЙСТВУЮЩЕЙ редакции анкеты. Архивные
     # редакции сюда не попадают никогда — их назначает только импорт.
@@ -61,15 +100,153 @@ async def create_campaign(
 
     campaign = Campaign(
         title=title,
-        period=period,
-        opens_at=opens_at,
-        closes_at=closes_at,
+        period_year=period_year,
+        period_month=period_month,
         questionnaire_version_id=version_id,
     )
     db.add(campaign)
     await db.commit()
     await db.refresh(campaign)
     return campaign
+
+
+async def list_campaigns(db: AsyncSession) -> list[dict]:
+    """Все кампании школы с укрупнённым прогрессом — под админский экран
+    «Кампании 360°» (список карточек сверху).
+
+    Прогресс — агрегат по ВСЕЙ кампании (total/completed анкет), не по
+    классам: разбивка по классам уже есть отдельно в
+    results.get_campaign_coverage, дублировать её здесь незачем. Одним
+    запросом на подсчёт, а не N+1 на кампанию — кампаний немного, но
+    привычка та же, что и у coverage.
+    """
+    campaigns = (
+        (await db.execute(select(Campaign).order_by(Campaign.created_at.desc()))).scalars().all()
+    )
+
+    completed = func.count().filter(Assessment.status == AssessmentStatus.COMPLETED)
+    count_rows = await db.execute(
+        select(
+            Assessment.campaign_id, func.count().label("total"), completed.label("completed")
+        ).group_by(Assessment.campaign_id)
+    )
+    counts = {row.campaign_id: (row.total, row.completed) for row in count_rows}
+
+    return [
+        {
+            "id": c.id,
+            "title": c.title,
+            "period_year": c.period_year,
+            "period_month": c.period_month,
+            "status": c.status,
+            "created_at": c.created_at,
+            "total_assessments": counts.get(c.id, (0, 0))[0],
+            "completed_assessments": counts.get(c.id, (0, 0))[1],
+        }
+        for c in campaigns
+    ]
+
+
+async def close_campaign(db: AsyncSession, campaign_id: int) -> Campaign:
+    """Закрыть кампанию: active → closed. Только из active — черновик (draft)
+    закрывать нечего (анкеты ещё не сгенерированы), а уже закрытую второй раз
+    закрывать бессмысленно.
+
+    Нужно, чтобы кампанию вообще можно было завершить через API: результаты и
+    динамика считаются по завершённым периодам, а до этого статус closed
+    появлялся только из импорта/дампа.
+    """
+
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise CampaignNotFound()
+    if campaign.status != CampaignStatus.ACTIVE:
+        raise CampaignNotActive("Закрыть можно только активную кампанию")
+
+    campaign.status = CampaignStatus.CLOSED
+    await db.commit()
+    await db.refresh(campaign)
+    return campaign
+
+
+async def reopen_campaign(db: AsyncSession, campaign_id: int) -> Campaign:
+    """Возобновить кампанию: closed → active. Симметрично close_campaign,
+    без дополнительных условий — админ сам решает, когда это уместно (см.
+    обсуждение при добавлении: единственное место, реально завязанное на
+    статус, — submit_answers, а results/dynamics считают предыдущий период
+    по периоду кампании, не по статусу, так что переоткрытие ничего не рвёт).
+    """
+
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise CampaignNotFound()
+    if campaign.status != CampaignStatus.CLOSED:
+        raise CampaignNotClosed()
+
+    campaign.status = CampaignStatus.ACTIVE
+    await db.commit()
+    await db.refresh(campaign)
+    return campaign
+
+
+async def delete_campaign(db: AsyncSession, campaign_id: int) -> dict:
+    """Удалить кампанию вместе со всеми её анкетами и ответами. Необратимо.
+
+    Зачем вообще: единственный способ убрать кампанию до сих пор был SQL
+    руками, и дважды (находки 7g и сегодняшняя) забытая тестовая кампания
+    молча перебивала боевую в резолюции «последний период» — экран
+    результатов у всех учеников школы становился пустым.
+
+    ВАЖНО про порядок удаления: каскада на уровне БД у нас НЕТ. У
+    Assessment.answers каскад только ORM-ный (delete-orphan) и срабатывает
+    лишь для объектов, реально загруженных в сессию, — bulk-DELETE его не
+    запускает. Значит, чистим руками и снизу вверх: answers → assessments →
+    campaign. В обратном порядке FK-констрейнт даст IntegrityError.
+
+    Всё — в ОДНОЙ транзакции (один commit в конце): частично снесённая
+    кампания — это осиротевшие ответы, которые уже ничем не найти.
+
+    Активную кампанию удалять НЕ запрещаем: мусорные кампании заводятся в
+    любом статусе (та самая «2026-e2e» была active), а подтверждение с
+    числами админ уже видит в UI. Отдельного 409 здесь нет намеренно.
+    """
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise CampaignNotFound()
+
+    assessment_ids = select(Assessment.id).where(Assessment.campaign_id == campaign_id)
+
+    # Считаем ДО удаления: после DELETE считать уже нечего, а числа идут в
+    # ответ. scalar_subquery() — чтобы подзапрос лёг внутрь IN, а не поехал
+    # отдельным запросом.
+    answers_deleted = await db.scalar(
+        select(func.count())
+        .select_from(Answer)
+        .where(Answer.assessment_id.in_(assessment_ids.scalar_subquery()))
+    )
+    assessments_deleted = await db.scalar(
+        select(func.count()).select_from(Assessment).where(Assessment.campaign_id == campaign_id)
+    )
+
+    # bulk-DELETE, а не «загрузить объекты и db.delete(...)»: анкет в
+    # кампании бывает под 400, грузить их в сессию незачем.
+    await db.execute(
+        delete(Answer).where(Answer.assessment_id.in_(assessment_ids.scalar_subquery()))
+    )
+    await db.execute(delete(Assessment).where(Assessment.campaign_id == campaign_id))
+    # Саму кампанию тоже сносим bulk-DELETE, а не db.delete(campaign): у
+    # Campaign.assessments каскад дефолтный (save-update, merge), поэтому на
+    # ORM-удалении родителя SQLAlchemy полезла бы ЛЕНИВО грузить коллекцию
+    # анкет, чтобы занулить им FK, — а это MissingGreenlet в async-сессии (и
+    # FK всё равно NOT NULL). Анкеты к этому моменту уже удалены.
+    await db.execute(delete(Campaign).where(Campaign.id == campaign_id))
+    await db.commit()
+
+    return {
+        "campaign_id": campaign_id,
+        "assessments_deleted": assessments_deleted or 0,
+        "answers_deleted": answers_deleted or 0,
+    }
 
 
 # Приоритет ролей при коллизии: один человек может быть и родителем ученика,
@@ -144,12 +321,47 @@ def merge_pairs(
             target[pair] = role
 
 
+def _teachers_for_class(
+    cls: SchoolClass, teacher_ids_by_class: dict[int, list[int]] | None
+) -> list[int]:
+    """Учителя класса, участвующие в кампании.
+
+    Выбор пересекается с фактическим составом класса, а не берётся на веру:
+    иначе в кампанию попал бы учитель, которого успели открепить между
+    открытием экрана и генерацией — с ролью TEACHER и доступом к результатам
+    чужого класса. Ошибку при этом не поднимаем: генерация идемпотентна и
+    запускается повторно, а «молча пропустить открепившегося» здесь честнее,
+    чем свалить весь запуск из-за одной устаревшей галочки.
+    """
+    all_ids = [t.id for t in cls.teachers]
+    if teacher_ids_by_class is None or cls.id not in teacher_ids_by_class:
+        return all_ids
+    chosen = set(teacher_ids_by_class[cls.id])
+    return [tid for tid in all_ids if tid in chosen]
+
+
 async def generate_assessments(
-    db: AsyncSession, campaign_id: int, class_ids: list[int], include_peers: bool = False
+    db: AsyncSession,
+    campaign_id: int,
+    class_ids: list[int],
+    include_peers: bool = False,
+    teacher_ids_by_class: dict[int, list[int]] | None = None,
 ) -> tuple[Campaign, int]:
     """Оркестрация: грузит классы из БД, строит матрицу через build_pairs,
     идемпотентно вставляет НОВЫЕ анкеты, переводит кампанию в ACTIVE.
-    Возвращает (campaign, сколько_новых_создано)."""
+    Возвращает (campaign, сколько_новых_создано).
+
+    `teacher_ids_by_class` — какие учителя класса участвуют в оценке. Так
+    работает диагностика в школе: ученика оценивают не все 11 предметников, а
+    выбранные администратором 2–4. Отсутствие класса в словаре означает «все
+    учителя класса» — на этом стоят кампании, созданные до появления выбора.
+    Пустой список — сознательное «учительских анкет по классу не делать»,
+    поэтому он НЕ приравнивается к отсутствию ключа.
+
+    Верхней границы на число учителей нет намеренно: 2–4 — это практика, а не
+    инвариант данных, и упереться в неё школа может по своим причинам.
+    Предупреждает UI, запрещать нечего.
+    """
 
     campaign = await db.get(Campaign, campaign_id)
     if not campaign:
@@ -175,7 +387,7 @@ async def generate_assessments(
     for cls in classes_sample.scalars():
         student_ids = [s.id for s in cls.students]
         parent_ids_by_student = {s.id: [p.id for p in s.parents] for s in cls.students}
-        teacher_ids = [t.id for t in cls.teachers]
+        teacher_ids = _teachers_for_class(cls, teacher_ids_by_class)
 
         class_id_by_subject.update({s.id: cls.id for s in cls.students})
 
@@ -261,7 +473,7 @@ async def get_visible_questions_for_assessment(
     q_ordered_questions = await db.execute(
         select(Question)
         .where(Question.version_id == assessment.campaign.questionnaire_version_id)
-        .options(selectinload(Question.competency))
+        .options(selectinload(Question.competency).selectinload(Competency.outcome_area))
         .order_by(Question.competency_id, Question.order)
     )
     return [
@@ -306,6 +518,11 @@ async def get_assessment_detail(db: AsyncSession, assessment_id: int, current_us
             "is_conditional": q.competency.min_grade is not None
             or q.competency.max_grade is not None,
             "value": already_answered.get(q.id),
+            "competency_name": q.competency.name,
+            "competency_order": q.competency.order,
+            "outcome_area_id": q.competency.outcome_area_id,
+            "outcome_area_name": q.competency.outcome_area.name,
+            "outcome_area_order": q.competency.outcome_area.order,
         }
         for q in visible_questions
     ]
@@ -313,7 +530,9 @@ async def get_assessment_detail(db: AsyncSession, assessment_id: int, current_us
     return {
         "id": assessment.id,
         "campaign_id": assessment.campaign_id,
+        "campaign_title": assessment.campaign.title,
         "subject": assessment.subject,
+        "rater_role": assessment.rater_role,
         "questions": questions,
     }
 
@@ -364,9 +583,11 @@ async def list_my_assessments(
                 "id": assessment.id,
                 "campaign_id": assessment.campaign_id,
                 "campaign_title": assessment.campaign.title,
-                "campaign_period": assessment.campaign.period,
+                "campaign_period_year": assessment.campaign.period_year,
+                "campaign_period_month": assessment.campaign.period_month,
                 "subject": assessment.subject,
                 "is_self": assessment.respondent_id == assessment.subject_id,
+                "rater_role": assessment.rater_role,
                 "status": assessment.status,
                 "answered_questions": len(answered),
                 "total_questions": len(visible_ids),
@@ -402,7 +623,7 @@ async def submit_answers(
         raise NotAssessmentOwner()
 
     if assessment.campaign.status != CampaignStatus.ACTIVE:
-        raise CampaignNotActive()
+        raise CampaignNotActive("Приём ответов закрыт")
 
     visible_questions = await get_visible_questions_for_assessment(db, assessment)
     visible_ids = {q.id for q in visible_questions}

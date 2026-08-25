@@ -1,0 +1,68 @@
+.scale-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.scale-buttons--dense {
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.scale-buttons__option {
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-family: var(--font-b);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.scale-buttons__option:hover {
+  border-color: var(--blue);
+}
+
+.scale-buttons__option--selected {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+/* focus: крупная карточка с числом и подписью снизу */
+.scale-buttons--focus .scale-buttons__option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 8px 12px;
+}
+
+.scale-buttons--focus .scale-buttons__num {
+  font-family: var(--font-d);
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.scale-buttons--focus .scale-buttons__label {
+  font-size: 10.5px;
+  line-height: 1.3;
+  text-align: center;
+  color: inherit;
+  opacity: 0.75;
+}
+
+/* dense: компактная квадратная кнопка, без подписи (title вместо неё) */
+.scale-buttons--dense .scale-buttons__option {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.scale-buttons--dense .scale-buttons__label {
+  display: none;
+}

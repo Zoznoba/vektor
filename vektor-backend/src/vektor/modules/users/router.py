@@ -1,7 +1,9 @@
 # HTTP-слой users: «кто я», админский список, связь родитель—ребёнок.
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vektor.core.config import settings
@@ -17,13 +19,22 @@ from vektor.modules.users.schemas import (
     BulkCreateOut,
     MeOut,
     ParentWithChildrenOut,
+    ResetPasswordOut,
+    SetUserActiveIn,
 )
+from vektor.shared.academic_year import academic_year_label
 from vektor.shared.enums import UserRole
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("/me", response_model=MeOut)
+@router.get(
+    "/me",
+    response_model=MeOut,
+    summary="Текущий пользователь",
+    description="Профиль пользователя по токену авторизации, плюс класс и "
+    "учебный год для шапки дашборда.",
+)
 async def read_me(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> MeOut:
@@ -40,31 +51,93 @@ async def read_me(
         role=user.role,
         is_active=user.is_active,
         class_label=f"{school_class.grade}-{school_class.section}" if school_class else None,
+        academic_year=academic_year_label(date.today()),
     )
 
 
-@router.get("", response_model=list[UserOut])
+@router.get(
+    "",
+    response_model=list[UserOut],
+    summary="Список пользователей",
+    description="Пользователи школы с опциональными фильтрами по роли, "
+    "подстроке в имени/email и классу (только для учеников). Только админ.",
+)
 async def get_all_users(
-    _admin_user: User = Depends(require_role(UserRole.ADMIN)), db: AsyncSession = Depends(get_db)
+    role: UserRole | None = Query(None),
+    search: str | None = Query(None, min_length=1),
+    class_id: int | None = Query(None),
+    _admin_user: User = Depends(require_role(UserRole.ADMIN)),
+    db: AsyncSession = Depends(get_db),
 ):
-    all_users = (await db.execute(select(User).order_by(User.id))).scalars().all()
+    query = select(User).order_by(User.id)
+    if role is not None:
+        query = query.where(User.role == role)
+    if search is not None:
+        pattern = f"%{search.strip()}%"
+        query = query.where(
+            func.lower(User.full_name).like(func.lower(pattern))
+            | func.lower(User.email).like(func.lower(pattern))
+        )
+    if class_id is not None:
+        query = query.where(User.school_class_id == class_id)
+    all_users = (await db.execute(query)).scalars().all()
     return all_users
 
 
-@router.post("/bulk", response_model=BulkCreateOut, status_code=status.HTTP_201_CREATED)
+@router.patch(
+    "/{user_id}/active",
+    response_model=UserOut,
+    summary="Активировать/деактивировать пользователя",
+    description="Единственная форма «удаления» пользователя в системе: "
+    "деактивация мгновенно блокирует вход и все авторизованные запросы, но "
+    "сохраняет историю (ответы анкет, привязки к классу/детям) нетронутой. "
+    "Обратимо в любой момент. Нельзя деактивировать самого себя. Только "
+    "админ.",
+)
+async def update_user_active_status(
+    user_id: int,
+    data: SetUserActiveIn,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_role(UserRole.ADMIN)),
+) -> User:
+    return await service.set_user_active(db, user_id, data.is_active, admin_user)
+
+
+@router.post(
+    "/{user_id}/reset-password",
+    response_model=ResetPasswordOut,
+    summary="Сбросить пароль пользователя",
+    description="Сгенерировать новый временный пароль и показать его один "
+    "раз в ответе — почтовой рассылки в системе пока нет (см. "
+    "BulkCreateOut.default_password), другого способа узнать пароль не "
+    "будет. Только админ.",
+)
+async def reset_user_password(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin_user: User = Depends(require_role(UserRole.ADMIN)),
+) -> ResetPasswordOut:
+    new_password = await service.reset_password(db, user_id)
+    return ResetPasswordOut(new_password=new_password)
+
+
+@router.post(
+    "/bulk",
+    response_model=BulkCreateOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Массовая загрузка пользователей",
+    description="Завести пачку пользователей одним вызовом; опциональный "
+    "`class_id` разом привязывает всех `role=student` к классу. Атомарно — "
+    "любая ошибка (дубль внутри пачки, занятый email, нет класса) откатывает "
+    "всю пачку. ВРЕМЕННО: всем ставится общий пароль из настроек, он же "
+    "возвращается в ответе. Только админ.",
+)
 async def bulk_create_users(
     data: BulkCreateIn,
     db: AsyncSession = Depends(get_db),
     _admin_user: User = Depends(require_role(UserRole.ADMIN)),
 ) -> BulkCreateOut:
-    try:
-        created = await service.bulk_create_users(db, data.users, data.class_id)
-    except service.DuplicateEmailsInBatch as err:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(err)) from err
-    except service.EmailsAlreadyTaken as err:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(err)) from err
-    except service.ClassNotFound as err:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(err)) from err
+    created = await service.bulk_create_users(db, data.users, data.class_id)
 
     return BulkCreateOut(
         created=created,
@@ -73,31 +146,37 @@ async def bulk_create_users(
     )
 
 
-@router.get("/{user_id}/children", response_model=list[UserOut])
+@router.get(
+    "/{user_id}/children",
+    response_model=list[UserOut],
+    summary="Дети родителя",
+    description="Список детей, привязанных к пользователю с ролью PARENT. "
+    "Админ — про любого родителя; сам родитель — только про себя.",
+)
 async def get_children(
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin_user: User = Depends(require_role(UserRole.ADMIN)),
+    current_user: User = Depends(get_current_user),
 ) -> list[UserOut]:
-    try:
-        parent = await service.get_parent_with_children(db, user_id)
-    except service.UserNotFound as err:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(err)) from err
-    except service.WrongRole as err:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(err)) from err
+    is_self_parent = current_user.id == user_id and current_user.role == UserRole.PARENT
+    if current_user.role != UserRole.ADMIN and not is_self_parent:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+    parent = await service.get_parent_with_children(db, user_id)
     return parent.children
 
 
-@router.post("/{user_id}/children", response_model=ParentWithChildrenOut)
+@router.post(
+    "/{user_id}/children",
+    response_model=ParentWithChildrenOut,
+    summary="Привязать детей к родителю",
+    description="Массово и идемпотентно привязать учеников к родителю "
+    "(повторная привязка — no-op). Цель — только PARENT, дети — только "
+    "STUDENT, иначе 409. Только админ.",
+)
 async def assign_children_to_parent(
     user_id: int,
     data: AssignChildrenIn,
     db: AsyncSession = Depends(get_db),
     _admin_user: User = Depends(require_role(UserRole.ADMIN)),
 ) -> ParentWithChildrenOut:
-    try:
-        return await service.assign_children(db, user_id, data.child_ids)
-    except service.UserNotFound as err:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(err)) from err
-    except service.WrongRole as err:
-        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(err)) from err
+    return await service.assign_children(db, user_id, data.child_ids)

@@ -1,0 +1,79 @@
+.assessment-summary {
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 30px 26px 26px;
+  text-align: center;
+}
+
+/* Галочка в круге — единственный крупный акцент экрана: он должен читаться
+   как «готово» с одного взгляда, до чтения текста. */
+.assessment-summary__mark {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--lime-tint);
+  color: var(--lime-ink);
+}
+
+.assessment-summary__title {
+  font-family: var(--font-d);
+  font-size: 21px;
+  margin: 0 0 5px;
+}
+
+.assessment-summary__sub {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.assessment-summary__chapters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 20px 0 18px;
+}
+
+/* Главы кликабельны: «проверить ответы» чаще означает «перечитать одну
+   главу», а не листать анкету с начала. */
+.assessment-summary__chapter {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 0.5px solid var(--border);
+  border-radius: 999px;
+  background: var(--lime-tint);
+  color: var(--lime-ink);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.assessment-summary__chapter:hover {
+  border-color: var(--lime-ink);
+}
+
+.assessment-summary__chapter-count {
+  color: var(--ink-soft);
+}
+
+.assessment-summary__note {
+  max-width: 460px;
+  margin: 0 auto 20px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.assessment-summary__actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}

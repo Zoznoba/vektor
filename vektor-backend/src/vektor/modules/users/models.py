@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, Enum, ForeignKey, Integer, String, Table, func
+from sqlalchemy import Column, Enum, ForeignKey, Integer, String, Table, false, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vektor.core.database import Base
@@ -36,6 +36,14 @@ class User(Base):
         Enum(UserRole, native_enum=False, length=20, values_callable=lambda e: [m.value for m in e])
     )
     is_active: Mapped[bool] = mapped_column(default=True)
+
+    # Служебный респондент-заглушка, а не человек: в выгрузке МО педагоги и
+    # родители обезличены, и на каждый слот (класс, роль, номер) заводится одна
+    # учётка. server_default обязателен — колонка NOT NULL, и без него уже
+    # существующие строки не проходят миграцию; заодно совпадает с DDL дампа,
+    # иначе autogenerate вечно видел бы расхождение. См. b9d41f7c2a08.
+    is_placeholder: Mapped[bool] = mapped_column(default=False, server_default=false())
+
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     # foreign_keys обязателен: после появления school_classes.homeroom_teacher_id

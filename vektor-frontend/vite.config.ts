@@ -9,7 +9,9 @@ export default defineConfig({
     // CORS не нужен: для браузера всё выглядит как один origin.
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        // 127.0.0.1, не localhost: на этой машине localhost иногда резолвится
+        // в IPv6 (::1), а бэкенд слушает только IPv4 — прокси падал 502.
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },

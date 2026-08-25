@@ -1,8 +1,19 @@
 import { apiRequest } from './client';
 import type { User, UserRole } from '../types/auth';
 
-export function fetchUsers(): Promise<User[]> {
-  return apiRequest<User[]>('/users');
+export interface FetchUsersParams {
+  role?: UserRole;
+  search?: string;
+  classId?: number;
+}
+
+export function fetchUsers(params: FetchUsersParams = {}): Promise<User[]> {
+  const query = new URLSearchParams();
+  if (params.role) query.set('role', params.role);
+  if (params.search) query.set('search', params.search);
+  if (params.classId !== undefined) query.set('class_id', String(params.classId));
+  const qs = query.toString();
+  return apiRequest<User[]>(`/users${qs ? `?${qs}` : ''}`);
 }
 
 export interface CreateUserIn {
@@ -49,6 +60,28 @@ export function bulkCreateUsers(
   return apiRequest<BulkCreateResult>('/users/bulk', {
     method: 'POST',
     body: { class_id: classId ?? null, users },
+  });
+}
+
+/**
+ * Включить/выключить учётку — единственная форма «удаления» пользователя:
+ * скрывает его и блокирует вход, но сохраняет всю историю (ответы анкет,
+ * привязки к классу/детям).
+ */
+export function setUserActive(userId: number, isActive: boolean): Promise<User> {
+  return apiRequest<User>(`/users/${userId}/active`, {
+    method: 'PATCH',
+    body: { is_active: isActive },
+  });
+}
+
+/**
+ * Сбросить пароль пользователя. Почтовой рассылки в системе нет — новый
+ * пароль приходит в ответе один раз, показать его повторно нельзя.
+ */
+export function resetPassword(userId: number): Promise<{ new_password: string }> {
+  return apiRequest<{ new_password: string }>(`/users/${userId}/reset-password`, {
+    method: 'POST',
   });
 }
 

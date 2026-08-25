@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
 import { Badge } from '../../components/ui/Badge';
@@ -8,9 +9,17 @@ import { Avatar } from '../../components/ui/Avatar';
 import { Modal } from '../../components/ui/Modal';
 import { Icon } from '../../components/icons/Icon';
 import { useApi } from '../../hooks/useApi';
-import { fetchUsers, createUser, fetchChildren, assignChildren } from '../../api/users';
+import {
+  fetchUsers,
+  createUser,
+  fetchChildren,
+  assignChildren,
+  setUserActive,
+  resetPassword,
+} from '../../api/users';
 import { fetchClasses } from '../../api/classes';
 import { ApiError } from '../../api/client';
+import { useAuth } from '../../auth/AuthContext';
 import { ROLE_LABELS } from '../../types/auth';
 import type { User, UserRole } from '../../types/auth';
 import { classLabel } from '../../types/school';
@@ -33,20 +42,27 @@ function buildClassIndex(classes: SchoolClass[] | null): Map<number, string> {
   for (const cls of classes) {
     const label = classLabel(cls);
     for (const s of cls.students) index.set(s.id, label);
-    for (const t of cls.teachers) {
-      index.set(t.id, index.has(t.id) ? `${index.get(t.id)}, ${label}` : label);
+    for (const { teacher } of cls.teachers) {
+      index.set(teacher.id, index.has(teacher.id) ? `${index.get(teacher.id)}, ${label}` : label);
     }
   }
   return index;
 }
 
 export function AdminUsersPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user: currentUser } = useAuth();
   const users = useApi(fetchUsers);
   const classes = useApi(fetchClasses);
 
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [search, setSearch] = useState('');
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  // «Открыть профиль» из состава класса (AdminClassesPage) кладёт id в state —
+  // карточка раскрывается сразу, тем же приёмом, что переход «Классы» отсюда.
+  const [selectedId, setSelectedId] = useState<number | null>(
+    () => (location.state as { userId?: number } | null)?.userId ?? null,
+  );
   const [showCreate, setShowCreate] = useState(false);
 
   const classIndex = useMemo(() => buildClassIndex(classes.data), [classes.data]);
@@ -116,6 +132,20 @@ export function AdminUsersPage() {
 
       {users.error && <div className="form-error">{users.error}</div>}
 
+      {selected && (
+        <Panel title="Действия">
+          <UserActionsPanel
+            key={selected.id}
+            user={selected}
+            allUsers={allUsers}
+            classes={classes.data ?? []}
+            isSelf={selected.id === currentUser?.id}
+            onOpenDiagnostics={() => navigate(`/admin/results/${selected.id}`)}
+            onChanged={() => users.reload()}
+          />
+        </Panel>
+      )}
+
       <Panel className="admin-table-panel">
         {users.loading ? (
           <div className="admin-empty">Загрузка…</div>
@@ -157,35 +187,6 @@ export function AdminUsersPage() {
           </table>
         )}
       </Panel>
-
-      {selected && (
-        <Panel title="Карточка пользователя">
-          <div className="user-card">
-            <Avatar fullName={selected.full_name} className="user-card__avatar" />
-            <div className="user-card__main">
-              <div className="user-card__name">{selected.full_name}</div>
-              <Badge variant={ROLE_BADGE[selected.role]}>{ROLE_LABELS[selected.role]}</Badge>
-            </div>
-          </div>
-          <div className="profile-rows">
-            <div className="profile-row">
-              <span>Email</span>
-              <span>{selected.email}</span>
-            </div>
-            <div className="profile-row">
-              <span>Класс</span>
-              <span>{classIndex.get(selected.id) ?? '—'}</span>
-            </div>
-            <div className="profile-row">
-              <span>Статус</span>
-              <span>{selected.is_active ? 'Активен' : 'Неактивен'}</span>
-            </div>
-          </div>
-          {selected.role === 'parent' && (
-            <ParentChildrenSection key={selected.id} parent={selected} allUsers={allUsers} />
-          )}
-        </Panel>
-      )}
 
       {showCreate && (
         <CreateUserModal
@@ -281,6 +282,213 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
           </Button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+function UserActionsPanel({
+  user,
+  allUsers,
+  classes,
+  isSelf,
+  onOpenDiagnostics,
+  onChanged,
+}: {
+  user: User;
+  allUsers: User[];
+  classes: SchoolClass[];
+  isSelf: boolean;
+  onOpenDiagnostics: () => void;
+  onChanged: () => void;
+}) {
+  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+
+  const teacherClasses = useMemo(
+    () => classes.filter((c) => c.teachers.some((t) => t.teacher.id === user.id)),
+    [classes, user.id],
+  );
+
+  const handleReactivate = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await setUserActive(user.id, true);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось активировать пользователя');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="user-card">
+        <Avatar fullName={user.full_name} className="user-card__avatar" />
+        <div className="user-card__main">
+          <div className="user-card__name">{user.full_name}</div>
+          <Badge variant={ROLE_BADGE[user.role]}>{ROLE_LABELS[user.role]}</Badge>
+        </div>
+      </div>
+
+      {error && <div className="form-error">{error}</div>}
+
+      <div className="user-actions">
+        {user.role === 'student' && (
+          <Button variant="secondary" onClick={onOpenDiagnostics}>
+            Диагностика
+          </Button>
+        )}
+        {user.role === 'teacher' &&
+          teacherClasses.map((cls) => (
+            <Button
+              key={cls.id}
+              variant="secondary"
+              onClick={() => navigate('/admin/classes', { state: { classId: cls.id } })}
+            >
+              Класс {classLabel(cls)}
+            </Button>
+          ))}
+        <Button variant="secondary" onClick={() => setShowResetPassword(true)}>
+          Сбросить пароль
+        </Button>
+        {user.is_active ? (
+          <Button
+            variant="danger"
+            onClick={() => setShowDeactivateConfirm(true)}
+            disabled={isSelf}
+            title={isSelf ? 'Нельзя деактивировать собственную учётную запись' : undefined}
+          >
+            Деактивировать
+          </Button>
+        ) : (
+          <Button variant="secondary" onClick={handleReactivate} disabled={submitting}>
+            {submitting ? 'Активируем…' : 'Активировать'}
+          </Button>
+        )}
+      </div>
+
+      {user.role === 'parent' && <ParentChildrenSection parent={user} allUsers={allUsers} />}
+
+      {showDeactivateConfirm && (
+        <DeactivateConfirmModal
+          user={user}
+          onClose={() => setShowDeactivateConfirm(false)}
+          onConfirmed={() => {
+            setShowDeactivateConfirm(false);
+            onChanged();
+          }}
+        />
+      )}
+
+      {showResetPassword && (
+        <ResetPasswordModal user={user} onClose={() => setShowResetPassword(false)} />
+      )}
+    </>
+  );
+}
+
+function DeactivateConfirmModal({
+  user,
+  onClose,
+  onConfirmed,
+}: {
+  user: User;
+  onClose: () => void;
+  onConfirmed: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleConfirm = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await setUserActive(user.id, false);
+      onConfirmed();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось деактивировать пользователя');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal title="Деактивировать пользователя" onClose={onClose}>
+      <p>
+        {user.full_name} потеряет доступ к системе: вход будет заблокирован. История (ответы
+        анкет, привязки к классу или детям) сохранится, действие можно отменить в любой момент
+        кнопкой «Активировать».
+      </p>
+
+      {error && <div className="form-error">{error}</div>}
+
+      <div className="modal__actions">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Отмена
+        </Button>
+        <Button variant="danger" onClick={handleConfirm} disabled={submitting}>
+          {submitting ? 'Деактивируем…' : 'Деактивировать'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+function ResetPasswordModal({ user, onClose }: { user: User; onClose: () => void }) {
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [newPassword, setNewPassword] = useState<string | null>(null);
+
+  const handleConfirm = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const result = await resetPassword(user.id);
+      setNewPassword(result.new_password);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось сбросить пароль');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (newPassword) {
+    return (
+      <Modal title="Пароль сброшен" onClose={onClose}>
+        <p>
+          Новый пароль для {user.full_name} — передайте его прямо сейчас: повторно показать
+          нельзя, только сбросить ещё раз.
+        </p>
+        <div className="password-reveal">{newPassword}</div>
+        <div className="modal__actions">
+          <Button onClick={onClose}>Готово</Button>
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal title="Сбросить пароль" onClose={onClose}>
+      <p>
+        {user.full_name} больше не сможет войти со старым паролем. Новый пароль будет показан
+        один раз сразу после сброса — почтовой рассылки в системе пока нет.
+      </p>
+
+      {error && <div className="form-error">{error}</div>}
+
+      <div className="modal__actions">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Отмена
+        </Button>
+        <Button variant="danger" onClick={handleConfirm} disabled={submitting}>
+          {submitting ? 'Сбрасываем…' : 'Сбросить пароль'}
+        </Button>
+      </div>
     </Modal>
   );
 }

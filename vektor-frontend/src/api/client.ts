@@ -17,13 +17,32 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
-/** Ошибка HTTP-уровня: статус + detail из тела FastAPI, если было. */
+/** Разбор одного невалидного поля — из `errors` единого формата ошибок. */
+export interface FieldError {
+  /** Путь до поля, например `body.answers.0.value`. */
+  field: string;
+  message: string;
+}
+
+/**
+ * Ошибка HTTP-уровня.
+ *
+ * Бэкенд отдаёт единый формат на все случаи (см. core/errors.py):
+ * `{detail: string, code: string, errors?: FieldError[]}`. `detail` — всегда
+ * строка, в том числе для 422, поэтому её можно показывать пользователю как
+ * есть. `code` — машинный идентификатор: по нему различают причины, не
+ * завязываясь на текст. `fieldErrors` заполняется только для валидации.
+ */
 export class ApiError extends Error {
   readonly status: number;
+  readonly code: string;
+  readonly fieldErrors: FieldError[];
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code = '', fieldErrors: FieldError[] = []) {
     super(message);
     this.status = status;
+    this.code = code;
+    this.fieldErrors = fieldErrors;
   }
 }
 
@@ -56,14 +75,27 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   if (!response.ok) {
     let detail = '';
+    let code = '';
+    let fieldErrors: FieldError[] = [];
     try {
       const data = await response.json();
       if (typeof data?.detail === 'string') detail = data.detail;
+      if (typeof data?.code === 'string') code = data.code;
+      if (Array.isArray(data?.errors)) fieldErrors = data.errors as FieldError[];
     } catch {
       // тело не JSON — оставляем generic-сообщение
     }
-    throw new ApiError(response.status, detail || `Ошибка запроса (${response.status})`);
+    throw new ApiError(
+      response.status,
+      detail || `Ошибка запроса (${response.status})`,
+      code,
+      fieldErrors,
+    );
   }
+
+  // 204 (например, DELETE) не несёт тела — .json() на пустой строке бросил бы
+  // SyntaxError.
+  if (response.status === 204) return undefined as T;
 
   return (await response.json()) as T;
 }

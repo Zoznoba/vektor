@@ -16,6 +16,17 @@ class RegisterIn(BaseModel):
     full_name: str = Field(min_length=1, max_length=255)
     role: UserRole
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "email": "student@vektor.ru",
+                "password": "correct-horse",
+                "full_name": "Иванова Полина",
+                "role": "student",
+            }
+        }
+    )
+
 
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -30,6 +41,10 @@ class UserOut(BaseModel):
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
+
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"email": "student@vektor.ru", "password": "correct-horse"}}
+    )
 
 
 class TokenOut(BaseModel):

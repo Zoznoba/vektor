@@ -29,6 +29,17 @@ REGISTER_DATA = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _disable_rate_limit() -> None:
+    """Ограничение частоты выключено во всех тестах, кроме тех, что проверяют
+    его самого (test_rate_limit.py включает флаг обратно).
+
+    Иначе суита сама себя блокирует: она делает десятки логинов и регистраций
+    подряд, а Redis — общий и между тестами не чистится.
+    """
+    settings.rate_limit_enabled = False
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _ensure_test_database() -> None:
     """Однократно на весь прогон: создать базу vektor_test, если её нет.
