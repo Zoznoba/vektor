@@ -35,6 +35,19 @@ export interface AssessmentQuestion {
   order: number;
   is_conditional: boolean;
   value: number | null;
+
+  /**
+   * Критерий и глава приходят вместе с вопросом — группировка НЕ ходит за
+   * ними в GET /competencies. Тот отдаёт только действующую методику, а
+   * опубликованная редакция может содержать вопросы критерия,
+   * заархивированного позже: по справочнику такой вопрос терялся, и анкета
+   * не могла завершиться.
+   */
+  competency_name: string;
+  competency_order: number;
+  outcome_area_id: number;
+  outcome_area_name: string;
+  outcome_area_order: number;
 }
 
 export interface AssessmentDetail {

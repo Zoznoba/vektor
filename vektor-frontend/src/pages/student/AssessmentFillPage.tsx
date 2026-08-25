@@ -6,10 +6,10 @@ import { Icon } from '../../components/icons/Icon';
 import { ChapterPills } from '../../components/assessment/ChapterPills';
 import { FocusQuestion } from '../../components/assessment/FocusQuestion';
 import { DenseChapters } from '../../components/assessment/DenseChapters';
+import { AssessmentSummary } from '../../components/assessment/AssessmentSummary';
 import { useAuth } from '../../auth/AuthContext';
 import { ApiError } from '../../api/client';
 import { fetchAssessment, submitAnswers } from '../../api/assessments';
-import { fetchCompetencies } from '../../api/competencies';
 import type { AssessmentDetail } from '../../types/assessment';
 import {
   firstIndexOfChapter,
@@ -27,7 +27,14 @@ type ViewMode = 'focus' | 'dense';
  * assessmentGrouping.ts), ответы сохраняются по одному сразу при выборе —
  * bulk-эндпоинт (submit_answers, Этап 4d) принимает частичные пачки и
  * upsert'ит, так что «одна кнопка Сохранить» не нужна: последний ответ,
- * закрывающий анкету, сам переводит статус в completed и уводит на дашборд.
+ * закрывающий анкету, сам переводит статус в completed.
+ *
+ * Когда отвечены все вопросы, вместо молчаливого ухода на список анкет
+ * показывается AssessmentSummary — сводка и кнопка «Отправить результаты».
+ * Отправлять там уже нечего (ответы сохранены по одному), но человеку нужен
+ * явный финал: без него было непонятно, дошёл он до конца или что-то
+ * потерялось. Кнопка «Проверить ответы» возвращает к вопросам, поэтому
+ * состояние reviewing живёт здесь, а не внутри сводки.
  */
 export function AssessmentFillPage() {
   const { user } = useAuth();
@@ -44,13 +51,16 @@ export function AssessmentFillPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [pendingSaves, setPendingSaves] = useState(0);
+  // true — человек вернулся из сводки перечитать ответы; сводка при этом не
+  // показывается, хотя отвечено всё.
+  const [reviewing, setReviewing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchAssessment(assessmentId), fetchCompetencies()])
-      .then(([assessmentDetail, competencies]) => {
+    fetchAssessment(assessmentId)
+      .then((assessmentDetail) => {
         if (cancelled) return;
-        const builtChapters = groupQuestionsIntoChapters(assessmentDetail.questions, competencies);
+        const builtChapters = groupQuestionsIntoChapters(assessmentDetail.questions);
         const initialAnswers: Record<number, number> = {};
         for (const q of assessmentDetail.questions) {
           if (q.value !== null) initialAnswers[q.id] = q.value;
@@ -78,6 +88,8 @@ export function AssessmentFillPage() {
   const flat = useMemo(() => chapters.flatMap((c) => c.questions), [chapters]);
   const totalCount = flat.length;
   const answeredCount = flat.filter((q) => answers[q.id] !== undefined).length;
+  const allAnswered = totalCount > 0 && answeredCount === totalCount;
+  const showSummary = allAnswered && !reviewing;
   const location = locateInChapters(chapters, activeIndex);
   const currentChapter = chapters[location.chapterIndex];
   const currentQuestion = flat[activeIndex];
@@ -89,9 +101,8 @@ export function AssessmentFillPage() {
     setSaveError(null);
     setPendingSaves((n) => n + 1);
     submitAnswers(assessmentId, [{ question_id: questionId, value }])
-      .then((result) => {
-        if (result.status === 'completed') navigate('/surveys');
-      })
+      // Статус анкеты бэкенд считает сам; уводить со страницы по нему больше
+      // не нужно — финал показывает AssessmentSummary.
       .catch((err: unknown) => {
         setSaveError(err instanceof ApiError ? err.message : 'Не удалось сохранить ответ');
       })
@@ -105,6 +116,7 @@ export function AssessmentFillPage() {
   const selectChapter = (outcomeAreaId: number) => {
     const chapterIndex = chapters.findIndex((c) => c.outcomeAreaId === outcomeAreaId);
     if (chapterIndex === -1) return;
+    setReviewing(true);
     setActiveIndex(firstIndexOfChapter(chapters, chapterIndex, answers));
   };
 
@@ -146,22 +158,25 @@ export function AssessmentFillPage() {
                 {aboutLine}
               </div>
             </div>
-            <div className="assessment-fill__mode">
-              <button
-                type="button"
-                className={mode === 'focus' ? 'assessment-fill__mode-btn--active' : ''}
-                onClick={() => setMode('focus')}
-              >
-                Фокус · по одному
-              </button>
-              <button
-                type="button"
-                className={mode === 'dense' ? 'assessment-fill__mode-btn--active' : ''}
-                onClick={() => setMode('dense')}
-              >
-                Лента · главой
-              </button>
-            </div>
+            {/* На сводке переключать нечего — вопросов на экране нет. */}
+            {!showSummary && (
+              <div className="assessment-fill__mode">
+                <button
+                  type="button"
+                  className={mode === 'focus' ? 'assessment-fill__mode-btn--active' : ''}
+                  onClick={() => setMode('focus')}
+                >
+                  Фокус · по одному
+                </button>
+                <button
+                  type="button"
+                  className={mode === 'dense' ? 'assessment-fill__mode-btn--active' : ''}
+                  onClick={() => setMode('dense')}
+                >
+                  Лента · главой
+                </button>
+              </div>
+            )}
           </div>
 
           {detail.rater_role === 'peer' && (
@@ -175,62 +190,92 @@ export function AssessmentFillPage() {
             </div>
           )}
 
-          <ChapterPills
-            chapters={chapters.map((c) => ({
-              outcomeAreaId: c.outcomeAreaId,
-              name: c.name,
-              answered: c.questions.filter((q) => answers[q.id] !== undefined).length,
-              total: c.questions.length,
-            }))}
-            activeChapterId={currentChapter?.outcomeAreaId}
-            onSelect={selectChapter}
-            answeredCount={answeredCount}
-            totalCount={totalCount}
-          />
-
-          {saveError && <div className="form-error assessment-fill__save-error">{saveError}</div>}
-
-          {mode === 'focus' && currentChapter && currentQuestion ? (
-            <FocusQuestion
-              chapterName={currentChapter.name}
-              chapterNum={location.chapterIndex + 1}
-              chapterCount={chapters.length}
-              qNumInChapter={location.indexInChapter + 1}
-              qTotalInChapter={currentChapter.questions.length}
+          {showSummary ? (
+            <AssessmentSummary
               aboutLine={aboutLine}
-              questionText={currentQuestion.text}
-              value={answers[currentQuestion.id]}
-              onSelect={(value) => answerQuestion(currentQuestion.id, value, true)}
-              onBack={() => setActiveIndex((idx) => Math.max(0, idx - 1))}
-              onSkip={() => setActiveIndex((idx) => Math.min(flat.length - 1, idx + 1))}
-              canGoBack={activeIndex > 0}
-              canSkip={activeIndex < flat.length - 1}
-              questionKey={currentQuestion.id}
-            />
-          ) : mode === 'dense' && currentChapter ? (
-            <DenseChapters
-              chapters={chapters}
-              activeChapterId={currentChapter.outcomeAreaId}
+              totalCount={totalCount}
+              chapters={chapters.map((c) => ({
+                outcomeAreaId: c.outcomeAreaId,
+                name: c.name,
+                total: c.questions.length,
+              }))}
+              saving={pendingSaves > 0}
+              onSubmit={() => navigate('/surveys')}
+              onReview={() => setReviewing(true)}
               onSelectChapter={selectChapter}
-              answers={answers}
-              onAnswer={(questionId, value) => answerQuestion(questionId, value, false)}
-              onPrevChapter={() => stepChapter(-1)}
-              onNextChapter={() => stepChapter(1)}
-              hasPrevChapter={location.chapterIndex > 0}
-              hasNextChapter={location.chapterIndex < chapters.length - 1}
             />
-          ) : null}
+          ) : (
+            <>
+              <ChapterPills
+                chapters={chapters.map((c) => ({
+                  outcomeAreaId: c.outcomeAreaId,
+                  name: c.name,
+                  answered: c.questions.filter((q) => answers[q.id] !== undefined).length,
+                  total: c.questions.length,
+                }))}
+                activeChapterId={currentChapter?.outcomeAreaId}
+                onSelect={selectChapter}
+                answeredCount={answeredCount}
+                totalCount={totalCount}
+              />
 
-          <div className="assessment-fill__status">
-            {pendingSaves > 0 ? (
-              'Сохраняем…'
-            ) : (
-              <>
-                <Icon name="check" size={13} />
-                Сохранено
-              </>
-            )}
-          </div>
+              {saveError && <div className="form-error assessment-fill__save-error">{saveError}</div>}
+
+              {mode === 'focus' && currentChapter && currentQuestion ? (
+                <FocusQuestion
+                  chapterName={currentChapter.name}
+                  chapterNum={location.chapterIndex + 1}
+                  chapterCount={chapters.length}
+                  qNumInChapter={location.indexInChapter + 1}
+                  qTotalInChapter={currentChapter.questions.length}
+                  aboutLine={aboutLine}
+                  questionText={currentQuestion.text}
+                  value={answers[currentQuestion.id]}
+                  onSelect={(value) => answerQuestion(currentQuestion.id, value, true)}
+                  onBack={() => setActiveIndex((idx) => Math.max(0, idx - 1))}
+                  onSkip={() => setActiveIndex((idx) => Math.min(flat.length - 1, idx + 1))}
+                  canGoBack={activeIndex > 0}
+                  canSkip={activeIndex < flat.length - 1}
+                  questionKey={currentQuestion.id}
+                />
+              ) : mode === 'dense' && currentChapter ? (
+                <DenseChapters
+                  chapters={chapters}
+                  activeChapterId={currentChapter.outcomeAreaId}
+                  onSelectChapter={selectChapter}
+                  answers={answers}
+                  onAnswer={(questionId, value) => answerQuestion(questionId, value, false)}
+                  onPrevChapter={() => stepChapter(-1)}
+                  onNextChapter={() => stepChapter(1)}
+                  hasPrevChapter={location.chapterIndex > 0}
+                  hasNextChapter={location.chapterIndex < chapters.length - 1}
+                />
+              ) : null}
+
+              <div className="assessment-fill__status">
+                {pendingSaves > 0 ? (
+                  'Сохраняем…'
+                ) : (
+                  <>
+                    <Icon name="check" size={13} />
+                    Сохранено
+                  </>
+                )}
+                {/* Из режима проверки нужен путь обратно к финалу: сам он не
+                    вернётся, отвечено ведь и так всё. */}
+                {allAnswered && (
+                  <button
+                    type="button"
+                    className="assessment-fill__to-summary"
+                    onClick={() => setReviewing(false)}
+                  >
+                    К завершению
+                    <Icon name="arrowRight" size={14} />
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </>
       ) : (
         <Panel>

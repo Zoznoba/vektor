@@ -93,3 +93,23 @@
   font-size: 11.5px;
   color: var(--lime-ink);
 }
+
+/* Возврат к финалу из режима проверки — прижат вправо, чтобы не сливаться с
+   отметкой «Сохранено» слева. */
+.assessment-fill__to-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--blue-ink);
+  cursor: pointer;
+}
+
+.assessment-fill__to-summary:hover {
+  text-decoration: underline;
+}

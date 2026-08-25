@@ -1,5 +1,4 @@
 import type { AssessmentQuestion } from '../../types/assessment';
-import type { Competency } from '../../types/competency';
 
 export interface GroupedQuestion extends AssessmentQuestion {
   competencyName: string;
@@ -17,36 +16,33 @@ export interface Chapter {
  * CLAUDE.md, находка про пересев 8→11). Видны только ОР, реально
  * присутствующие в анкете: список вопросов уже отфильтрован бэком по
  * возрасту субъекта, здесь только группировка.
+ *
+ * Имена критерия и главы берутся ИЗ САМОГО ВОПРОСА, а не из справочника
+ * критериев. Справочник отдаёт только действующую методику (без
+ * is_archived), а опубликованная редакция анкеты может содержать вопросы
+ * критерия, заархивированного позже — архивирование прошлые редакции не
+ * переписывает (7l). Раньше такой вопрос молча выпадал из группировки:
+ * бэкенд считал его обязательным («28 из 31»), а показать его на экране
+ * было негде, и анкета не могла завершиться никогда.
  */
-export function groupQuestionsIntoChapters(
-  questions: AssessmentQuestion[],
-  competencies: Competency[],
-): Chapter[] {
-  const competencyById = new Map(competencies.map((c) => [c.id, c]));
-
-  const entries = questions
-    .map((question) => {
-      const competency = competencyById.get(question.competency_id);
-      return competency ? { question, competency } : null;
-    })
-    .filter((entry): entry is { question: AssessmentQuestion; competency: Competency } => entry !== null)
-    .sort(
-      (a, b) =>
-        a.competency.outcome_area.order - b.competency.outcome_area.order ||
-        a.competency.order - b.competency.order ||
-        a.question.order - b.question.order,
-    );
+export function groupQuestionsIntoChapters(questions: AssessmentQuestion[]): Chapter[] {
+  const ordered = [...questions].sort(
+    (a, b) =>
+      a.outcome_area_order - b.outcome_area_order ||
+      a.competency_order - b.competency_order ||
+      a.order - b.order,
+  );
 
   const chapters: Chapter[] = [];
-  for (const { question, competency } of entries) {
+  for (const question of ordered) {
     const last = chapters[chapters.length - 1];
-    const groupedQuestion: GroupedQuestion = { ...question, competencyName: competency.name };
-    if (last && last.outcomeAreaId === competency.outcome_area.id) {
+    const groupedQuestion: GroupedQuestion = { ...question, competencyName: question.competency_name };
+    if (last && last.outcomeAreaId === question.outcome_area_id) {
       last.questions.push(groupedQuestion);
     } else {
       chapters.push({
-        outcomeAreaId: competency.outcome_area.id,
-        name: competency.outcome_area.name,
+        outcomeAreaId: question.outcome_area_id,
+        name: question.outcome_area_name,
         questions: [groupedQuestion],
       });
     }
