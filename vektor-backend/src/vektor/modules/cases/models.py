@@ -11,40 +11,58 @@ association object'ом вроде TeacherClass: «ровно один» луч�
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import String, UniqueConstraint, func
+from sqlalchemy import String, and_, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vektor.core.database import Base
+from vektor.shared.enums import UserRole
 
 if TYPE_CHECKING:
     from vektor.modules.users.models import User
 
 
+# Условия для фильтрующих проекций ниже. Функциями, а не строками, из-за
+# ловушки: в строковом primaryjoin имя `Case` разрешается НЕ в эту модель, а в
+# sqlalchemy.sql.elements.Case (конструкция SQL CASE — она живёт в том же
+# пространстве имён, что подставляет SQLAlchemy), и конфигурация мапперов
+# падает с «Class 'sqlalchemy.sql.elements.Case' is not mapped». У SchoolClass
+# такого не было — там имена с sqlalchemy не пересекаются.
+#
+# Импорт User внутри функции, а не наверху модуля: вызов происходит уже после
+# того, как все модели загружены, поэтому цикл импортов не возникает ни в
+# какую сторону.
+def _members_with_role(role: UserRole):
+    def condition():
+        from vektor.modules.users.models import User
+
+        return and_(Case.id == User.case_id, User.role == role)
+
+    return condition
+
+
 class Case(Base):
     __tablename__ = "cases"
 
-    __table_args__ = (
-        UniqueConstraint("name")
-    )
-
     id: Mapped[int] = mapped_column(primary_key=True)
-    
-    name: str = mapped_column(String(255), nullable=False, unique=True)
-    
-    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    
+
+    # unique прямо на колонке, без дублирующего UniqueConstraint в
+    # __table_args__: для одной колонки это одно и то же, а два объявления
+    # уехали бы в БД двумя одинаковыми индексами.
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+
+    description: Mapped[str | None] = mapped_column(String(500))
+
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    
-    members: Mapped[list["User"]] = relationship(
-        "User",
-        back_populates="case",
-        cascade="all, delete-orphan",
-    )
+
+    members: Mapped[list["User"]] = relationship(back_populates="case")
 
     students: Mapped[list["User"]] = relationship(
-        "User", 
-        back_populates ="case",
-        primaryjoin="and_(Case.id == User.case_id, User.role == 'student')",
+        primaryjoin=_members_with_role(UserRole.STUDENT),
+        viewonly=True,
+    )
+
+    teachers: Mapped[list["User"]] = relationship(
+        primaryjoin=_members_with_role(UserRole.TEACHER),
         viewonly=True,
     )
 

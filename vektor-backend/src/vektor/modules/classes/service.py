@@ -110,7 +110,9 @@ async def create_class(db: AsyncSession, grade: int, section: str) -> SchoolClas
 
 
 async def all_classes(db: AsyncSession) -> list[SchoolClass]:
-    result = await db.execute(select(SchoolClass).options(*_CLASS_LOAD))
+    result = await db.execute(
+        select(SchoolClass).options(*_CLASS_LOAD).order_by(SchoolClass.grade, SchoolClass.section)
+    )
     return result.scalars().all()
 
 

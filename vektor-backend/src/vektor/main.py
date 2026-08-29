@@ -14,6 +14,7 @@ from vektor.core.rate_limit import close_redis
 from vektor.modules.assessments.router import assessment_router
 from vektor.modules.assessments.router import router as assessments_router
 from vektor.modules.auth.router import router as auth_router
+from vektor.modules.cases.router import router as cases_router
 from vektor.modules.classes.router import router as classes_router
 from vektor.modules.competencies.router import builder_router as questionnaire_builder_router
 from vektor.modules.competencies.router import items_router as questionnaire_items_router
@@ -45,6 +46,11 @@ _OPENAPI_TAGS = [
     {
         "name": "classes",
         "description": "Классы школы: создание, состав, кл. рук — под require_role(ADMIN).",
+    },
+    {
+        "name": "cases",
+        "description": "Кейсы — профильные группы (кружки) из учеников разных классов. "
+        "Членство ровно одно и у ученика, и у учителя.",
     },
     {
         "name": "competencies",
@@ -116,6 +122,7 @@ app.include_router(competency_router)
 app.include_router(questionnaire_builder_router)
 app.include_router(questionnaire_items_router)
 app.include_router(classes_router)
+app.include_router(cases_router)
 app.include_router(assessments_router)
 app.include_router(assessment_router)
 app.include_router(results_router)

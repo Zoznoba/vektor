@@ -101,50 +101,66 @@ async def _load_case(db: AsyncSession, case_id: int) -> Case:
     объект вернётся из identity map с коллекциями, загруженными ДО изменений —
     ответ показал бы состав кейса, каким он был до привязки.
     """
-    # TODO: select(Case).where(...).options(*_CASE_LOAD).execution_options(...)
-    # TODO: нет — raise CaseNotFound
-    raise NotImplementedError
+    result = await db.execute(
+        select(Case)
+        .where(Case.id == case_id)
+        .options(*_CASE_LOAD)
+        .execution_options(populate_existing=True)
+    )
+    case = result.scalar_one_or_none()
+    if case is None:
+        raise CaseNotFound()
+    return case
 
 
 async def create_case(db: AsyncSession, name: str, description: str | None) -> Case:
-    # TODO: проверить, что кейса с таким name ещё нет → иначе CaseAlreadyExists.
-    #  Как в create_class: отдельным select'ом ЗАРАНЕЕ, а не ловить падение
-    #  unique-констрейнта на вставке (тот же приём, что в bulk-загрузке 3.7).
-    # TODO: создать, db.add, await db.commit(), вернуть await _load_case(...)
-    raise NotImplementedError
+    same_exist = await db.execute(select(Case).where(Case.name == name))
+    if same_exist.scalar_one_or_none() is not None:
+        raise CaseAlreadyExists()
+    case = Case(name=name, description=description)
+    db.add(case)
+    await db.commit()
+    return await _load_case(db, case.id)
 
 
 async def all_cases(db: AsyncSession) -> list[Case]:
-    # TODO: select(Case).options(*_CASE_LOAD), упорядочить по name —
-    #  список без ORDER BY возвращается в произвольном порядке, и карточки на
-    #  экране будут прыгать между запросами.
-    raise NotImplementedError
+    cases = await db.execute(select(Case).options(*_CASE_LOAD).order_by(Case.name))
+    return cases.scalars().all()
 
 
 async def update_case(db: AsyncSession, case_id: int, changes: dict[str, Any]) -> Case:
     """Переименование / описание. `changes` — только реально пришедшие поля
     (роутер собирает их через exclude_unset), поэтому отсутствие ключа —
     «не трогать», а явный None в description — «стереть»."""
-    # TODO: загрузить кейс, применить изменения по тому же принципу, что
-    #  update_teacher_in_class (classes/service.py:164): проверять `in changes`,
-    #  а не истинность значения.
-    # TODO: при смене name — снова проверить уникальность (CaseAlreadyExists),
-    #  но НЕ считать конфликтом сам себя.
-    raise NotImplementedError
+    case = await _load_case(db, case_id)
+
+    if "name" in changes and changes["name"] is not None:
+        clash = await db.execute(
+            select(Case.id).where(Case.name == changes["name"], Case.id != case_id)
+        )
+        if clash.scalar_one_or_none() is not None:
+            raise CaseAlreadyExists()
+        case.name = changes["name"]
+
+    if "description" in changes:
+        case.description = changes["description"]
+
+    await db.commit()
+    return await _load_case(db, case_id)
 
 
 async def assign_students(db: AsyncSession, case_id: int, user_ids: list[int]) -> Case:
-    # TODO: делегировать в _assign_members с expected_role=UserRole.STUDENT
-    raise NotImplementedError
+    return await _assign_members(db, case_id, user_ids, UserRole.STUDENT)
 
 
 async def assign_teachers(db: AsyncSession, case_id: int, user_ids: list[int]) -> Case:
-    # TODO: делегировать в _assign_members с expected_role=UserRole.TEACHER
-    #
-    #  Верхней границы «2–3 учителя» здесь НЕТ намеренно: это практика школы,
-    #  а не инвариант данных (то же решение, что для 2–4 учителей класса в
-    #  Этапе 7o). Предупреждает UI, запрещать нечего.
-    raise NotImplementedError
+    """Привязать учителей.
+
+    Верхней границы «2–3 учителя» здесь НЕТ намеренно: это практика школы, а не
+    инвариант данных (то же решение, что для 2–4 учителей класса в Этапе 7o).
+    Предупреждает UI, запрещать нечего.
+    """
+    return await _assign_members(db, case_id, user_ids, UserRole.TEACHER)
 
 
 async def _assign_members(
@@ -164,26 +180,62 @@ async def _assign_members(
          (уже в ЭТОМ кейсе — не ошибка, а no-op: привязка идемпотентна,
           как в 3.6 с родителями)
     """
-    # TODO: загрузить кейс (_load_case) и пользователей одним select'ом
-    # TODO: три проверки выше
-    # TODO: проставить user.case_id = case_id, commit, вернуть _load_case
-    raise NotImplementedError
+    case = await _load_case(db, case_id)
+
+    if not user_ids:
+        return case
+
+    found = await db.execute(select(User).where(User.id.in_(set(user_ids))))
+    users = {user.id: user for user in found.scalars()}
+
+    for user_id in user_ids:
+        user = users.get(user_id)
+        if user is None:
+            raise UserNotFound()
+        if user.role != expected_role:
+            raise WrongRole()
+        if user.case_id is not None and user.case_id != case_id:
+            raise AlreadyInAnotherCase()
+
+    for user_id in user_ids:
+        users[user_id].case_id = case_id
+
+    await db.commit()
+    return await _load_case(db, case_id)
 
 
 async def remove_member(db: AsyncSession, case_id: int, user_id: int) -> Case:
     """Открепить участника (ученика или учителя — вызов один).
 
-    Человек остаётся в системе со всей историей: анкеты хранят снапшот
-    Assessment.subject_case_id, поэтому прошлые результаты кейса открепление
-    не меняет — та же логика, что у remove_student_from_class.
+    Человек остаётся в системе со всей историей — та же логика, что у
+    remove_student_from_class: открепление зануляет users.case_id, а не удаляет
+    пользователя.
+
+    NB: снапшота кейса на анкете (Assessment.subject_case_id, по аналогии с
+    subject_class_id) пока НЕТ — диагностика по кейсам не заводится. Когда
+    заведётся, он понадобится по той же причине, что и у класса: переход
+    ученика в другой кружок не должен переписывать прошлые результаты.
     """
-    # TODO: проверить, что пользователь существует (UserNotFound) и его
-    #  case_id == case_id (иначе NotInCase — открепление относится не к нему)
-    # TODO: user.case_id = None, commit, вернуть _load_case
-    raise NotImplementedError
+    await _load_case(db, case_id)
+
+    user = await db.get(User, user_id)
+    if user is None:
+        raise UserNotFound()
+    if user.case_id != case_id:
+        raise NotInCase()
+
+    user.case_id = None
+    await db.commit()
+    return await _load_case(db, case_id)
 
 
 async def delete_case(db: AsyncSession, case_id: int) -> None:
-    # TODO: загрузить кейс; если students или teachers непусты → CaseNotEmpty
-    # TODO: удалить строку, commit
-    raise NotImplementedError
+    """Удалить пустой кейс. С людьми внутри — 409: молчаливое открепление всех
+    разом слишком похоже на случайное нажатие, пусть админ разберёт состав."""
+    case = await _load_case(db, case_id)
+
+    if case.students or case.teachers:
+        raise CaseNotEmpty()
+
+    await db.delete(case)
+    await db.commit()

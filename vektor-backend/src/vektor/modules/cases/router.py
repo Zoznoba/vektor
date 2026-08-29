@@ -26,8 +26,8 @@ async def create_case(
     db: AsyncSession = Depends(get_db),
     _admin_role=Depends(require_role(UserRole.ADMIN)),
 ) -> CaseOut:
-
     return await service.create_case(db, data.name, data.description)
+
 
 @router.get(
     "",
@@ -43,17 +43,84 @@ async def all_cases(
     return await service.all_cases(db)
 
 
-# TODO: PATCH "/{case_id}" — переименование/описание.
-#  Тело CaseUpdate, в сервис отдавать data.model_dump(exclude_unset=True) —
-#  как update_teacher_in_class (classes/router.py:98). Только админ.
+@router.patch(
+    "/{case_id}",
+    response_model=CaseOut,
+    summary="Переименовать кейс",
+    description="Частичная правка названия и описания: отсутствие ключа в теле "
+    "означает «не трогать», а явный `null` в description — «стереть». Только админ.",
+)
+async def update_case(
+    case_id: int,
+    data: CaseUpdate,
+    db: AsyncSession = Depends(get_db),
+    _roles=Depends(require_role(UserRole.ADMIN)),
+) -> CaseOut:
+    # exclude_unset: именно он превращает «поля не было в теле» в «не трогать».
+    return await service.update_case(db, case_id, data.model_dump(exclude_unset=True))
 
-# TODO: POST "/{case_id}/students" и POST "/{case_id}/teachers" — bulk-привязка,
-#  тело AssignMembersIn, ответ CaseOut. Только админ.
 
-# TODO: DELETE "/{case_id}/members/{user_id}" — открепить участника.
-#  Один эндпоинт на учеников и учителей: сервис различает их по роли, а
-#  разводить два одинаковых пути ради этого незачем. Ответ CaseOut.
+@router.post(
+    "/{case_id}/students",
+    response_model=CaseOut,
+    summary="Привязать учеников к кейсу",
+    description="Bulk-привязка списком id за один вызов. Повторная привязка "
+    "того, кто уже в этом кейсе, — не ошибка (no-op); человек из ДРУГОГО кейса "
+    "даёт 409: перевод делается явно, через открепление. Только админ.",
+)
+async def assign_students(
+    case_id: int,
+    data: AssignMembersIn,
+    db: AsyncSession = Depends(get_db),
+    _roles=Depends(require_role(UserRole.ADMIN)),
+) -> CaseOut:
+    return await service.assign_students(db, case_id, data.user_ids)
 
-# TODO: DELETE "/{case_id}" — удалить пустой кейс.
-#  Ответ — status_code=204 и None (тела нет), см. как это делается в
-#  competencies/router.py у отмены черновика.
+
+@router.post(
+    "/{case_id}/teachers",
+    response_model=CaseOut,
+    summary="Привязать учителей к кейсу",
+    description="То же, что привязка учеников, но роль проверяется на teacher. "
+    "Верхней границы «2–3 учителя» нет: это практика школы, а не инвариант "
+    "данных — предупреждает UI. Только админ.",
+)
+async def assign_teachers(
+    case_id: int,
+    data: AssignMembersIn,
+    db: AsyncSession = Depends(get_db),
+    _roles=Depends(require_role(UserRole.ADMIN)),
+) -> CaseOut:
+    return await service.assign_teachers(db, case_id, data.user_ids)
+
+
+@router.delete(
+    "/{case_id}/members/{user_id}",
+    response_model=CaseOut,
+    summary="Открепить участника от кейса",
+    description="Один эндпоинт на учеников и учителей: сервис различает их по "
+    "роли, разводить два одинаковых пути ради этого незачем. Человек остаётся "
+    "в системе со всей историей. Только админ.",
+)
+async def remove_member(
+    case_id: int,
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    _roles=Depends(require_role(UserRole.ADMIN)),
+) -> CaseOut:
+    return await service.remove_member(db, case_id, user_id)
+
+
+@router.delete(
+    "/{case_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Удалить кейс",
+    description="Удалить пустой кейс. Если в составе ещё есть люди — 409: "
+    "сначала открепите участников. Только админ.",
+)
+async def delete_case(
+    case_id: int,
+    db: AsyncSession = Depends(get_db),
+    _roles=Depends(require_role(UserRole.ADMIN)),
+) -> None:
+    await service.delete_case(db, case_id)

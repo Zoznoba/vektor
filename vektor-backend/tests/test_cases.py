@@ -1,9 +1,7 @@
 # Интеграционные тесты cases: реальные HTTP-запросы, реальный Postgres
 # (тестовая база через фикстуру client). admin_headers — в conftest.py.
-#
-# Скелет: имена тестов задают требуемое поведение, тела дописываются вместе с
-# реализацией сервиса. Стиль — как в test_classes.py.
 
+import pytest
 from httpx import AsyncClient
 
 
@@ -21,36 +19,394 @@ async def _login_headers(client: AsyncClient, *, email: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture
+async def existing_case(client: AsyncClient, admin_headers: dict[str, str]) -> dict:
+    response = await client.post("/cases", json={"name": "Робототехника"}, headers=admin_headers)
+    return response.json()
+
+
 # --- POST /cases ---
 
-# TODO: test_create_case_success — 201, пустые students/teachers
-# TODO: test_create_case_duplicate_name_conflict — 409 case_already_exists
-# TODO: test_create_case_forbidden_for_teacher — 403 (только админ пишет)
+
+async def test_create_case_success(client: AsyncClient, admin_headers: dict[str, str]) -> None:
+    response = await client.post(
+        "/cases",
+        json={"name": "Робототехника", "description": "Кружок про роботов"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == "Робототехника"
+    assert body["description"] == "Кружок про роботов"
+    assert body["students"] == []
+    assert body["teachers"] == []
+
+
+async def test_create_case_duplicate_name_conflict(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    response = await client.post("/cases", json={"name": "Робототехника"}, headers=admin_headers)
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "case_already_exists"
+
+
+async def test_create_case_requires_admin(client: AsyncClient) -> None:
+    await _register(client, email="teacher@vektor.ru", role="teacher")
+    headers = await _login_headers(client, email="teacher@vektor.ru")
+
+    response = await client.post("/cases", json={"name": "Хор"}, headers=headers)
+
+    assert response.status_code == 403
 
 
 # --- GET /cases ---
 
-# TODO: test_list_cases_visible_to_teacher — учителю список доступен (200)
-# TODO: test_list_cases_forbidden_for_student — 403
+
+async def test_list_cases_sorted_by_name(
+    client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """Порядок задан явно: без ORDER BY карточки прыгали бы между запросами."""
+    for name in ("Хор", "Астрономия", "Робототехника"):
+        await client.post("/cases", json={"name": name}, headers=admin_headers)
+
+    response = await client.get("/cases", headers=admin_headers)
+
+    assert response.status_code == 200
+    assert [case["name"] for case in response.json()] == ["Астрономия", "Робототехника", "Хор"]
 
 
-# --- состав ---
+async def test_list_cases_allowed_for_teacher(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    await _register(client, email="teacher@vektor.ru", role="teacher")
+    headers = await _login_headers(client, email="teacher@vektor.ru")
 
-# TODO: test_assign_students_bulk — пачкой, оба ученика в составе
-# TODO: test_assign_teacher_wrong_role — ученика в учителя кейса → 409 wrong_role
-# TODO: test_assign_student_already_in_another_case — 409 already_in_another_case;
-#       ЗАОДНО проверить, что человек остался в ПЕРВОМ кейсе (не перевесился)
-# TODO: test_assign_same_student_twice_is_noop — повторная привязка в ТОТ ЖЕ
-#       кейс не ошибка (идемпотентность, как у родителей в 3.6)
-# TODO: test_assign_atomic_on_error — в пачке один невалидный: в БД не осело
-#       НИЧЕГО (валидация до записи; ср. test_bulk_users.py)
-# TODO: test_case_is_cross_grade — ученики из двух РАЗНЫХ классов уживаются
-#       в одном кейсе: это его смысл, а не краевой случай
+    response = await client.get("/cases", headers=headers)
+
+    assert response.status_code == 200
 
 
-# --- открепление и удаление ---
+async def test_list_cases_forbidden_for_student(client: AsyncClient) -> None:
+    await _register(client, email="pupil@vektor.ru", role="student")
+    headers = await _login_headers(client, email="pupil@vektor.ru")
 
-# TODO: test_remove_member — участник ушёл из состава, но остался в системе
-# TODO: test_remove_member_not_in_case — 404 not_in_case
-# TODO: test_delete_empty_case — 204
-# TODO: test_delete_case_with_members_conflict — 409 case_not_empty
+    response = await client.get("/cases", headers=headers)
+
+    assert response.status_code == 403
+
+
+# --- PATCH /cases/{id} ---
+
+
+async def test_update_case_renames(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    response = await client.patch(
+        f"/cases/{existing_case['id']}", json={"name": "Робототехника+"}, headers=admin_headers
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Робототехника+"
+
+
+async def test_update_case_keeps_own_name_without_conflict(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    """Переименование в СВОЁ же название не должно конфликтовать само с собой."""
+    response = await client.patch(
+        f"/cases/{existing_case['id']}", json={"name": "Робототехника"}, headers=admin_headers
+    )
+
+    assert response.status_code == 200
+
+
+async def test_update_case_duplicate_name_conflict(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    other = await client.post("/cases", json={"name": "Хор"}, headers=admin_headers)
+
+    response = await client.patch(
+        f"/cases/{other.json()['id']}", json={"name": "Робототехника"}, headers=admin_headers
+    )
+
+    assert response.status_code == 409
+
+
+async def test_update_case_omitted_field_is_untouched(
+    client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """Ключа нет в теле → «не трогать»; явный null → «стереть». Ровно то, ради
+    чего роутер отдаёт в сервис model_dump(exclude_unset=True)."""
+    created = await client.post(
+        "/cases", json={"name": "Хор", "description": "Поём"}, headers=admin_headers
+    )
+    case_id = created.json()["id"]
+
+    renamed = await client.patch(
+        f"/cases/{case_id}", json={"name": "Большой хор"}, headers=admin_headers
+    )
+    assert renamed.json()["description"] == "Поём"
+
+    cleared = await client.patch(
+        f"/cases/{case_id}", json={"description": None}, headers=admin_headers
+    )
+    assert cleared.json()["description"] is None
+    assert cleared.json()["name"] == "Большой хор"
+
+
+async def test_update_case_not_found(client: AsyncClient, admin_headers: dict[str, str]) -> None:
+    response = await client.patch("/cases/999", json={"name": "Нет"}, headers=admin_headers)
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "case_not_found"
+
+
+# --- POST /cases/{id}/students и /teachers ---
+
+
+async def test_assign_students_and_teachers(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    pupil_a = await _register(client, email="pupil-a@vektor.ru", role="student")
+    pupil_b = await _register(client, email="pupil-b@vektor.ru", role="student")
+    teacher = await _register(client, email="teacher@vektor.ru", role="teacher")
+    case_id = existing_case["id"]
+
+    students = await client.post(
+        f"/cases/{case_id}/students",
+        json={"user_ids": [pupil_a["id"], pupil_b["id"]]},
+        headers=admin_headers,
+    )
+    assert students.status_code == 200
+    assert {u["id"] for u in students.json()["students"]} == {pupil_a["id"], pupil_b["id"]}
+
+    teachers = await client.post(
+        f"/cases/{case_id}/teachers",
+        json={"user_ids": [teacher["id"]]},
+        headers=admin_headers,
+    )
+    assert teachers.status_code == 200
+    body = teachers.json()
+    # Разные проекции ОДНОЙ колонки users.case_id: ученики не должны утечь в
+    # список учителей и наоборот.
+    assert [u["id"] for u in body["teachers"]] == [teacher["id"]]
+    assert {u["id"] for u in body["students"]} == {pupil_a["id"], pupil_b["id"]}
+
+
+async def test_assign_students_is_idempotent(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    """Повторная привязка того, кто уже в ЭТОМ кейсе, — no-op, а не 409."""
+    pupil = await _register(client, email="pupil@vektor.ru", role="student")
+    case_id = existing_case["id"]
+    payload = {"user_ids": [pupil["id"]]}
+
+    await client.post(f"/cases/{case_id}/students", json=payload, headers=admin_headers)
+    again = await client.post(f"/cases/{case_id}/students", json=payload, headers=admin_headers)
+
+    assert again.status_code == 200
+    assert [u["id"] for u in again.json()["students"]] == [pupil["id"]]
+
+
+async def test_assign_student_with_teacher_role_conflict(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    teacher = await _register(client, email="teacher@vektor.ru", role="teacher")
+
+    response = await client.post(
+        f"/cases/{existing_case['id']}/students",
+        json={"user_ids": [teacher["id"]]},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "wrong_role"
+
+
+async def test_assign_member_of_another_case_conflict(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    """Перевод между кейсами делается явно: сначала открепить, потом привязать.
+    Молчаливое перевешивание выкинуло бы человека из прежнего кейса."""
+    pupil = await _register(client, email="pupil@vektor.ru", role="student")
+    other = await client.post("/cases", json={"name": "Хор"}, headers=admin_headers)
+    await client.post(
+        f"/cases/{existing_case['id']}/students",
+        json={"user_ids": [pupil["id"]]},
+        headers=admin_headers,
+    )
+
+    response = await client.post(
+        f"/cases/{other.json()['id']}/students",
+        json={"user_ids": [pupil["id"]]},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "already_in_another_case"
+
+    # И человек остался в ПЕРВОМ кейсе: отказ должен быть отказом, а не
+    # наполовину выполненным переводом.
+    still_there = await client.get("/cases", headers=admin_headers)
+    by_name = {case["name"]: case for case in still_there.json()}
+    assert [u["id"] for u in by_name["Робототехника"]["students"]] == [pupil["id"]]
+    assert by_name["Хор"]["students"] == []
+
+
+async def test_assign_nothing_is_written_when_one_id_is_bad(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    """Атомарность: валидируем всю пачку ДО записи, иначе часть людей осела бы
+    в кейсе, а часть — нет (та же логика, что в bulk-загрузке Этапа 3.7)."""
+    pupil = await _register(client, email="pupil@vektor.ru", role="student")
+    case_id = existing_case["id"]
+
+    response = await client.post(
+        f"/cases/{case_id}/students",
+        json={"user_ids": [pupil["id"], 999]},
+        headers=admin_headers,
+    )
+    assert response.status_code == 404
+    assert response.json()["code"] == "user_not_found"
+
+    after = await client.get("/cases", headers=admin_headers)
+    assert after.json()[0]["students"] == []
+
+
+async def test_case_is_cross_grade(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    """Ученики из РАЗНЫХ классов в одном кейсе — это его смысл, а не краевой
+    случай: кружок собирается через параллели."""
+    pupil_a = await _register(client, email="pupil-a@vektor.ru", role="student")
+    pupil_b = await _register(client, email="pupil-b@vektor.ru", role="student")
+    class_5 = await client.post(
+        "/classes", json={"grade": 5, "section": "a"}, headers=admin_headers
+    )
+    class_8 = await client.post(
+        "/classes", json={"grade": 8, "section": "b"}, headers=admin_headers
+    )
+    await client.post(
+        f"/classes/{class_5.json()['id']}/students",
+        json={"student_ids": [pupil_a["id"]]},
+        headers=admin_headers,
+    )
+    await client.post(
+        f"/classes/{class_8.json()['id']}/students",
+        json={"student_ids": [pupil_b["id"]]},
+        headers=admin_headers,
+    )
+
+    response = await client.post(
+        f"/cases/{existing_case['id']}/students",
+        json={"user_ids": [pupil_a["id"], pupil_b["id"]]},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200
+    assert {u["id"] for u in response.json()["students"]} == {pupil_a["id"], pupil_b["id"]}
+
+
+async def test_assign_requires_admin(client: AsyncClient, existing_case: dict) -> None:
+    await _register(client, email="teacher@vektor.ru", role="teacher")
+    headers = await _login_headers(client, email="teacher@vektor.ru")
+
+    response = await client.post(
+        f"/cases/{existing_case['id']}/students", json={"user_ids": []}, headers=headers
+    )
+
+    assert response.status_code == 403
+
+
+# --- DELETE /cases/{id}/members/{user_id} ---
+
+
+async def test_remove_member(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    pupil = await _register(client, email="pupil@vektor.ru", role="student")
+    case_id = existing_case["id"]
+    await client.post(
+        f"/cases/{case_id}/students", json={"user_ids": [pupil["id"]]}, headers=admin_headers
+    )
+
+    response = await client.delete(f"/cases/{case_id}/members/{pupil['id']}", headers=admin_headers)
+
+    assert response.status_code == 200
+    assert response.json()["students"] == []
+
+
+async def test_remove_member_not_in_case(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    pupil = await _register(client, email="pupil@vektor.ru", role="student")
+
+    response = await client.delete(
+        f"/cases/{existing_case['id']}/members/{pupil['id']}", headers=admin_headers
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "not_in_case"
+
+
+async def test_removed_member_can_join_another_case(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    """Открепление действительно освобождает человека, а не только прячет из
+    списка: после него привязка в другой кейс проходит без 409."""
+    pupil = await _register(client, email="pupil@vektor.ru", role="student")
+    other = await client.post("/cases", json={"name": "Хор"}, headers=admin_headers)
+    await client.post(
+        f"/cases/{existing_case['id']}/students",
+        json={"user_ids": [pupil["id"]]},
+        headers=admin_headers,
+    )
+    await client.delete(
+        f"/cases/{existing_case['id']}/members/{pupil['id']}", headers=admin_headers
+    )
+
+    response = await client.post(
+        f"/cases/{other.json()['id']}/students",
+        json={"user_ids": [pupil["id"]]},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200
+
+
+# --- DELETE /cases/{id} ---
+
+
+async def test_delete_empty_case(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    response = await client.delete(f"/cases/{existing_case['id']}", headers=admin_headers)
+
+    assert response.status_code == 204
+    assert (await client.get("/cases", headers=admin_headers)).json() == []
+
+
+async def test_delete_case_with_members_conflict(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    pupil = await _register(client, email="pupil@vektor.ru", role="student")
+    case_id = existing_case["id"]
+    await client.post(
+        f"/cases/{case_id}/students", json={"user_ids": [pupil["id"]]}, headers=admin_headers
+    )
+
+    response = await client.delete(f"/cases/{case_id}", headers=admin_headers)
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "case_not_empty"
+
+
+async def test_delete_case_requires_admin(client: AsyncClient, existing_case: dict) -> None:
+    await _register(client, email="teacher@vektor.ru", role="teacher")
+    headers = await _login_headers(client, email="teacher@vektor.ru")
+
+    response = await client.delete(f"/cases/{existing_case['id']}", headers=headers)
+
+    assert response.status_code == 403

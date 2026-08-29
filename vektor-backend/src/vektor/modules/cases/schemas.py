@@ -19,13 +19,15 @@ class CaseOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    # TODO: name, description, students: list[UserOut], teachers: list[UserOut]
+    name: str
+    description: str | None
+    students: list[UserOut]
+    teachers: list[UserOut]
 
 
 class CaseCreate(BaseModel):
-    # TODO: name: str = Field(min_length=1, max_length=255)
-    # TODO: description: str | None = Field(default=None, max_length=500)
-    pass
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=500)
 
 
 class CaseUpdate(BaseModel):
@@ -35,14 +37,12 @@ class CaseUpdate(BaseModel):
     означает «не трогать», а явный `"description": null` — «стереть».
     """
 
-    # TODO: name: str | None = Field(default=None, min_length=1, max_length=255)
-    # TODO: description: str | None = Field(default=None, max_length=500)
-    pass
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=500)
 
 
 class AssignMembersIn(BaseModel):
     """Bulk-привязка, как AssignStudentsIn/AssignTeachersIn у классов: одним
     вызовом список id, а не по одному человеку за раз."""
 
-    # TODO: user_ids: list[int]
-    pass
+    user_ids: list[int]
