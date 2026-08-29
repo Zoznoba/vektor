@@ -10,6 +10,7 @@ import { TeacherStudentPage } from './pages/teacher/TeacherStudentPage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminUsersPage } from './pages/admin/AdminUsersPage';
 import { AdminClassesPage } from './pages/admin/AdminClassesPage';
+import { AdminCasesPage } from './pages/admin/AdminCasesPage';
 import { AdminCampaignsPage } from './pages/admin/AdminCampaignsPage';
 import { AdminQuestionnairePage } from './pages/admin/AdminQuestionnairePage';
 import { AdminResultsPage } from './pages/admin/AdminResultsPage';
@@ -109,6 +110,14 @@ function App() {
               element={
                 <RequireAdmin>
                   <AdminClassesPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/admin/cases"
+              element={
+                <RequireAdmin>
+                  <AdminCasesPage />
                 </RequireAdmin>
               }
             />

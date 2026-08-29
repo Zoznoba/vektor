@@ -65,3 +65,28 @@ export function removeStudentFromClass(
     method: 'DELETE',
   });
 }
+
+/**
+ * Bulk-открепление под массовое выделение в таблице состава. Атомарно: если
+ * хоть кого-то из списка в классе нет, не открепляется никто. POST, а не
+ * DELETE, потому что тело у DELETE режут прокси.
+ */
+export function removeTeachersFromClass(
+  classId: number,
+  teacherIds: number[],
+): Promise<SchoolClass> {
+  return apiRequest<SchoolClass>(`/classes/${classId}/teachers/detach`, {
+    method: 'POST',
+    body: { teacher_ids: teacherIds },
+  });
+}
+
+export function removeStudentsFromClass(
+  classId: number,
+  studentIds: number[],
+): Promise<SchoolClass> {
+  return apiRequest<SchoolClass>(`/classes/${classId}/students/detach`, {
+    method: 'POST',
+    body: { student_ids: studentIds },
+  });
+}

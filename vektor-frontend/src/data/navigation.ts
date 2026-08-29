@@ -70,6 +70,7 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
   { key: 'dashboard', label: 'Сводка', icon: 'dashboard' },
   { key: 'users', label: 'Пользователи', icon: 'users' },
   { key: 'classes', label: 'Классы', icon: 'school' },
+  { key: 'cases', label: 'Кейсы', icon: 'briefcase' },
   { key: 'tests', label: 'Диагностика', icon: 'radar' },
   { key: 'results', label: 'Результаты', icon: 'chart' },
 ];
@@ -79,6 +80,7 @@ export const ADMIN_ROUTES: Record<string, string> = {
   dashboard: '/admin',
   users: '/admin/users',
   classes: '/admin/classes',
+  cases: '/admin/cases',
   tests: '/admin/campaigns',
   results: '/admin/results',
 };
