@@ -239,3 +239,109 @@ async def test_remove_student_from_wrong_class_404(
     )
 
     assert response.status_code == 404
+
+
+# --- bulk-открепление ---
+
+
+async def test_remove_teachers_bulk(client: AsyncClient, existing_class: dict) -> None:
+    headers = existing_class["_headers"]
+    first = await _register_teacher(client)
+    second = await _register_teacher(client, email="teacher-2@vektor.ru")
+    await client.post(
+        f"/classes/{existing_class['id']}/teachers",
+        json={"teacher_ids": [first, second], "is_homeroom": True},
+        headers=headers,
+    )
+
+    response = await client.post(
+        f"/classes/{existing_class['id']}/teachers/detach",
+        json={"teacher_ids": [first, second]},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["teachers"] == []
+
+
+async def test_remove_teachers_bulk_is_atomic(client: AsyncClient, existing_class: dict) -> None:
+    """Учитель не из класса в списке — не открепляется никто."""
+    headers = existing_class["_headers"]
+    inside = await _register_teacher(client)
+    outsider = await _register_teacher(client, email="teacher-2@vektor.ru")
+    await client.post(
+        f"/classes/{existing_class['id']}/teachers",
+        json={"teacher_ids": [inside]},
+        headers=headers,
+    )
+
+    response = await client.post(
+        f"/classes/{existing_class['id']}/teachers/detach",
+        json={"teacher_ids": [inside, outsider]},
+        headers=headers,
+    )
+
+    assert response.status_code == 404
+
+    listed = await client.get("/classes", headers=headers)
+    cls = next(c for c in listed.json() if c["id"] == existing_class["id"])
+    assert {link["teacher"]["id"] for link in cls["teachers"]} == {inside}
+
+
+async def test_remove_students_bulk(client: AsyncClient, existing_class: dict) -> None:
+    headers = existing_class["_headers"]
+    created = await client.post(
+        "/users/bulk",
+        json={
+            "users": [
+                {"email": "a@vektor.ru", "full_name": "Иванов Иван", "role": "student"},
+                {"email": "b@vektor.ru", "full_name": "Петров Пётр", "role": "student"},
+            ],
+            "class_id": existing_class["id"],
+        },
+        headers=headers,
+    )
+    ids = [u["id"] for u in created.json()["created"]]
+
+    response = await client.post(
+        f"/classes/{existing_class['id']}/students/detach",
+        json={"student_ids": ids},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["students"] == []
+    # Открепление — не удаление: сами пользователи остались в системе
+    listed = await client.get("/users", headers=headers)
+    assert set(ids) <= {u["id"] for u in listed.json()}
+
+
+async def test_remove_students_bulk_is_atomic(client: AsyncClient, existing_class: dict) -> None:
+    headers = existing_class["_headers"]
+    created = await client.post(
+        "/users/bulk",
+        json={
+            "users": [{"email": "a@vektor.ru", "full_name": "Иванов Иван", "role": "student"}],
+            "class_id": existing_class["id"],
+        },
+        headers=headers,
+    )
+    inside = created.json()["created"][0]["id"]
+    free = await client.post(
+        "/users/bulk",
+        json={"users": [{"email": "b@vektor.ru", "full_name": "Петров Пётр", "role": "student"}]},
+        headers=headers,
+    )
+    outsider = free.json()["created"][0]["id"]
+
+    response = await client.post(
+        f"/classes/{existing_class['id']}/students/detach",
+        json={"student_ids": [inside, outsider]},
+        headers=headers,
+    )
+
+    assert response.status_code == 404
+
+    listed = await client.get("/classes", headers=headers)
+    cls = next(c for c in listed.json() if c["id"] == existing_class["id"])
+    assert {s["id"] for s in cls["students"]} == {inside}

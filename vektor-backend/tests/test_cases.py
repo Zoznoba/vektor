@@ -410,3 +410,94 @@ async def test_delete_case_requires_admin(client: AsyncClient, existing_case: di
     response = await client.delete(f"/cases/{existing_case['id']}", headers=headers)
 
     assert response.status_code == 403
+
+
+# --- POST /cases/{id}/members/detach (bulk) ---
+
+
+async def test_remove_members_bulk(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    """Ученики и учителя откепляются одним вызовом: колонка users.case_id одна
+    на обе роли, разводить два пути незачем."""
+    pupil_a = await _register(client, email="pupil-a@vektor.ru", role="student")
+    pupil_b = await _register(client, email="pupil-b@vektor.ru", role="student")
+    tutor = await _register(client, email="tutor@vektor.ru", role="teacher")
+    case_id = existing_case["id"]
+    await client.post(
+        f"/cases/{case_id}/students",
+        json={"user_ids": [pupil_a["id"], pupil_b["id"]]},
+        headers=admin_headers,
+    )
+    await client.post(
+        f"/cases/{case_id}/teachers", json={"user_ids": [tutor["id"]]}, headers=admin_headers
+    )
+
+    response = await client.post(
+        f"/cases/{case_id}/members/detach",
+        json={"user_ids": [pupil_a["id"], pupil_b["id"], tutor["id"]]},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["students"] == []
+    assert response.json()["teachers"] == []
+
+
+async def test_remove_members_bulk_is_atomic(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    """Чужой в списке — не открепляется НИКТО.
+
+    Ради этого вся пачка и проверяется до записи: иначе выделение, разошедшееся
+    с реальным составом, разобрало бы кейс наполовину.
+    """
+    pupil = await _register(client, email="pupil@vektor.ru", role="student")
+    outsider = await _register(client, email="outsider@vektor.ru", role="student")
+    case_id = existing_case["id"]
+    await client.post(
+        f"/cases/{case_id}/students", json={"user_ids": [pupil["id"]]}, headers=admin_headers
+    )
+
+    response = await client.post(
+        f"/cases/{case_id}/members/detach",
+        json={"user_ids": [pupil["id"], outsider["id"]]},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "not_in_case"
+
+    listed = await client.get("/cases", headers=admin_headers)
+    kase = next(c for c in listed.json() if c["id"] == case_id)
+    assert {u["id"] for u in kase["students"]} == {pupil["id"]}
+
+
+async def test_remove_members_bulk_empty_list_is_noop(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    pupil = await _register(client, email="pupil@vektor.ru", role="student")
+    case_id = existing_case["id"]
+    await client.post(
+        f"/cases/{case_id}/students", json={"user_ids": [pupil["id"]]}, headers=admin_headers
+    )
+
+    response = await client.post(
+        f"/cases/{case_id}/members/detach", json={"user_ids": []}, headers=admin_headers
+    )
+
+    assert response.status_code == 200
+    assert {u["id"] for u in response.json()["students"]} == {pupil["id"]}
+
+
+async def test_remove_members_bulk_requires_admin(
+    client: AsyncClient, admin_headers: dict[str, str], existing_case: dict
+) -> None:
+    await _register(client, email="teacher@vektor.ru", role="teacher")
+    headers = await _login_headers(client, email="teacher@vektor.ru")
+
+    response = await client.post(
+        f"/cases/{existing_case['id']}/members/detach", json={"user_ids": []}, headers=headers
+    )
+
+    assert response.status_code == 403

@@ -46,3 +46,11 @@ class AssignMembersIn(BaseModel):
     вызовом список id, а не по одному человеку за раз."""
 
     user_ids: list[int]
+
+
+class RemoveMembersIn(BaseModel):
+    """Bulk-открепление. Тело, а не список в пути, потому что тело у DELETE
+    режут прокси и плохо поддерживают клиенты — отсюда POST .../detach,
+    зеркально POST .../students на привязке."""
+
+    user_ids: list[int]

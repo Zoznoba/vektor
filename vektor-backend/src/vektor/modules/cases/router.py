@@ -4,7 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from vektor.core.database import get_db
 from vektor.modules.auth.dependencies import require_role
 from vektor.modules.cases import service
-from vektor.modules.cases.schemas import AssignMembersIn, CaseCreate, CaseOut, CaseUpdate
+from vektor.modules.cases.schemas import (
+    AssignMembersIn,
+    CaseCreate,
+    CaseOut,
+    CaseUpdate,
+    RemoveMembersIn,
+)
 from vektor.shared.enums import UserRole
 
 router = APIRouter(prefix="/cases", tags=["cases"])
@@ -92,6 +98,24 @@ async def assign_teachers(
     _roles=Depends(require_role(UserRole.ADMIN)),
 ) -> CaseOut:
     return await service.assign_teachers(db, case_id, data.user_ids)
+
+
+@router.post(
+    "/{case_id}/members/detach",
+    response_model=CaseOut,
+    summary="Открепить участников от кейса (bulk)",
+    description="Открепить сразу нескольких учеников и/или учителей одним "
+    "вызовом — зеркально bulk-привязке. Атомарно: если хоть кого-то из списка "
+    "в кейсе нет, не открепляется никто (409). POST, а не DELETE, потому что "
+    "тело у DELETE режут прокси. Только админ.",
+)
+async def remove_members(
+    case_id: int,
+    data: RemoveMembersIn,
+    db: AsyncSession = Depends(get_db),
+    _roles=Depends(require_role(UserRole.ADMIN)),
+) -> CaseOut:
+    return await service.remove_members(db, case_id, data.user_ids)
 
 
 @router.delete(

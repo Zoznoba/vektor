@@ -53,6 +53,17 @@ class AssignTeachersIn(BaseModel):
     is_homeroom: bool = False
 
 
+class RemoveStudentsIn(BaseModel):
+    """Bulk-открепление учеников. Тело, а не список в пути, и POST, а не
+    DELETE: тело у DELETE режут прокси и плохо поддерживают клиенты."""
+
+    student_ids: list[int]
+
+
+class RemoveTeachersIn(BaseModel):
+    teacher_ids: list[int]
+
+
 class UpdateTeacherInClassIn(BaseModel):
     """Частичная правка связи: роутер отдаёт в сервис только те поля, что
     реально пришли в теле (`exclude_unset`). Поэтому отсутствие ключа —

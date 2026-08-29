@@ -205,11 +205,28 @@ async def _assign_members(
 
 
 async def remove_member(db: AsyncSession, case_id: int, user_id: int) -> Case:
-    """Открепить участника (ученика или учителя — вызов один).
+    """Открепить одного участника — частный случай remove_members.
+
+    Отдельной логики здесь нет намеренно: одиночный DELETE и bulk-открепление
+    обязаны вести себя одинаково, а два независимых пути с одинаковыми
+    проверками рано или поздно разъезжаются.
+    """
+    return await remove_members(db, case_id, [user_id])
+
+
+async def remove_members(db: AsyncSession, case_id: int, user_ids: list[int]) -> Case:
+    """Открепить участников (учеников или учителей — вызов один).
 
     Человек остаётся в системе со всей историей — та же логика, что у
-    remove_student_from_class: открепление зануляет users.case_id, а не удаляет
-    пользователя.
+    remove_students_from_class: открепление зануляет users.case_id, а не
+    удаляет пользователя.
+
+    Валидация ВСЕЙ пачки идёт до записи — зеркально _assign_members: иначе
+    падение на середине оставило бы состав разобранным наполовину, и админ не
+    знал бы, кого уже открепило. Открепление НЕ идемпотентно (в отличие от
+    привязки): человек, которого в этом кейсе нет, — это рассинхрон выделения
+    на экране с реальным составом, и ответить на него молчанием значит скрыть
+    от админа, что он открепил не тех.
 
     NB: снапшота кейса на анкете (Assessment.subject_case_id, по аналогии с
     subject_class_id) пока НЕТ — диагностика по кейсам не заводится. Когда
@@ -218,13 +235,22 @@ async def remove_member(db: AsyncSession, case_id: int, user_id: int) -> Case:
     """
     await _load_case(db, case_id)
 
-    user = await db.get(User, user_id)
-    if user is None:
-        raise UserNotFound()
-    if user.case_id != case_id:
-        raise NotInCase()
+    if not user_ids:
+        return await _load_case(db, case_id)
 
-    user.case_id = None
+    found = await db.execute(select(User).where(User.id.in_(set(user_ids))))
+    users = {user.id: user for user in found.scalars()}
+
+    for user_id in user_ids:
+        user = users.get(user_id)
+        if user is None:
+            raise UserNotFound()
+        if user.case_id != case_id:
+            raise NotInCase()
+
+    for user_id in user_ids:
+        users[user_id].case_id = None
+
     await db.commit()
     return await _load_case(db, case_id)
 
