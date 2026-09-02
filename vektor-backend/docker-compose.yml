@@ -17,8 +17,10 @@ services:
 
   redis:
     image: redis:7-alpine
+    # Хост-порт 6380, а не 6379: 6379 на этой машине держит контейнер
+    # redis_cache соседнего проекта. Внутри контейнера порт штатный.
     ports:
-      - "6379:6379"
+      - "6380:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
