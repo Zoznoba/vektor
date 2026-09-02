@@ -175,12 +175,72 @@
   opacity: 0.65;
 }
 
+/* Кнопка, а не span: слой раскрывается поимённо по клику. Внешне остаётся
+   тем же текстом — подчёркивание пунктиром намекает на действие, не превращая
+   плотную таблицу в набор кнопок. */
+.cover-mark--button {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-bottom: 1px dashed currentColor;
+}
+
 .coverage-row__label {
-  width: 60px;
+  /* Не фиксированная ширина: рядом с «8-1» теперь стоят названия кейсов
+     («Робототехника»), которым 60px мало. */
+  min-width: 60px;
+  max-width: 220px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-d);
   font-size: 13px;
   font-weight: 600;
+}
+
+/* Метка «кейс» у строки покрытия: без неё название кружка читается как ещё
+   один класс со странным именем. */
+.coverage-row__kind {
+  font-family: var(--font-b);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: var(--r-pill);
+  background: var(--fog);
+  color: var(--ink-faint);
+}
+
+.rater-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rater-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 0.5px solid var(--border);
+  font-size: 13px;
+}
+
+.rater-list__item:last-child {
+  border-bottom: none;
+}
+
+.rater-list__name {
+  font-weight: 500;
 }
 
 .coverage-row__bar {

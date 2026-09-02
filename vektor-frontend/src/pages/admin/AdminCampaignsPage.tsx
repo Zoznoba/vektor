@@ -31,7 +31,8 @@ import type {
   CampaignListItem,
   CampaignStatus,
   CampaignStudentRow,
-  ClassCoverageRow,
+  CoverageGroup,
+  RaterStatus,
   LayerCoverage,
 } from '../../types/campaign';
 import type { AssessmentStatus } from '../../types/assessment';
@@ -315,12 +316,12 @@ function CoveragePanel({
 
       {loading ? (
         <div className="admin-empty">Загрузка…</div>
-      ) : !coverage || coverage.classes.length === 0 ? (
+      ) : !coverage || coverage.groups.length === 0 ? (
         <div className="admin-empty">Анкеты ещё не сгенерированы</div>
       ) : (
         <div className="coverage-rows">
-          {coverage.classes.map((row) => (
-            <CoverageClassRow key={row.class_id ?? 'none'} row={row} />
+          {coverage.groups.map((row) => (
+            <CoverageGroupRow key={`${row.kind}-${row.class_id ?? row.case_id ?? 'none'}`} row={row} />
           ))}
         </div>
       )}
@@ -340,15 +341,19 @@ function CoveragePanel({
 }
 
 /**
- * Строка класса в покрытии: сводка + раскрывающийся список учеников.
+ * Строка покрытия (класс или кейс): сводка + раскрывающийся список учеников.
  *
  * Свёрнута по умолчанию — на школьной кампании классов десяток, и
  * развёрнутые таблицы превратили бы экран в простыню. Раскрытие локальное,
  * не в URL: это деталь просмотра, а не адресуемое состояние.
  */
-function CoverageClassRow({ row }: { row: ClassCoverageRow }) {
+function CoverageGroupRow({ row }: { row: CoverageGroup }) {
   const [open, setOpen] = useState(false);
   const hasStudents = row.students.length > 0;
+  // Кейс подписываем явно: «Робототехника» рядом с «8-1» иначе читается как
+  // ещё один класс со странным названием.
+  const label =
+    row.kind === 'case' ? (row.case_name ?? 'кейс') : (row.class_label ?? 'без класса');
 
   return (
     <div className="coverage-group">
@@ -364,7 +369,10 @@ function CoverageClassRow({ row }: { row: ClassCoverageRow }) {
           size={15}
           className={`coverage-row__chevron${open ? ' coverage-row__chevron--open' : ''}`}
         />
-        <div className="coverage-row__label">{row.class_label ?? 'без класса'}</div>
+        <div className="coverage-row__label">
+          {label}
+          {row.kind === 'case' && <span className="coverage-row__kind">кейс</span>}
+        </div>
         <ProgressBar value={row.percent} className="coverage-row__bar" />
         <div className="coverage-row__counts">
           {row.completed} из {row.total}
@@ -385,6 +393,13 @@ function CoverageClassRow({ row }: { row: ClassCoverageRow }) {
 function CoverageStudentsTable({ students }: { students: CampaignStudentRow[] }) {
   const navigate = useNavigate();
   const showPeers = students.some((s) => s.peers.total > 0);
+  // Какой слой раскрыт в окошке. Модалка, а не постоянно видимый список:
+  // имена нужны точечно («кому напомнить»), а развёрнутые они утроили бы
+  // высоту и без того плотной таблицы.
+  const [openLayer, setOpenLayer] = useState<{
+    title: string;
+    raters: RaterStatus[];
+  } | null>(null);
 
   return (
     <div className="coverage-students">
@@ -411,21 +426,84 @@ function CoverageStudentsTable({ students }: { students: CampaignStudentRow[] })
                 <SelfStatusCell status={student.self_status} />
               </td>
               <td>
-                <LayerCell layer={student.parents} />
+                <LayerCell
+                  layer={student.parents}
+                  onOpen={() =>
+                    setOpenLayer({
+                      title: `Родители · ${student.subject.full_name}`,
+                      raters: student.parents.raters,
+                    })
+                  }
+                />
               </td>
               <td>
-                <LayerCell layer={student.teachers} />
+                <LayerCell
+                  layer={student.teachers}
+                  onOpen={() =>
+                    setOpenLayer({
+                      title: `Учителя · ${student.subject.full_name}`,
+                      raters: student.teachers.raters,
+                    })
+                  }
+                />
               </td>
               {showPeers && (
                 <td>
-                  <LayerCell layer={student.peers} />
+                  <LayerCell
+                    layer={student.peers}
+                    onOpen={() =>
+                      setOpenLayer({
+                        title: `Одноклассники · ${student.subject.full_name}`,
+                        raters: student.peers.raters,
+                      })
+                    }
+                  />
                 </td>
               )}
             </tr>
           ))}
         </tbody>
       </table>
+
+      {openLayer && (
+        <RaterListModal
+          title={openLayer.title}
+          raters={openLayer.raters}
+          onClose={() => setOpenLayer(null)}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Кто оценивает ученика внутри одного слоя и заполнил ли анкету. Незаполнившие
+ * идут первыми — порядок задаёт бэкенд, ради этого слой и раскрывают.
+ */
+function RaterListModal({
+  title,
+  raters,
+  onClose,
+}: {
+  title: string;
+  raters: RaterStatus[];
+  onClose: () => void;
+}) {
+  return (
+    <Modal title={title} onClose={onClose}>
+      {raters.length === 0 ? (
+        <div className="admin-empty">Анкеты этого слоя не выдавались</div>
+      ) : (
+        <ul className="rater-list">
+          {raters.map((rater) => (
+            <li key={rater.id} className="rater-list__item">
+              <span className="rater-list__name">{rater.full_name}</span>
+              <SelfStatusCell status={rater.status} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
   );
 }
 
@@ -453,18 +531,33 @@ function SelfStatusCell({ status }: { status: AssessmentStatus | null }) {
   );
 }
 
-/** Слой раторов: «2 из 2» с галочкой, «1 из 2» приглушённо, «—» если не выдан. */
-function LayerCell({ layer }: { layer: LayerCoverage }) {
+/**
+ * Слой раторов: «2 из 2» с галочкой, «1 из 2» приглушённо, «—» если не выдан.
+ * По клику раскрывается поимённо — кроме невыданного слоя, где раскрывать
+ * нечего.
+ *
+ * stopPropagation обязателен: строка целиком ведёт на результаты ученика, и
+ * без него клик по слою уводил бы со страницы вместо открытия окна.
+ */
+function LayerCell({ layer, onOpen }: { layer: LayerCoverage; onOpen: () => void }) {
   if (layer.total === 0) {
     return <span className="cover-mark cover-mark--missing">—</span>;
   }
   const done = layer.completed === layer.total;
   const tone = done ? 'done' : layer.completed > 0 ? 'partial' : 'none';
   return (
-    <span className={`cover-mark cover-mark--${tone}`}>
+    <button
+      type="button"
+      className={`cover-mark cover-mark--${tone} cover-mark--button`}
+      title="Показать, кто оценивает"
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen();
+      }}
+    >
       {done && <Icon name="check" size={13} />}
       {layer.completed} из {layer.total}
-    </span>
+    </button>
   );
 }
 

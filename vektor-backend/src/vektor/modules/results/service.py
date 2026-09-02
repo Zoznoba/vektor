@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 
 from vektor.core.errors import DomainError
 from vektor.modules.assessments.models import Answer, Assessment, Campaign
@@ -912,19 +912,46 @@ async def get_class_results(
     }
 
 
-async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
-    """«X из Y анкет» по классам + детализация по ученикам — админский экран
-    кампании.
+# Ключ строки покрытия: («class», id) | («case», id) | («none», None).
+# Кортеж, а не голый id: нумерация классов и кейсов независима, и class_id=3
+# с case_id=3 — разные строки.
+CoverageKey = tuple[str, int | None]
 
-    Группируем по снапшоту subject_class_id. Анкеты без снапшота (субъект вне
-    класса, пилотная кампания на учителях) попадают в отдельную строку с
-    class_id=None, а не выбрасываются: иначе итог по классам не сходился бы с
-    общим числом анкет.
+
+def coverage_key(class_id: int | None, case_id: int | None) -> CoverageKey:
+    """Основание, по которому выдана анкета: кейс важнее класса.
+
+    Чистая функция и единственное место, где это правило живёт, — его
+    применяют и агрегат, и детализация по ученикам, а разъехавшись, они дали
+    бы строку класса с чужими учениками внутри.
+
+    Кейс приоритетнее не потому, что «важнее», а потому, что специфичнее:
+    subject_class_id проставляется у КАЖДОЙ анкеты (от него зависит видимость
+    возрастных вопросов), в том числе у выданной за кружок. Группируй мы по
+    классу, анкеты кейса растворились бы в классах его участников — ровно та
+    жалоба, с которой этот срез и начался.
+    """
+    if case_id is not None:
+        return ("case", case_id)
+    if class_id is not None:
+        return ("class", class_id)
+    return ("none", None)
+
+
+async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
+    """«X из Y анкет» по классам и кейсам + детализация по ученикам —
+    админский экран кампании.
+
+    Группируем по ОСНОВАНИЮ выдачи (coverage_key): анкета попадает ровно в
+    одну строку, поэтому сумма строк равна общему числу анкет кампании.
+    Анкеты без снапшотов вовсе (субъект вне класса, пилотная кампания на
+    учителях) попадают в строку kind="none", а не выбрасываются: иначе итог
+    не сходился бы.
 
     Детализация по ученикам (self / parents / teachers / peers) считается
     ЗДЕСЬ ЖЕ, из тех же анкет, а не отдельным эндпоинтом: числа шапки и числа
-    внутри строки класса обязаны сходиться, а два независимых прохода по
-    одним и тем же данным расходятся (см. 5e про агрегаты поверх профилей).
+    внутри строки обязаны сходиться, а два независимых прохода по одним и тем
+    же данным расходятся (см. 5e про агрегаты поверх профилей).
     """
     campaign = await db.get(Campaign, campaign_id)
     if campaign is None:
@@ -934,36 +961,65 @@ async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
     rows = await db.execute(
         select(
             Assessment.subject_class_id,
+            Assessment.subject_case_id,
             func.count().label("total"),
             completed.label("completed"),
             SchoolClass.grade,
             SchoolClass.section,
+            Case.name,
         )
         .outerjoin(SchoolClass, SchoolClass.id == Assessment.subject_class_id)
+        .outerjoin(Case, Case.id == Assessment.subject_case_id)
         .where(Assessment.campaign_id == campaign_id)
-        .group_by(Assessment.subject_class_id, SchoolClass.grade, SchoolClass.section)
-        # NULLS LAST: строка «без класса» уходит в конец списка, а не в начало.
-        .order_by(SchoolClass.grade.asc().nulls_last(), SchoolClass.section.asc().nulls_last())
+        .group_by(
+            Assessment.subject_class_id,
+            Assessment.subject_case_id,
+            SchoolClass.grade,
+            SchoolClass.section,
+            Case.name,
+        )
     )
 
-    students_by_class = await _campaign_students_by_class(db, campaign_id)
+    students_by_group = await _campaign_students_by_group(db, campaign_id)
 
-    classes_out = []
+    # Один ключ может прийти НЕСКОЛЬКИМИ строками SQL: у анкет одного кейса
+    # subject_class_id разный (ученики кружка из разных классов), а группа —
+    # одна. Поэтому схлопываем в Python, а не полагаемся на GROUP BY.
+    groups: dict[CoverageKey, dict] = {}
     total_all = 0
     completed_all = 0
-    for class_id, total, done, grade, section in rows.all():
+    for class_id, case_id, total, done, grade, section, case_name in rows.all():
         total_all += total
         completed_all += done
-        classes_out.append(
-            {
-                "class_id": class_id,
-                "class_label": f"{grade}-{section}" if class_id is not None else None,
-                "total": total,
-                "completed": done,
-                "percent": round(done / total * 100, 1) if total else 0.0,
-                "students": students_by_class.get(class_id, []),
+        key = coverage_key(class_id, case_id)
+        group = groups.get(key)
+        if group is None:
+            kind, _ = key
+            group = groups[key] = {
+                "kind": kind,
+                # У строки кейса класс не указываем вовсе, хотя на анкетах он
+                # проставлен: ученики кружка из разных классов, и любой один
+                # из них в заголовке строки был бы враньём.
+                "class_id": class_id if kind == "class" else None,
+                "class_label": f"{grade}-{section}" if kind == "class" else None,
+                "case_id": case_id if kind == "case" else None,
+                "case_name": case_name if kind == "case" else None,
+                "total": 0,
+                "completed": 0,
+                "students": students_by_group.get(key, []),
             }
-        )
+        group["total"] += total
+        group["completed"] += done
+
+    groups_out = [
+        {
+            **group,
+            "percent": round(group["completed"] / group["total"] * 100, 1)
+            if group["total"]
+            else 0.0,
+        }
+        for group in sorted(groups.values(), key=_coverage_sort_key)
+    ]
 
     return {
         "campaign_id": campaign_id,
@@ -973,15 +1029,31 @@ async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
         "total": total_all,
         "completed": completed_all,
         "percent": round(completed_all / total_all * 100, 1) if total_all else 0.0,
-        "classes": classes_out,
+        "groups": groups_out,
     }
 
 
-async def _campaign_students_by_class(
+def _coverage_sort_key(group: dict) -> tuple:
+    """Порядок строк: сначала классы по возрастанию (8-1 перед 8-2), затем
+    кейсы по алфавиту, последней — строка «без класса».
+
+    Классы вперёд, потому что диагностика по классам — основной поток, а
+    кружки — дополнение к нему; «без класса» в конце по той же причине, по
+    которой раньше стоял NULLS LAST.
+    """
+    order = {"class": 0, "case": 1, "none": 2}[group["kind"]]
+    if group["kind"] == "class":
+        label = group["class_label"] or ""
+        grade, _, section = label.partition("-")
+        return (order, int(grade) if grade.isdigit() else 0, section)
+    return (order, 0, group["case_name"] or "")
+
+
+async def _campaign_students_by_group(
     db: AsyncSession, campaign_id: int
-) -> dict[int | None, list[dict]]:
-    """subject_class_id (снапшот) → список строк учеников под
-    CampaignStudentRowOut. Ключ None — анкеты без снапшота класса.
+) -> dict[CoverageKey, list[dict]]:
+    """Ключ группы (класс/кейс, см. coverage_key) → список строк учеников под
+    CampaignStudentRowOut.
 
     Зачем отдельной функцией: get_campaign_coverage уже считает агрегат
     группировкой в SQL, а здесь нужен разрез по РАТОРАМ внутри каждого
@@ -1008,16 +1080,24 @@ async def _campaign_students_by_class(
     увидеть. Здесь же таблица детализирует покрытие, посчитанное строго по
     анкетам: строка «0 из 0» не соответствовала бы ни одной цифре выше.
     """
+    # Респондента подтягиваем вторым join'ом к тем же users: слой
+    # раскрывается до имён («кто из двух родителей не заполнил»), а не только
+    # до счётчика. Два join'а к одной таблице — та же история, что и у двух
+    # FK на Assessment, поэтому алиас обязателен.
+    respondent = aliased(User)
     rows = await db.execute(
         select(
             Assessment.subject_class_id,
+            Assessment.subject_case_id,
             Assessment.subject_id,
             Assessment.respondent_id,
             Assessment.rater_role,
             Assessment.status,
             User,
+            respondent.full_name,
         )
         .join(User, User.id == Assessment.subject_id)
+        .join(respondent, respondent.id == Assessment.respondent_id)
         .where(Assessment.campaign_id == campaign_id)
     )
 
@@ -1028,21 +1108,30 @@ async def _campaign_students_by_class(
     }
 
     students: dict[int, dict] = {}
-    # subject_class_id — снапшот, у всех анкет про одного ученика он один и
-    # тот же; запоминаем отдельно, чтобы разложить готовые строки по классам.
-    class_of: dict[int, int | None] = {}
+    # Снапшоты у всех анкет про одного ученика одни и те же; запоминаем ключ
+    # группы отдельно, чтобы разложить готовые строки по классам и кейсам.
+    group_of: dict[int, CoverageKey] = {}
 
-    for class_id, subject_id, respondent_id, rater_role, status, subject in rows.all():
+    for (
+        class_id,
+        case_id,
+        subject_id,
+        respondent_id,
+        rater_role,
+        status,
+        subject,
+        respondent_name,
+    ) in rows.all():
         row = students.get(subject_id)
         if row is None:
             row = students[subject_id] = {
                 "subject": subject,
                 "self_status": None,
-                "parents": {"total": 0, "completed": 0},
-                "teachers": {"total": 0, "completed": 0},
-                "peers": {"total": 0, "completed": 0},
+                "parents": {"total": 0, "completed": 0, "raters": []},
+                "teachers": {"total": 0, "completed": 0, "raters": []},
+                "peers": {"total": 0, "completed": 0, "raters": []},
             }
-            class_of[subject_id] = class_id
+            group_of[subject_id] = coverage_key(class_id, case_id)
 
         if respondent_id == subject_id:
             row["self_status"] = status
@@ -1054,13 +1143,23 @@ async def _campaign_students_by_class(
         layer["total"] += 1
         if status == AssessmentStatus.COMPLETED:
             layer["completed"] += 1
+        layer["raters"].append(
+            {"id": respondent_id, "full_name": respondent_name, "status": status}
+        )
 
-    by_class: dict[int | None, list[dict]] = {}
-    # Порядок внутри класса — по имени, как в get_class_roster: один и тот же
+    by_group: dict[CoverageKey, list[dict]] = {}
+    # Порядок внутри группы — по имени, как в get_class_roster: один и тот же
     # класс на двух экранах должен читаться одинаково.
     for subject_id in sorted(students, key=lambda sid: students[sid]["subject"].full_name):
-        by_class.setdefault(class_of[subject_id], []).append(students[subject_id])
-    return by_class
+        row = students[subject_id]
+        # Внутри слоя — незаполненные первыми: раскрывают его именно затем,
+        # чтобы понять, кому напомнить, и искать их среди готовых незачем.
+        for layer_name in ("parents", "teachers", "peers"):
+            row[layer_name]["raters"].sort(
+                key=lambda r: (r["status"] == AssessmentStatus.COMPLETED, r["full_name"])
+            )
+        by_group.setdefault(group_of[subject_id], []).append(row)
+    return by_group
 
 
 # ---------- Состав класса с прогрессом (экран учителя «Мои классы») ----------

@@ -10,6 +10,12 @@
 # SQLAlchemy не угадает, какой relationship по какому FK идёт — на каждом
 # relationship к User обязателен явный foreign_keys=[...]. Точно как было с
 # homeroom_teacher_id vs school_class_id.
+#
+# Case ниже импортируется НА РАНТАЙМЕ, а не под TYPE_CHECKING, — та же
+# коллизия имён, что описана в users/models.py: аннотацию Mapped["Case | None"]
+# SQLAlchemy разрешает строкой и без настоящего Case в пространстве имён
+# модуля находит sqlalchemy.sql.elements.Case (конструкция SQL CASE), после
+# чего падает с «Class 'sqlalchemy.sql.elements.Case' is not mapped».
 
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -18,7 +24,6 @@ from sqlalchemy import CheckConstraint, Enum, ForeignKey, String, UniqueConstrai
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vektor.core.database import Base
-
 from vektor.modules.cases.models import Case  # noqa: F401
 from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole
 
