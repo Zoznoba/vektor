@@ -55,6 +55,9 @@ const PATHS: Record<string, string[]> = {
   archive: ['M4 4h16v4H4z', 'M6 8v12h12V8', 'M10 12h4'],
   arrowUp: ['M12 19V5', 'M6 11l6-6 6 6'],
   arrowDown: ['M12 5v14', 'M6 13l6 6 6-6'],
+  // «Часики» — незаполненная анкета в раскрытом слое покрытия. Циферблат со
+  // стрелками, а не песочные часы: у песочных на 13px читается только силуэт.
+  clock: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M12 7v5l3.5 2'],
 };
 
 export type IconName = keyof typeof PATHS;

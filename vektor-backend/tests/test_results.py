@@ -1684,3 +1684,59 @@ async def test_coverage_layer_raters_put_unfinished_first(
     assert raters[0]["id"] == t2
     assert raters[0]["status"] != "completed"
     assert raters[-1]["status"] == "completed"
+
+
+async def test_coverage_student_appears_in_both_class_and_case_rows(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    """Ученик, попавший в кампанию и классом, и кейсом, виден в ОБЕИХ строках.
+
+    Регрессия: пока строка ученика раскладывалась по одному ключу на
+    субъекта, первая же встреченная анкета «застолбила» группу — и строка
+    кейса получалась с ненулевым счётчиком, но пустым списком учеников, то
+    есть просто не раскрывалась.
+    """
+    ids = class_scenario["ids"]
+    kase = (
+        await client.post("/cases", json={"name": "Кружок обеих строк"}, headers=admin_headers)
+    ).json()
+    await client.post(
+        f"/cases/{kase['id']}/students", json={"user_ids": [ids["s1"]]}, headers=admin_headers
+    )
+    await client.post(
+        f"/cases/{kase['id']}/teachers", json={"user_ids": [ids["t1"]]}, headers=admin_headers
+    )
+
+    campaign_id = (
+        await client.post(
+            "/campaigns",
+            json={"title": "Класс и кейс", "period_year": 2026, "period_month": 9},
+            headers=admin_headers,
+        )
+    ).json()["id"]
+    # Кейс генерируем ПЕРВЫМ: тогда класс добавит про s1 только новые пары, и
+    # его анкеты окажутся в обеих группах — ровно тот случай, что ломался.
+    await client.post(
+        f"/campaigns/{campaign_id}/generate",
+        json={"case_ids": [kase["id"]]},
+        headers=admin_headers,
+    )
+    await client.post(
+        f"/campaigns/{campaign_id}/generate",
+        json={"class_ids": [class_scenario["class_id"]]},
+        headers=admin_headers,
+    )
+
+    body = (
+        await client.get(f"/results/campaigns/{campaign_id}/coverage", headers=admin_headers)
+    ).json()
+
+    case_row = next(g for g in body["groups"] if g["kind"] == "case")
+    class_row = next(g for g in body["groups"] if g["kind"] == "class")
+    # У непустой строки всегда есть кого показать при раскрытии.
+    for row in body["groups"]:
+        assert (row["total"] > 0) == (len(row["students"]) > 0)
+    assert ids["s1"] in {st["subject"]["id"] for st in case_row["students"]}
+    assert ids["s2"] in {st["subject"]["id"] for st in class_row["students"]}
+    # Счётчики строк не задваиваются: анкета лежит ровно в одной группе.
+    assert sum(g["total"] for g in body["groups"]) == body["total"]

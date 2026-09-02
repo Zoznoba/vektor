@@ -1107,10 +1107,14 @@ async def _campaign_students_by_group(
         RaterRole.PEER: "peers",
     }
 
-    students: dict[int, dict] = {}
-    # Снапшоты у всех анкет про одного ученика одни и те же; запоминаем ключ
-    # группы отдельно, чтобы разложить готовые строки по классам и кейсам.
-    group_of: dict[int, CoverageKey] = {}
+    # Ключ — ПАРА (группа, ученик), а не один ученик: один и тот же ребёнок
+    # может попасть в кампанию и классом, и кейсом (пары сливаются, но анкеты
+    # остаются разными — см. generate_assessments). Тогда он показывается в
+    # ОБЕИХ строках, и в каждой считаются только её собственные анкеты.
+    # С ключом по ученику первая же встреченная анкета «застолбила» бы группу,
+    # а строка кейса осталась бы с ненулевым счётчиком и пустым списком —
+    # то есть не раскрывалась бы вовсе.
+    students: dict[tuple[CoverageKey, int], dict] = {}
 
     for (
         class_id,
@@ -1122,16 +1126,16 @@ async def _campaign_students_by_group(
         subject,
         respondent_name,
     ) in rows.all():
-        row = students.get(subject_id)
+        key = (coverage_key(class_id, case_id), subject_id)
+        row = students.get(key)
         if row is None:
-            row = students[subject_id] = {
+            row = students[key] = {
                 "subject": subject,
                 "self_status": None,
                 "parents": {"total": 0, "completed": 0, "raters": []},
                 "teachers": {"total": 0, "completed": 0, "raters": []},
                 "peers": {"total": 0, "completed": 0, "raters": []},
             }
-            group_of[subject_id] = coverage_key(class_id, case_id)
 
         if respondent_id == subject_id:
             row["self_status"] = status
@@ -1150,15 +1154,16 @@ async def _campaign_students_by_group(
     by_group: dict[CoverageKey, list[dict]] = {}
     # Порядок внутри группы — по имени, как в get_class_roster: один и тот же
     # класс на двух экранах должен читаться одинаково.
-    for subject_id in sorted(students, key=lambda sid: students[sid]["subject"].full_name):
-        row = students[subject_id]
+    for key in sorted(students, key=lambda k: students[k]["subject"].full_name):
+        group_key, _subject_id = key
+        row = students[key]
         # Внутри слоя — незаполненные первыми: раскрывают его именно затем,
         # чтобы понять, кому напомнить, и искать их среди готовых незачем.
         for layer_name in ("parents", "teachers", "peers"):
             row[layer_name]["raters"].sort(
                 key=lambda r: (r["status"] == AssessmentStatus.COMPLETED, r["full_name"])
             )
-        by_group.setdefault(group_of[subject_id], []).append(row)
+        by_group.setdefault(group_key, []).append(row)
     return by_group
 
 

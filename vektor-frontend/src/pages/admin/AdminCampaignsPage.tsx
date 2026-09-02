@@ -350,13 +350,11 @@ function CoveragePanel({
 function CoverageGroupRow({ row }: { row: CoverageGroup }) {
   const [open, setOpen] = useState(false);
   const hasStudents = row.students.length > 0;
-  // Кейс подписываем явно: «Робототехника» рядом с «8-1» иначе читается как
-  // ещё один класс со странным названием.
-  const label =
-    row.kind === 'case' ? (row.case_name ?? 'кейс') : (row.class_label ?? 'без класса');
+  const isCase = row.kind === 'case';
+  const label = isCase ? (row.case_name ?? 'кейс') : (row.class_label ?? 'без класса');
 
   return (
-    <div className="coverage-group">
+    <div className={`coverage-group${isCase ? ' coverage-group--case' : ''}`}>
       <button
         type="button"
         className="coverage-row coverage-row--toggle"
@@ -369,9 +367,10 @@ function CoverageGroupRow({ row }: { row: CoverageGroup }) {
           size={15}
           className={`coverage-row__chevron${open ? ' coverage-row__chevron--open' : ''}`}
         />
-        <div className="coverage-row__label">
+        {/* title, а не видимая подпись: чем это отличается от класса, видно
+            по полосе слева, а расшифровка нужна раз в жизни. */}
+        <div className="coverage-row__label" title={isCase ? `Кейс «${label}»` : undefined}>
           {label}
-          {row.kind === 'case' && <span className="coverage-row__kind">кейс</span>}
         </div>
         <ProgressBar value={row.percent} className="coverage-row__bar" />
         <div className="coverage-row__counts">
@@ -393,12 +392,15 @@ function CoverageGroupRow({ row }: { row: CoverageGroup }) {
 function CoverageStudentsTable({ students }: { students: CampaignStudentRow[] }) {
   const navigate = useNavigate();
   const showPeers = students.some((s) => s.peers.total > 0);
-  // Какой слой раскрыт в окошке. Модалка, а не постоянно видимый список:
-  // имена нужны точечно («кому напомнить»), а развёрнутые они утроили бы
-  // высоту и без того плотной таблицы.
-  const [openLayer, setOpenLayer] = useState<{
+  // Слой раскрывается ПОДСКАЗКОЙ У КУРСОРА, а не модалкой: имена нужны
+  // мельком («кто ещё не заполнил»), а окно в центре экрана перекрывает
+  // таблицу и требует его закрыть, прежде чем смотреть следующую строку.
+  // Держим один экземпляр на таблицу, а не по подсказке на ячейку.
+  const [hovered, setHovered] = useState<{
     title: string;
     raters: RaterStatus[];
+    x: number;
+    y: number;
   } | null>(null);
 
   return (
@@ -428,35 +430,23 @@ function CoverageStudentsTable({ students }: { students: CampaignStudentRow[] })
               <td>
                 <LayerCell
                   layer={student.parents}
-                  onOpen={() =>
-                    setOpenLayer({
-                      title: `Родители · ${student.subject.full_name}`,
-                      raters: student.parents.raters,
-                    })
-                  }
+                  title={`Родители · ${student.subject.full_name}`}
+                  onHover={setHovered}
                 />
               </td>
               <td>
                 <LayerCell
                   layer={student.teachers}
-                  onOpen={() =>
-                    setOpenLayer({
-                      title: `Учителя · ${student.subject.full_name}`,
-                      raters: student.teachers.raters,
-                    })
-                  }
+                  title={`Учителя · ${student.subject.full_name}`}
+                  onHover={setHovered}
                 />
               </td>
               {showPeers && (
                 <td>
                   <LayerCell
                     layer={student.peers}
-                    onOpen={() =>
-                      setOpenLayer({
-                        title: `Одноклассники · ${student.subject.full_name}`,
-                        raters: student.peers.raters,
-                      })
-                    }
+                    title={`Одноклассники · ${student.subject.full_name}`}
+                    onHover={setHovered}
                   />
                 </td>
               )}
@@ -465,45 +455,61 @@ function CoverageStudentsTable({ students }: { students: CampaignStudentRow[] })
         </tbody>
       </table>
 
-      {openLayer && (
-        <RaterListModal
-          title={openLayer.title}
-          raters={openLayer.raters}
-          onClose={() => setOpenLayer(null)}
-        />
-      )}
+      {hovered && <RaterTooltip {...hovered} />}
     </div>
   );
 }
 
-/**
- * Кто оценивает ученика внутри одного слоя и заполнил ли анкету. Незаполнившие
- * идут первыми — порядок задаёт бэкенд, ради этого слой и раскрывают.
- */
-function RaterListModal({
-  title,
-  raters,
-  onClose,
-}: {
+export interface HoveredLayer {
   title: string;
   raters: RaterStatus[];
-  onClose: () => void;
-}) {
+  x: number;
+  y: number;
+}
+
+/**
+ * Кто оценивает ученика внутри слоя — подсказка у курсора. Незаполнившие
+ * идут первыми: порядок задаёт бэкенд, ради них слой и раскрывают.
+ *
+ * position: fixed от координат курсора, потому что подсказка обязана уметь
+ * вылезать за пределы прокручиваемой таблицы; переворачивается к левому
+ * верхнему краю у границ окна, иначе у последних строк её просто не видно.
+ * pointer-events: none — курсор проходит насквозь, и подсказка не может ни
+ * перехватить клик по строке, ни замигать, оказавшись под курсором.
+ */
+function RaterTooltip({ title, raters, x, y }: HoveredLayer) {
+  const width = 240;
+  // Высота на глаз: заголовок + строки. Точная не нужна — она влияет только
+  // на решение «показать сверху или снизу» у нижнего края экрана.
+  const height = 44 + raters.length * 26;
+  const flipX = x + width + 24 > window.innerWidth;
+  const flipY = y + height + 24 > window.innerHeight;
+
   return (
-    <Modal title={title} onClose={onClose}>
-      {raters.length === 0 ? (
-        <div className="admin-empty">Анкеты этого слоя не выдавались</div>
-      ) : (
-        <ul className="rater-list">
-          {raters.map((rater) => (
-            <li key={rater.id} className="rater-list__item">
-              <span className="rater-list__name">{rater.full_name}</span>
-              <SelfStatusCell status={rater.status} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </Modal>
+    <div
+      className="rater-tip"
+      style={{
+        left: flipX ? x - width - 14 : x + 14,
+        top: flipY ? Math.max(8, y - height - 14) : y + 14,
+        width,
+      }}
+    >
+      <div className="rater-tip__title">{title}</div>
+      <ul className="rater-tip__list">
+        {raters.map((rater) => (
+          <li key={rater.id} className="rater-tip__item">
+            <Icon
+              name={rater.status === 'completed' ? 'check' : 'clock'}
+              size={14}
+              className={
+                rater.status === 'completed' ? 'rater-tip__icon--done' : 'rater-tip__icon--wait'
+              }
+            />
+            <span className="rater-tip__name">{rater.full_name}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -533,31 +539,39 @@ function SelfStatusCell({ status }: { status: AssessmentStatus | null }) {
 
 /**
  * Слой раторов: «2 из 2» с галочкой, «1 из 2» приглушённо, «—» если не выдан.
- * По клику раскрывается поимённо — кроме невыданного слоя, где раскрывать
- * нечего.
+ * При наведении раскрывается поимённо у курсора — кроме невыданного слоя, где
+ * раскрывать нечего.
  *
- * stopPropagation обязателен: строка целиком ведёт на результаты ученика, и
- * без него клик по слою уводил бы со страницы вместо открытия окна.
+ * Координаты берём из mousemove, а не только из enter: подсказка должна
+ * держаться у курсора, пока он ходит по ячейке.
  */
-function LayerCell({ layer, onOpen }: { layer: LayerCoverage; onOpen: () => void }) {
+function LayerCell({
+  layer,
+  title,
+  onHover,
+}: {
+  layer: LayerCoverage;
+  title: string;
+  onHover: (state: HoveredLayer | null) => void;
+}) {
   if (layer.total === 0) {
     return <span className="cover-mark cover-mark--missing">—</span>;
   }
   const done = layer.completed === layer.total;
   const tone = done ? 'done' : layer.completed > 0 ? 'partial' : 'none';
+  const show = (e: { clientX: number; clientY: number }) =>
+    onHover({ title, raters: layer.raters, x: e.clientX, y: e.clientY });
+
   return (
-    <button
-      type="button"
-      className={`cover-mark cover-mark--${tone} cover-mark--button`}
-      title="Показать, кто оценивает"
-      onClick={(e) => {
-        e.stopPropagation();
-        onOpen();
-      }}
+    <span
+      className={`cover-mark cover-mark--${tone} cover-mark--hoverable`}
+      onMouseEnter={show}
+      onMouseMove={show}
+      onMouseLeave={() => onHover(null)}
     >
       {done && <Icon name="check" size={13} />}
       {layer.completed} из {layer.total}
-    </button>
+    </span>
   );
 }
 
