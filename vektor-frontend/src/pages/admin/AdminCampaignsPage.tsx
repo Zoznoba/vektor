@@ -421,9 +421,11 @@ function CoverageStudentsTable({ students }: { students: CampaignStudentRow[] })
               key={student.subject.id}
               className="coverage-students__row"
               onClick={() => navigate(`/admin/results/${student.subject.id}`)}
-              title="Открыть результаты ученика"
             >
-              <td>{student.subject.full_name}</td>
+              {/* Подсказка про переход висит на ИМЕНИ, а не на всей строке:
+                  системный тултип появляется через секунду и накрывал бы наш
+                  список раторов, всплывающий у курсора над ячейками слоёв. */}
+              <td title="Открыть результаты ученика">{student.subject.full_name}</td>
               <td>
                 <SelfStatusCell status={student.self_status} />
               </td>
