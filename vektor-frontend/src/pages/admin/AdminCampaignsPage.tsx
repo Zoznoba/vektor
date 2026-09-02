@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
@@ -19,9 +20,11 @@ import {
 } from '../../api/campaigns';
 import type { CreateCampaignIn } from '../../api/campaigns';
 import { fetchClasses } from '../../api/classes';
+import { fetchCases } from '../../api/cases';
 import { classLabel } from '../../types/school';
 import { MONTH_OPTIONS, formatPeriod } from '../../data/period';
 import type { SchoolClass } from '../../types/school';
+import type { Case } from '../../types/case';
 import { ApiError } from '../../api/client';
 import type {
   CampaignCoverage,
@@ -65,6 +68,8 @@ export function AdminCampaignsPage() {
   const navigate = useNavigate();
   const campaigns = useApi(fetchCampaigns);
   const classes = useApi(fetchClasses);
+  // Кейсы — второй источник анкет наравне с классами (Этап 8).
+  const cases = useApi(fetchCases);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   // По умолчанию — только активные: это то, за чем админ обычно следит.
@@ -192,6 +197,7 @@ export function AdminCampaignsPage() {
                 key={`generate-${selected.id}`}
                 campaign={selected}
                 allClasses={classes.data ?? []}
+                allCases={cases.data ?? []}
                 onGenerated={() => campaigns.reload()}
               />
             </div>
@@ -527,33 +533,87 @@ function DeleteCampaignModal({
   );
 }
 
+/**
+ * Один источник анкет для кампании: класс или кейс. Нормализуем оба к общей
+ * форме, потому что различие между ними существует только на бэкенде (разные
+ * поля запроса), а на экране это один и тот же элемент — «отметить, кого
+ * опрашиваем, и кто из учителей оценивает».
+ */
+interface GenerateSource {
+  id: number;
+  label: string;
+  sublabel: string;
+  teachers: { id: number; name: string; note: string }[];
+  /** Текст, когда учителей у источника нет вовсе. */
+  emptyTeachers: string;
+}
+
+function classSource(c: SchoolClass): GenerateSource {
+  return {
+    id: c.id,
+    label: classLabel(c),
+    sublabel: `${c.students.length} учеников`,
+    teachers: c.teachers.map((link) => ({
+      id: link.teacher.id,
+      name: link.teacher.full_name,
+      note: link.is_homeroom ? 'кл. рук.' : (link.subject ?? ''),
+    })),
+    emptyTeachers: 'К классу не привязан ни один учитель',
+  };
+}
+
+function caseSource(kase: Case): GenerateSource {
+  return {
+    id: kase.id,
+    label: kase.name,
+    sublabel: `${kase.students.length} учеников`,
+    teachers: kase.teachers.map((t) => ({ id: t.id, name: t.full_name, note: 'руководитель' })),
+    emptyTeachers: 'К кейсу не привязан ни один учитель',
+  };
+}
+
 function GeneratePanel({
   campaign,
   allClasses,
+  allCases,
   onGenerated,
 }: {
   campaign: CampaignListItem;
   allClasses: SchoolClass[];
+  allCases: Case[];
   onGenerated: () => void;
 }) {
+  // Классы и кейсы — два независимых набора: кампания может собираться из
+  // одних классов, из одних кружков или из тех и других сразу. Бэкенд сливает
+  // пары через merge_pairs, поэтому ученик, попавший обоими путями, получит
+  // по одной анкете на оценивающего, а не две.
   const [checkedClassIds, setCheckedClassIds] = useState<Set<number>>(new Set());
-  // Выбор учителей ПО КЛАССУ: ученика оценивают 2–4 учителя, а не весь
-  // педсостав. Ключ появляется, только когда класс отмечен, — отправляем
+  const [checkedCaseIds, setCheckedCaseIds] = useState<Set<number>>(new Set());
+  // Выбор учителей ПО ИСТОЧНИКУ: ученика оценивают 2–4 учителя, а не весь
+  // педсостав. Ключ появляется, только когда источник отмечен, — отправляем
   // ровно то, что админ видел на экране.
   const [teachersByClass, setTeachersByClass] = useState<Record<number, Set<number>>>({});
+  const [teachersByCase, setTeachersByCase] = useState<Record<number, Set<number>>>({});
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const toggleClass = (id: number) => {
+  const classSources = useMemo(() => allClasses.map(classSource), [allClasses]);
+  const caseSources = useMemo(() => allCases.map(caseSource), [allCases]);
+
+  const toggleSource = (
+    id: number,
+    setChecked: Dispatch<SetStateAction<Set<number>>>,
+    setTeachers: Dispatch<SetStateAction<Record<number, Set<number>>>>,
+  ) => {
     setResult(null);
-    setCheckedClassIds((prev) => {
+    setChecked((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-    setTeachersByClass((prev) => {
+    setTeachers((prev) => {
       if (prev[id]) return prev;
       // По умолчанию — никого: 2–4 учителя выбирает человек, а молчаливое
       // «все 11» ровно та ситуация, от которой уходим.
@@ -561,29 +621,45 @@ function GeneratePanel({
     });
   };
 
-  const toggleTeacher = (classId: number, teacherId: number) => {
+  const toggleTeacher = (
+    sourceId: number,
+    teacherId: number,
+    setTeachers: Dispatch<SetStateAction<Record<number, Set<number>>>>,
+  ) => {
     setResult(null);
-    setTeachersByClass((prev) => {
-      const next = new Set(prev[classId] ?? []);
+    setTeachers((prev) => {
+      const next = new Set(prev[sourceId] ?? []);
       if (next.has(teacherId)) next.delete(teacherId);
       else next.add(teacherId);
-      return { ...prev, [classId]: next };
+      return { ...prev, [sourceId]: next };
     });
   };
 
-  const checkedClasses = allClasses.filter((c) => checkedClassIds.has(c.id));
-  const withoutTeachers = checkedClasses.filter((c) => (teachersByClass[c.id]?.size ?? 0) === 0);
-  const overLimit = checkedClasses.filter((c) => (teachersByClass[c.id]?.size ?? 0) > 4);
+  const checkedSources = [
+    ...classSources.filter((s) => checkedClassIds.has(s.id)).map((s) => ({ s, by: teachersByClass })),
+    ...caseSources.filter((s) => checkedCaseIds.has(s.id)).map((s) => ({ s, by: teachersByCase })),
+  ];
+  const withoutTeachers = checkedSources.filter(({ s, by }) => (by[s.id]?.size ?? 0) === 0);
+  const overLimit = checkedSources.filter(({ s, by }) => (by[s.id]?.size ?? 0) > 4);
+  const nothingChecked = checkedClassIds.size === 0 && checkedCaseIds.size === 0;
 
   const handleGenerate = async () => {
-    if (checkedClassIds.size === 0) return;
+    if (nothingChecked) return;
     setError(null);
     setResult(null);
     setSubmitting(true);
     try {
-      const payload: Record<number, number[]> = {};
-      for (const id of checkedClassIds) payload[id] = [...(teachersByClass[id] ?? [])];
-      const res = await generateAssessments(campaign.id, [...checkedClassIds], payload);
+      const byClass: Record<number, number[]> = {};
+      for (const id of checkedClassIds) byClass[id] = [...(teachersByClass[id] ?? [])];
+      const byCase: Record<number, number[]> = {};
+      for (const id of checkedCaseIds) byCase[id] = [...(teachersByCase[id] ?? [])];
+
+      const res = await generateAssessments(campaign.id, {
+        classIds: [...checkedClassIds],
+        teacherIdsByClass: byClass,
+        caseIds: [...checkedCaseIds],
+        teacherIdsByCase: byCase,
+      });
       setResult(
         res.created > 0
           ? `Добавлено новых анкет: ${res.created}`
@@ -618,84 +694,134 @@ function GeneratePanel({
           <div className="rater-rule__text">
             <div className="rater-rule__label">Учителя</div>
             <div className="rater-rule__note">
-              Выбранные ниже — они оценивают всех учеников своего класса
+              Выбранные ниже — они оценивают всех учеников своего класса или кейса
             </div>
           </div>
           <span className="rater-rule__badge">По выбору</span>
         </div>
       </div>
 
-      <div className="class-picker">
-        <div className="class-picker__label">Классы и учителя-оценщики</div>
-        {allClasses.length === 0 ? (
-          <div className="admin-empty">Классов пока нет</div>
-        ) : (
-          <div className="assign-list">
-            {allClasses.map((c) => (
-              <div key={c.id}>
-                <label className="assign-item">
-                  <input
-                    type="checkbox"
-                    checked={checkedClassIds.has(c.id)}
-                    onChange={() => toggleClass(c.id)}
-                  />
-                  <span className="assign-item__name">{classLabel(c)}</span>
-                  <span className="assign-item__email">{c.students.length} учеников</span>
-                </label>
+      <SourcePicker
+        title="Классы и учителя-оценщики"
+        emptyText="Классов пока нет"
+        sources={classSources}
+        checkedIds={checkedClassIds}
+        teachersBySource={teachersByClass}
+        onToggleSource={(id) => toggleSource(id, setCheckedClassIds, setTeachersByClass)}
+        onToggleTeacher={(sourceId, teacherId) =>
+          toggleTeacher(sourceId, teacherId, setTeachersByClass)
+        }
+      />
 
-                {checkedClassIds.has(c.id) && (
-                  <div className="teacher-picker">
-                    <div className="teacher-picker__hint">
-                      Кто из учителей оценивает класс — обычно 2–4 человека
-                    </div>
-                    {c.teachers.length === 0 ? (
-                      <div className="admin-empty">К классу не привязан ни один учитель</div>
-                    ) : (
-                      c.teachers.map((link) => (
-                        <label key={link.teacher.id} className="teacher-picker__item">
-                          <input
-                            type="checkbox"
-                            checked={teachersByClass[c.id]?.has(link.teacher.id) ?? false}
-                            onChange={() => toggleTeacher(c.id, link.teacher.id)}
-                          />
-                          <span className="teacher-picker__name">{link.teacher.full_name}</span>
-                          <span className="teacher-picker__role">
-                            {link.is_homeroom ? 'кл. рук.' : (link.subject ?? '')}
-                          </span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Кейсы — второе основание для выдачи анкет. Блок показываем, только
+          если кружки в школе заведены: пустой раздел на экране генерации
+          читался бы как «что-то не загрузилось». */}
+      {caseSources.length > 0 && (
+        <SourcePicker
+          title="Кейсы и учителя-оценщики"
+          emptyText="Кейсов пока нет"
+          sources={caseSources}
+          checkedIds={checkedCaseIds}
+          teachersBySource={teachersByCase}
+          onToggleSource={(id) => toggleSource(id, setCheckedCaseIds, setTeachersByCase)}
+          onToggleTeacher={(sourceId, teacherId) =>
+            toggleTeacher(sourceId, teacherId, setTeachersByCase)
+          }
+        />
+      )}
 
       {/* Не блокируем генерацию: 2–4 — это практика школы, а не инвариант. */}
       {overLimit.length > 0 && (
         <div className="campaign-generate__warning">
-          Больше 4 учителей на класс ({overLimit.map(classLabel).join(', ')}) — обычно берут 2–4.
+          Больше 4 учителей ({overLimit.map(({ s }) => s.label).join(', ')}) — обычно берут 2–4.
           Сгенерировать всё равно можно.
         </div>
       )}
       {withoutTeachers.length > 0 && (
         <div className="campaign-generate__warning">
-          Учителя не выбраны ({withoutTeachers.map(classLabel).join(', ')}) — по этим классам
-          будут только самооценка и анкеты родителей.
+          Учителя не выбраны ({withoutTeachers.map(({ s }) => s.label).join(', ')}) — будут только
+          самооценка и анкеты родителей.
         </div>
       )}
 
       {error && <div className="form-error">{error}</div>}
       {result && !error && <div className="campaign-generate__result">{result}</div>}
 
-      <Button block onClick={handleGenerate} disabled={submitting || checkedClassIds.size === 0}>
+      <Button block onClick={handleGenerate} disabled={submitting || nothingChecked}>
         {submitting ? 'Генерируем…' : 'Сгенерировать анкеты'}
       </Button>
     </Panel>
   );
 }
+
+/** Список источников с раскрывающимся выбором учителей — один и тот же для
+ *  классов и кейсов. */
+function SourcePicker({
+  title,
+  emptyText,
+  sources,
+  checkedIds,
+  teachersBySource,
+  onToggleSource,
+  onToggleTeacher,
+}: {
+  title: string;
+  emptyText: string;
+  sources: GenerateSource[];
+  checkedIds: Set<number>;
+  teachersBySource: Record<number, Set<number>>;
+  onToggleSource: (id: number) => void;
+  onToggleTeacher: (sourceId: number, teacherId: number) => void;
+}) {
+  return (
+    <div className="class-picker">
+      <div className="class-picker__label">{title}</div>
+      {sources.length === 0 ? (
+        <div className="admin-empty">{emptyText}</div>
+      ) : (
+        <div className="assign-list">
+          {sources.map((source) => (
+            <div key={source.id}>
+              <label className="assign-item">
+                <input
+                  type="checkbox"
+                  checked={checkedIds.has(source.id)}
+                  onChange={() => onToggleSource(source.id)}
+                />
+                <span className="assign-item__name">{source.label}</span>
+                <span className="assign-item__email">{source.sublabel}</span>
+              </label>
+
+              {checkedIds.has(source.id) && (
+                <div className="teacher-picker">
+                  <div className="teacher-picker__hint">
+                    Кто из учителей оценивает — обычно 2–4 человека
+                  </div>
+                  {source.teachers.length === 0 ? (
+                    <div className="admin-empty">{source.emptyTeachers}</div>
+                  ) : (
+                    source.teachers.map((teacher) => (
+                      <label key={teacher.id} className="teacher-picker__item">
+                        <input
+                          type="checkbox"
+                          checked={teachersBySource[source.id]?.has(teacher.id) ?? false}
+                          onChange={() => onToggleTeacher(source.id, teacher.id)}
+                        />
+                        <span className="teacher-picker__name">{teacher.name}</span>
+                        <span className="teacher-picker__role">{teacher.note}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function CreateCampaignModal({
   onClose,

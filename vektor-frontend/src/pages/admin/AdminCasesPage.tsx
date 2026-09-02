@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
 import { Button } from '../../components/ui/Button';
@@ -60,7 +60,13 @@ export function AdminCasesPage() {
   const cases = useApi(fetchCases);
   const users = useApi(fetchUsers);
 
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const location = useLocation();
+  // Переход «Кейс …» из карточки пользователя (AdminUsersPage) кладёт id в
+  // state — тем же приёмом, что и переход в класс: открывается нужный кейс,
+  // а не первый по алфавиту.
+  const [selectedId, setSelectedId] = useState<number | null>(
+    () => (location.state as { caseId?: number } | null)?.caseId ?? null,
+  );
   const [tab, setTab] = useState<MemberTab>('students');
   const [showCreate, setShowCreate] = useState(false);
   // Режим модалки назначения совпадает с активной вкладкой: «добавить»

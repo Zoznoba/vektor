@@ -12,6 +12,12 @@ export interface User {
   role: UserRole;
   is_active: boolean;
   /**
+   * Кейс (профильная группа) — идентификатором, а не названием: бэкенд отдаёт
+   * его в каждом UserOut как обычную колонку. Название экраны берут из
+   * /cases, человеку в шапку его кладёт /users/me (case_name).
+   */
+  case_id?: number | null;
+  /**
    * «8-1» — только у ученика; у учителя, родителя и админа класса нет.
    * Приходит из /users/me; в списках пользователей поля нет.
    */
@@ -21,6 +27,8 @@ export interface User {
    * к роли. Приходит из /users/me; в списках пользователей поля нет.
    */
   academic_year?: string;
+  /** Название кейса — приходит только из /users/me, в списках его нет. */
+  case_name?: string | null;
 }
 
 export interface TokenResponse {

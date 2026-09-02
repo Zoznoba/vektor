@@ -237,3 +237,80 @@ async def test_reset_password_requires_admin(client: AsyncClient, roster: dict) 
     )
 
     assert response.status_code == 403
+
+
+# --- Фильтры по кейсу (Этап 8) ---
+
+
+@pytest.fixture
+async def roster_with_case(
+    client: AsyncClient, admin_headers: dict[str, str], roster: dict
+) -> dict:
+    """Поверх roster: кейс, в котором лежит один ученик и один учитель."""
+    kase = (await client.post("/cases", json={"name": "Хор"}, headers=admin_headers)).json()
+    await client.post(
+        f"/cases/{kase['id']}/students",
+        json={"user_ids": [roster["ivanova"]]},
+        headers=admin_headers,
+    )
+    await client.post(
+        f"/cases/{kase['id']}/teachers",
+        json={"user_ids": [roster["teacher"]]},
+        headers=admin_headers,
+    )
+    return {**roster, "case_id": kase["id"]}
+
+
+async def test_list_users_filter_by_case_id(
+    client: AsyncClient, admin_headers: dict[str, str], roster_with_case: dict
+) -> None:
+    """Фильтр по кейсу отдаёт весь его состав — и учеников, и учителей: колонка
+    users.case_id одна на обе роли."""
+    response = await client.get(
+        f"/users?case_id={roster_with_case['case_id']}", headers=admin_headers
+    )
+
+    assert response.status_code == 200
+    assert {u["id"] for u in response.json()} == {
+        roster_with_case["ivanova"],
+        roster_with_case["teacher"],
+    }
+
+
+async def test_list_users_without_case_excludes_members(
+    client: AsyncClient, admin_headers: dict[str, str], roster_with_case: dict
+) -> None:
+    """`without_case` — это список кандидатов на привязку: членство в кейсе
+    одно, и человека из другого кейса бэкенд не примет."""
+    response = await client.get("/users?without_case=true&role=student", headers=admin_headers)
+
+    ids = {u["id"] for u in response.json()}
+    assert roster_with_case["ivanova"] not in ids
+    assert {roster_with_case["petrov"], roster_with_case["other_student"]} <= ids
+
+
+async def test_list_users_exposes_case_id(
+    client: AsyncClient, admin_headers: dict[str, str], roster_with_case: dict
+) -> None:
+    """case_id виден в общем списке — иначе экран пользователей не показал бы
+    кейс, не запрашивая состав каждого кейса отдельно."""
+    response = await client.get("/users?role=student", headers=admin_headers)
+
+    by_id = {u["id"]: u for u in response.json()}
+    assert by_id[roster_with_case["ivanova"]]["case_id"] == roster_with_case["case_id"]
+    assert by_id[roster_with_case["petrov"]]["case_id"] is None
+
+
+async def test_me_exposes_case_name(
+    client: AsyncClient, admin_headers: dict[str, str], roster_with_case: dict
+) -> None:
+    """Название кейса человеку отдаёт /users/me — в шапку, как и класс."""
+    login = await client.post(
+        "/auth/login", json={"email": "ivanova@vektor.ru", "password": "password123"}
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    response = await client.get("/users/me", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["case_name"] == "Хор"

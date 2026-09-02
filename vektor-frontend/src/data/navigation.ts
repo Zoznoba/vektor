@@ -26,6 +26,10 @@ export const STUDENT_NAV_ITEMS: NavItem[] = [
  */
 export const TEACHER_NAV_ITEMS: NavItem[] = [
   { key: 'classes', label: 'Мои классы', icon: 'school' },
+  // «Мои кейсы» — профильная группа учителя (Этап 8). Пункт показываем всем
+  // учителям, а не только тем, у кого кейс есть: сайдбар статичен по роли, а
+  // экран сам объясняет пустое состояние («вы не привязаны ни к одному кейсу»).
+  { key: 'cases', label: 'Мои кейсы', icon: 'briefcase' },
   { key: 'surveys', label: 'Анкеты', icon: 'file' },
   { key: 'students', label: 'Профиль ученика', icon: 'radar' },
 ];
@@ -49,6 +53,7 @@ export const STUDENT_ROUTES: Record<string, string> = {
 /** Маршруты разделов учителя. */
 export const TEACHER_ROUTES: Record<string, string> = {
   classes: '/teacher/classes',
+  cases: '/teacher/cases',
   surveys: '/surveys',
   students: '/teacher/students',
 };

@@ -22,18 +22,33 @@ export function createCampaign(data: CreateCampaignIn): Promise<Campaign> {
 }
 
 /**
- * teacherIdsByClass — какие учителя класса участвуют: {classId: [teacherId]}.
- * Класса нет в объекте → участвуют ВСЕ его учителя (прежнее поведение);
- * пустой массив → учительских анкет по классу не будет.
+ * Кампания собирается из классов и/или кейсов — нужен хотя бы один источник,
+ * пустой запрос бэкенд отклоняет (422).
+ *
+ * teacherIdsByClass / teacherIdsByCase — какие учителя участвуют:
+ * {classId: [teacherId]}. Класса (кейса) нет в объекте → участвуют ВСЕ его
+ * учителя (прежнее поведение); пустой массив → учительских анкет по нему не
+ * будет вовсе.
  */
+export interface GenerateSources {
+  classIds?: number[];
+  teacherIdsByClass?: Record<number, number[]>;
+  caseIds?: number[];
+  teacherIdsByCase?: Record<number, number[]>;
+}
+
 export function generateAssessments(
   campaignId: number,
-  classIds: number[],
-  teacherIdsByClass: Record<number, number[]>,
+  sources: GenerateSources,
 ): Promise<GenerateResult> {
   return apiRequest<GenerateResult>(`/campaigns/${campaignId}/generate`, {
     method: 'POST',
-    body: { class_ids: classIds, teacher_ids_by_class: teacherIdsByClass },
+    body: {
+      class_ids: sources.classIds ?? [],
+      teacher_ids_by_class: sources.teacherIdsByClass ?? {},
+      case_ids: sources.caseIds ?? [],
+      teacher_ids_by_case: sources.teacherIdsByCase ?? {},
+    },
   });
 }
 

@@ -44,9 +44,14 @@ class BulkCreateIn(BaseModel):
     class_id опционален: если задан, все строки с role=student разом
     привязываются к этому классу тем же вызовом (переиспользуем логику
     assign_students). Строки других ролей к классу не трогаем.
+
+    case_id — то же для кейса, но с одним отличием: в кейс попадают И ученики,
+    И учителя, потому что членство в кейсе одно на обе роли (FK users.case_id,
+    Этап 8). Родителей и админов не трогаем — их в кейсе не бывает.
     """
 
     class_id: int | None = None
+    case_id: int | None = None
     users: list[BulkUserIn] = Field(min_length=1)
 
 
@@ -62,6 +67,7 @@ class BulkCreateOut(BaseModel):
 
     created: list[UserOut]
     class_id: int | None = None
+    case_id: int | None = None
     default_password: str
 
 
@@ -74,10 +80,12 @@ class ParentWithChildrenOut(UserOut):
 
 
 class MeOut(UserOut):
-    """/users/me — то же, что UserOut, плюс класс и учебный год для шапки
-    дашборда.
+    """/users/me — то же, что UserOut, плюс класс, кейс и учебный год для
+    шапки дашборда.
 
     None у class_label — штатно: у учителя, родителя и админа класса нет.
+    None у case_name — тем более штатно: кейс есть у меньшинства (профильная
+    группа — это кружок, а не обязательная для всех единица).
     academic_year — не хранится нигде (период кампании — календарные год и
     месяц, а не учебный год: «2026-06» относится к 2025/2026), считается от
     текущей даты через
@@ -85,4 +93,5 @@ class MeOut(UserOut):
     """
 
     class_label: str | None = None
+    case_name: str | None = None
     academic_year: str

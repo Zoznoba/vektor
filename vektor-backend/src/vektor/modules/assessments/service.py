@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from vektor.core.errors import DomainError
 from vektor.modules.assessments.models import Answer, Assessment, Campaign
+from vektor.modules.cases.models import Case
 from vektor.modules.classes.models import SchoolClass
 from vektor.modules.competencies.models import Competency, Question, QuestionnaireVersion
 from vektor.modules.users.models import User
@@ -340,12 +341,30 @@ def _teachers_for_class(
     return [tid for tid in all_ids if tid in chosen]
 
 
+def _teachers_for_case(kase: Case, teacher_ids_by_case: dict[int, list[int]] | None) -> list[int]:
+    """Учителя кейса, участвующие в кампании — зеркало _teachers_for_class.
+
+    Правила те же и по той же причине: выбор пересекается с фактическим
+    составом кейса (открепившийся между открытием экрана и генерацией не
+    получит анкету и доступ к чужим результатам), отсутствие кейса в словаре
+    означает «все его учителя», а пустой список — сознательное «учительских
+    анкет по кейсу не делать».
+    """
+    all_ids = [t.id for t in kase.teachers]
+    if teacher_ids_by_case is None or kase.id not in teacher_ids_by_case:
+        return all_ids
+    chosen = set(teacher_ids_by_case[kase.id])
+    return [tid for tid in all_ids if tid in chosen]
+
+
 async def generate_assessments(
     db: AsyncSession,
     campaign_id: int,
     class_ids: list[int],
     include_peers: bool = False,
     teacher_ids_by_class: dict[int, list[int]] | None = None,
+    case_ids: list[int] | None = None,
+    teacher_ids_by_case: dict[int, list[int]] | None = None,
 ) -> tuple[Campaign, int]:
     """Оркестрация: грузит классы из БД, строит матрицу через build_pairs,
     идемпотентно вставляет НОВЫЕ анкеты, переводит кампанию в ACTIVE.
@@ -357,6 +376,13 @@ async def generate_assessments(
     учителя класса» — на этом стоят кампании, созданные до появления выбора.
     Пустой список — сознательное «учительских анкет по классу не делать»,
     поэтому он НЕ приравнивается к отсутствию ключа.
+
+    `case_ids`/`teacher_ids_by_case` — то же самое для КЕЙСОВ (профильных
+    групп): кампания собирается из классов и кружков одновременно, потому что
+    в кружке ученика оценивают его руководители, а не предметники его класса.
+    Кейс и класс не конфликтуют: ученик может попасть в кампанию по обоим
+    основаниям, пары просто сольются через merge_pairs, а на анкете
+    проставятся ОБА снапшота (subject_class_id и subject_case_id).
 
     Верхней границы на число учителей нет намеренно: 2–4 — это практика, а не
     инвариант данных, и упереться в неё школа может по своим причинам.
@@ -396,6 +422,43 @@ async def generate_assessments(
             build_pairs(student_ids, parent_ids_by_student, teacher_ids, include_peers),
         )
 
+    # Кейс субъекта на момент генерации — второй снапшот рядом с классом.
+    # Ученик состоит РОВНО в одном кейсе (FK users.case_id), поэтому коллизий
+    # тут быть не может, как и у класса.
+    case_id_by_subject: dict[int, int] = {}
+
+    if case_ids:
+        cases_sample = await db.execute(
+            select(Case)
+            .where(Case.id.in_(case_ids))
+            .options(
+                selectinload(Case.students).selectinload(User.parents),
+                selectinload(Case.teachers),
+            )
+        )
+
+        for kase in cases_sample.scalars():
+            student_ids = [s.id for s in kase.students]
+            parent_ids_by_student = {s.id: [p.id for p in s.parents] for s in kase.students}
+            teacher_ids = _teachers_for_case(kase, teacher_ids_by_case)
+
+            case_id_by_subject.update({s.id: kase.id for s in kase.students})
+            # Класс субъекта проставляем и здесь, из его собственной привязки:
+            # от него зависит видимость возрастных вопросов, а ученик кейса
+            # мог не попасть ни в один класс кампании. Класса может не быть
+            # вовсе — тогда останется None, как и у любого субъекта вне класса.
+            for student in kase.students:
+                if student.school_class_id is not None:
+                    class_id_by_subject.setdefault(student.id, student.school_class_id)
+
+            merge_pairs(
+                all_pairs,
+                # include_peers не пробрасываем: «одноклассники» — это про
+                # класс. Оценка участниками кружка друг друга — отдельное
+                # доменное правило, которого школа не заказывала.
+                build_pairs(student_ids, parent_ids_by_student, teacher_ids, include_peers=False),
+            )
+
     existing_pairs = await db.execute(
         select(Assessment.respondent_id, Assessment.subject_id).where(
             Assessment.campaign_id == campaign_id
@@ -412,6 +475,7 @@ async def generate_assessments(
                 subject_id=s,
                 rater_role=role,
                 subject_class_id=class_id_by_subject.get(s),
+                subject_case_id=case_id_by_subject.get(s),
             )
             for (r, s), role in new_pairs.items()
         ]

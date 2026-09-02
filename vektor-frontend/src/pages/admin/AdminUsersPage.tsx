@@ -18,12 +18,14 @@ import {
   resetPassword,
 } from '../../api/users';
 import { fetchClasses } from '../../api/classes';
+import { fetchCases } from '../../api/cases';
 import { ApiError } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { ROLE_LABELS } from '../../types/auth';
 import type { User, UserRole } from '../../types/auth';
 import { classLabel } from '../../types/school';
 import type { SchoolClass } from '../../types/school';
+import type { Case } from '../../types/case';
 import './admin.css';
 
 type RoleFilter = UserRole | 'all';
@@ -49,12 +51,25 @@ function buildClassIndex(classes: SchoolClass[] | null): Map<number, string> {
   return index;
 }
 
+/** id пользователя → название его кейса. Кейс ровно один и у ученика, и у
+ *  учителя (FK users.case_id), поэтому склеивать названия, как у классов, не
+ *  требуется. */
+function buildCaseIndex(cases: Case[] | null): Map<number, string> {
+  const index = new Map<number, string>();
+  if (!cases) return index;
+  for (const kase of cases) {
+    for (const member of [...kase.students, ...kase.teachers]) index.set(member.id, kase.name);
+  }
+  return index;
+}
+
 export function AdminUsersPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user: currentUser } = useAuth();
   const users = useApi(fetchUsers);
   const classes = useApi(fetchClasses);
+  const cases = useApi(fetchCases);
 
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [search, setSearch] = useState('');
@@ -66,6 +81,7 @@ export function AdminUsersPage() {
   const [showCreate, setShowCreate] = useState(false);
 
   const classIndex = useMemo(() => buildClassIndex(classes.data), [classes.data]);
+  const caseIndex = useMemo(() => buildCaseIndex(cases.data), [cases.data]);
 
   const allUsers = useMemo(() => users.data ?? [], [users.data]);
   const filtered = useMemo(() => {
@@ -139,6 +155,7 @@ export function AdminUsersPage() {
             user={selected}
             allUsers={allUsers}
             classes={classes.data ?? []}
+            cases={cases.data ?? []}
             isSelf={selected.id === currentUser?.id}
             onOpenDiagnostics={() => navigate(`/admin/results/${selected.id}`)}
             onChanged={() => users.reload()}
@@ -159,6 +176,7 @@ export function AdminUsersPage() {
                 <th>Email</th>
                 <th>Роль</th>
                 <th>Класс</th>
+                <th>Кейс</th>
                 <th>Статус</th>
               </tr>
             </thead>
@@ -175,6 +193,7 @@ export function AdminUsersPage() {
                     <Badge variant={ROLE_BADGE[u.role]}>{ROLE_LABELS[u.role]}</Badge>
                   </td>
                   <td>{classIndex.get(u.id) ?? '—'}</td>
+                  <td>{caseIndex.get(u.id) ?? '—'}</td>
                   <td>
                     <span
                       className={`status-dot ${u.is_active ? 'status-dot--on' : ''}`.trim()}
@@ -290,6 +309,7 @@ function UserActionsPanel({
   user,
   allUsers,
   classes,
+  cases,
   isSelf,
   onOpenDiagnostics,
   onChanged,
@@ -297,6 +317,7 @@ function UserActionsPanel({
   user: User;
   allUsers: User[];
   classes: SchoolClass[];
+  cases: Case[];
   isSelf: boolean;
   onOpenDiagnostics: () => void;
   onChanged: () => void;
@@ -310,6 +331,15 @@ function UserActionsPanel({
   const teacherClasses = useMemo(
     () => classes.filter((c) => c.teachers.some((t) => t.teacher.id === user.id)),
     [classes, user.id],
+  );
+
+  // Кейс один на человека — поэтому не список кнопок, как у классов учителя,
+  // а одна. Ищем по составу, а не по user.case_id: в кейсе ученик и учитель
+  // лежат в разных списках, но колонка одна.
+  const userCase = useMemo(
+    () =>
+      cases.find((c) => [...c.students, ...c.teachers].some((m) => m.id === user.id)) ?? null,
+    [cases, user.id],
   );
 
   const handleReactivate = async () => {
@@ -341,6 +371,14 @@ function UserActionsPanel({
         {user.role === 'student' && (
           <Button variant="secondary" onClick={onOpenDiagnostics}>
             Диагностика
+          </Button>
+        )}
+        {userCase && (
+          <Button
+            variant="secondary"
+            onClick={() => navigate('/admin/cases', { state: { caseId: userCase.id } })}
+          >
+            Кейс «{userCase.name}»
           </Button>
         )}
         {user.role === 'teacher' &&

@@ -27,6 +27,7 @@ from sqlalchemy.orm import selectinload
 
 from vektor.core.errors import DomainError
 from vektor.modules.assessments.models import Answer, Assessment, Campaign
+from vektor.modules.cases.models import Case
 from vektor.modules.classes.models import SchoolClass
 from vektor.modules.competencies.models import Competency, Question, QuestionnaireVersion
 from vektor.modules.users.models import User
@@ -292,9 +293,10 @@ def can_view_results(
     teacher_ids: set[int],
     parent_ids: set[int],
 ) -> bool:
-    """Кто может смотреть результаты субъекта: он сам, admin, учитель его
-    класса (teacher_ids) или его родитель (parent_ids). Чистая функция —
-    teacher_ids/parent_ids уже посчитаны вызывающим кодом из БД."""
+    """Кто может смотреть результаты субъекта: он сам, admin, его родитель
+    (parent_ids) или учитель (teacher_ids) — под учителем понимается и учитель
+    его класса, и руководитель его кейса: состав teacher_ids собирает
+    вызывающий код. Чистая функция — оба множества уже посчитаны из БД."""
     return (
         current_user_id == subject_id
         or current_user_role == UserRole.ADMIN
@@ -401,6 +403,7 @@ async def _load_subject_for_results(db: AsyncSession, subject_id: int, current_u
         .where(User.id == subject_id)
         .options(
             selectinload(User.school_class).selectinload(SchoolClass.teachers),
+            selectinload(User.case).selectinload(Case.teachers),
             selectinload(User.parents),
         )
     )
@@ -408,7 +411,13 @@ async def _load_subject_for_results(db: AsyncSession, subject_id: int, current_u
     if subject is None:
         raise SubjectNotFound()
 
+    # Учителя КЛАССА и учителя КЕЙСА равноправны: руководитель кружка ведёт
+    # ученика ничуть не меньше предметника, а ученики кейса по определению из
+    # разных классов — без этого объединения он не увидел бы результаты
+    # собственных подопечных (решение заказчика от 2026-09-02).
     teacher_ids = {t.id for t in subject.school_class.teachers} if subject.school_class else set()
+    if subject.case:
+        teacher_ids |= {t.id for t in subject.case.teachers}
     parent_ids = {p.id for p in subject.parents}
 
     if not can_view_results(

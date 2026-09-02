@@ -7,6 +7,7 @@ import { AssessmentFillPage } from './pages/student/AssessmentFillPage';
 import { SurveysPage } from './pages/surveys/SurveysPage';
 import { TeacherClassesPage } from './pages/teacher/TeacherClassesPage';
 import { TeacherStudentPage } from './pages/teacher/TeacherStudentPage';
+import { TeacherCasesPage } from './pages/teacher/TeacherCasesPage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminUsersPage } from './pages/admin/AdminUsersPage';
 import { AdminClassesPage } from './pages/admin/AdminClassesPage';
@@ -70,6 +71,14 @@ function App() {
               element={
                 <RequireTeacher>
                   <TeacherClassesPage />
+                </RequireTeacher>
+              }
+            />
+            <Route
+              path="/teacher/cases"
+              element={
+                <RequireTeacher>
+                  <TeacherCasesPage />
                 </RequireTeacher>
               }
             />

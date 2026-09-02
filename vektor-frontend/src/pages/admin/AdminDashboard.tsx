@@ -5,15 +5,18 @@ import { useApi } from '../../hooks/useApi';
 import { useAuth } from '../../auth/AuthContext';
 import { fetchUsers } from '../../api/users';
 import { fetchClasses } from '../../api/classes';
+import { fetchCases } from '../../api/cases';
 import { fetchCampaigns } from '../../api/campaigns';
 import './admin.css';
 import { formatPeriod } from '../../data/period';
 
-/** «Сводка» — метрики считаются из реальных /users, /classes и /campaigns. */
+/** «Сводка» — метрики считаются из реальных /users, /classes, /cases и
+ *  /campaigns. */
 export function AdminDashboard() {
   const { user } = useAuth();
   const users = useApi(fetchUsers);
   const classes = useApi(fetchClasses);
+  const cases = useApi(fetchCases);
   const campaigns = useApi(fetchCampaigns);
 
   const activeCampaigns = (campaigns.data ?? []).filter((c) => c.status === 'active');
@@ -25,12 +28,15 @@ export function AdminDashboard() {
       teachers: list.filter((u) => u.role === 'teacher').length,
       parents: list.filter((u) => u.role === 'parent').length,
       classes: classes.data?.length ?? 0,
+      cases: cases.data?.length ?? 0,
     };
-  }, [users.data, classes.data]);
+  }, [users.data, classes.data, cases.data]);
 
   const metric = (value: number | string, label: string) => (
     <div className="metric">
-      <div className="metric__value">{users.loading || classes.loading ? '…' : value}</div>
+      <div className="metric__value">
+        {users.loading || classes.loading || cases.loading ? '…' : value}
+      </div>
       <div className="metric__label">{label}</div>
     </div>
   );
@@ -40,8 +46,10 @@ export function AdminDashboard() {
       <h2>Сводка</h2>
       <div className="app-main__sub">Школа Вектор · {user?.academic_year}</div>
 
-      {(users.error || classes.error || campaigns.error) && (
-        <div className="form-error">{users.error ?? classes.error ?? campaigns.error}</div>
+      {(users.error || classes.error || cases.error || campaigns.error) && (
+        <div className="form-error">
+          {users.error ?? classes.error ?? cases.error ?? campaigns.error}
+        </div>
       )}
 
       <div className="metric-grid">
@@ -49,6 +57,7 @@ export function AdminDashboard() {
         {metric(counts.teachers, 'Учителей')}
         {metric(counts.parents, 'Родителей')}
         {metric(counts.classes, 'Классов')}
+        {metric(counts.cases, 'Кейсов')}
       </div>
 
       <Panel title="Активные кампании 360°">

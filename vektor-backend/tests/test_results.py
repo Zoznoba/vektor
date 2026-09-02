@@ -1502,3 +1502,63 @@ async def test_roster_still_works_for_campaign_in_progress(
     # Незавершённая кампания в резолюцию профиля не попадает: других кампаний у
     # класса нет, поэтому «результатов пока нет».
     assert profile.status_code == 404
+
+
+# --- Права: руководитель кейса видит результаты своих учеников (Этап 8) ---
+
+
+async def test_results_visible_to_case_teacher(
+    client: AsyncClient, admin_headers, results_scenario, db_session
+) -> None:
+    """Учитель кейса — полноправный учитель ученика, хоть и не ведёт его класс.
+
+    Иначе руководитель кружка не увидел бы результаты собственных подопечных:
+    ученики кейса по определению из разных классов, и учителем каждого из них
+    он не числится. Решение заказчика от 2026-09-02.
+    """
+    ids = results_scenario["ids"]
+    campaign_id = results_scenario["campaign_id"]
+    await _set_campaign_status(db_session, campaign_id, CampaignStatus.CLOSED)
+
+    case_teacher = await _register(client, "case-teacher@vektor.ru", "teacher")
+    kase = (await client.post("/cases", json={"name": "Кружок прав"}, headers=admin_headers)).json()
+    await client.post(
+        f"/cases/{kase['id']}/teachers", json={"user_ids": [case_teacher]}, headers=admin_headers
+    )
+
+    headers = await _login(client, "case-teacher@vektor.ru")
+    # Пока ученик не в кейсе, учитель кейса для него — посторонний.
+    before = await client.get(f"/results/{ids['s1']}?campaign_id={campaign_id}", headers=headers)
+    assert before.status_code == 403
+
+    await client.post(
+        f"/cases/{kase['id']}/students", json={"user_ids": [ids["s1"]]}, headers=admin_headers
+    )
+
+    after = await client.get(f"/results/{ids['s1']}?campaign_id={campaign_id}", headers=headers)
+    assert after.status_code == 200
+
+
+async def test_case_teacher_does_not_see_other_students(
+    client: AsyncClient, admin_headers, results_scenario, db_session
+) -> None:
+    """Доступ даёт членство в ЕГО кейсе, а не наличие кейса вообще."""
+    ids = results_scenario["ids"]
+    campaign_id = results_scenario["campaign_id"]
+    await _set_campaign_status(db_session, campaign_id, CampaignStatus.CLOSED)
+
+    case_teacher = await _register(client, "case-teacher2@vektor.ru", "teacher")
+    kase = (
+        await client.post("/cases", json={"name": "Кружок прав 2"}, headers=admin_headers)
+    ).json()
+    await client.post(
+        f"/cases/{kase['id']}/teachers", json={"user_ids": [case_teacher]}, headers=admin_headers
+    )
+    await client.post(
+        f"/cases/{kase['id']}/students", json={"user_ids": [ids["s1"]]}, headers=admin_headers
+    )
+
+    headers = await _login(client, "case-teacher2@vektor.ru")
+    response = await client.get(f"/results/{ids['s2']}?campaign_id={campaign_id}", headers=headers)
+
+    assert response.status_code == 403

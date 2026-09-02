@@ -18,6 +18,8 @@ from sqlalchemy import CheckConstraint, Enum, ForeignKey, String, UniqueConstrai
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vektor.core.database import Base
+
+from vektor.modules.cases.models import Case  # noqa: F401
 from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole
 
 if TYPE_CHECKING:
@@ -146,6 +148,15 @@ class Assessment(Base):
     # ученик вне класса) — тогда условные вопросы просто скрыты.
     subject_class_id: Mapped[int | None] = mapped_column(ForeignKey("school_classes.id"))
     subject_class: Mapped["SchoolClass | None"] = relationship()
+
+    # Кейс субъекта НА МОМЕНТ ГЕНЕРАЦИИ — третий снапшот в этой таблице, по
+    # той же причине, что класс выше: кейс у ученика один, но меняется, и
+    # переход в другой кружок не должен переносить туда прошлую диагностику.
+    # На видимость вопросов кейс НЕ влияет (возрастные границы живут на
+    # классе) — он нужен для покрытия и разбора «по какому основанию выдана
+    # эта анкета». Nullable: у анкеты, выданной по классу, кейса нет.
+    subject_case_id: Mapped[int | None] = mapped_column(ForeignKey("cases.id"))
+    subject_case: Mapped["Case | None"] = relationship()
 
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 

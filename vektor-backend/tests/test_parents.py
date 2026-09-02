@@ -150,7 +150,8 @@ async def test_get_children_forbidden_for_other_parent(
         json={"child_ids": [family["child1"]]},
         headers=admin_headers,
     )
-    other_parent_id = await _register(client, "papa2@vektor.ru", "parent")
+    # Заводим второго родителя ради его учётки — id тут не нужен, логинимся по email.
+    await _register(client, "papa2@vektor.ru", "parent")
 
     login = await client.post(
         "/auth/login", json={"email": "papa2@vektor.ru", "password": "password123"}
