@@ -10,80 +10,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from vektor.core.errors import DomainError
+from vektor.modules.cases.errors import (
+    AlreadyInAnotherCase,
+    CaseAlreadyExists,
+    CaseNotEmpty,
+    CaseNotFound,
+    NotInCase,
+)
 from vektor.modules.cases.models import Case
+from vektor.modules.users.errors import UserNotFound, WrongRole
 from vektor.modules.users.models import User
 from vektor.shared.enums import UserRole
-
-
-class CaseNotFound(DomainError):
-    """Кейс с таким id не найден."""
-
-    status_code = 404
-    code = "case_not_found"
-    message = "Кейс не найден"
-
-
-class CaseAlreadyExists(DomainError):
-    """Кейс с таким названием уже есть — иначе админ не различит их в списке."""
-
-    status_code = 409
-    code = "case_already_exists"
-    message = "Кейс с таким названием уже существует"
-
-
-class UserNotFound(DomainError):
-    status_code = 404
-    code = "user_not_found"
-    message = "Пользователь не найден"
-
-
-class WrongRole(DomainError):
-    """Роль пользователя не подходит: в ученики кейса нельзя записать учителя
-    и наоборот."""
-
-    status_code = 409
-    code = "wrong_role"
-    message = "Роль пользователя не подходит для операции"
-
-
-class AlreadyInAnotherCase(DomainError):
-    """Пользователь уже состоит в ДРУГОМ кейсе.
-
-    Молча перевешивать его сюда нельзя: и у ученика, и у учителя кейс ровно
-    один, поэтому такая привязка тихо выкинула бы человека из прежнего кейса —
-    почти наверняка не то, что имел в виду админ. Перевод делается явно:
-    сначала DELETE из старого кейса, потом POST в новый.
-    """
-
-    status_code = 409
-    code = "already_in_another_case"
-    message = "Пользователь уже состоит в другом кейсе"
-
-
-class NotInCase(DomainError):
-    """Пользователь не состоит в этом кейсе — откреплять нечего."""
-
-    status_code = 404
-    code = "not_in_case"
-    message = "Пользователь не состоит в этом кейсе"
-
-
-class CaseNotEmpty(DomainError):
-    """В кейсе ещё есть люди.
-
-    Удаление пустого кейса безопасно, а вот с составом — нет: молчаливое
-    открепление всех разом слишком похоже на случайное нажатие. Пусть админ
-    сначала разберёт состав.
-
-    (Снапшота Assessment.subject_case_id, который сделал бы удаление ещё и
-    технически опасным, пока нет — см. NB в remove_members.)
-    """
-
-    status_code = 409
-    code = "case_not_empty"
-    message = "Сначала открепите всех участников кейса"
-
 
 # Состав отдаём всегда целиком, поэтому догружаем обе проекции заранее: без
 # этого сериализация CaseOut упадёт с MissingGreenlet (ленивая загрузка внутри
