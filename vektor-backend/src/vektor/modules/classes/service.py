@@ -7,67 +7,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from vektor.core.errors import DomainError
+from vektor.modules.classes.errors import (
+    ClassAlreadyExists,
+    ClassNotFound,
+    StudentNotInClass,
+    TeacherAlreadyAssigned,
+    TeacherNotInClass,
+)
 from vektor.modules.classes.models import SchoolClass, TeacherClass
+from vektor.modules.users.errors import UserNotFound, WrongRole
 from vektor.modules.users.models import User
 from vektor.shared.enums import UserRole
-
-
-class ClassAlreadyExists(DomainError):
-    """Класс с таким grade+section уже существует."""
-
-    status_code = 409
-    code = "class_already_exists"
-    message = "Класс с таким номером уже существует"
-
-
-class UserNotFound(DomainError):
-    """Один или несколько пользователей с такими id не найдены."""
-
-    status_code = 404
-    code = "user_not_found"
-    message = "Пользователь не найден"
-
-
-class ClassNotFound(DomainError):
-    """Класс с таким id не найден."""
-
-    status_code = 404
-    code = "class_not_found"
-    message = "Класс не найден"
-
-
-class TeacherAlreadyAssigned(DomainError):
-    """Один или несколько учителей уже привязаны к этому классу."""
-
-    status_code = 409
-    code = "teacher_already_assigned"
-    message = "Учитель уже привязан к этому классу"
-
-
-class WrongRole(DomainError):
-    """Роль пользователя не подходит для операции."""
-
-    status_code = 409
-    code = "wrong_role"
-    message = "Роль пользователя не подходит для операции"
-
-
-class TeacherNotInClass(DomainError):
-    """Учитель не привязан к этому классу — нечего править или откреплять."""
-
-    status_code = 404
-    code = "teacher_not_in_class"
-    message = "Учитель не привязан к этому классу"
-
-
-class StudentNotInClass(DomainError):
-    """Ученик числится не в этом классе — открепление относится не к нему."""
-
-    status_code = 404
-    code = "student_not_in_class"
-    message = "Ученик не числится в этом классе"
-
 
 # Состав класса всегда возвращаем целиком: список учителей теперь идёт с
 # атрибутами связи, и `teacher_links` без явной догрузки развалится на
