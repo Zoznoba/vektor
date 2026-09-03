@@ -1,14 +1,15 @@
 import { useCallback } from 'react';
 import { Panel } from '../ui/Panel';
 import { Avatar } from '../ui/Avatar';
-import { CompetencyProfile } from './CompetencyProfile';
 import { CompetencyDetailsTable } from './CompetencyDetailsTable';
+import { RadarChart } from '../charts/RadarChart';
 import { DynamicsChart } from './DynamicsChart';
 import { useApi } from '../../hooks/useApi';
 import { useAuth } from '../../auth/AuthContext';
 import { fetchSubjectResults, fetchSubjectDynamics } from '../../api/results';
 import './StudentResultsPanel.css';
 import { formatPeriod } from '../../data/period';
+import { shortCompetencyName } from '../../data/competencyShortNames';
 
 interface StudentResultsPanelProps {
   subjectId: number;
@@ -112,17 +113,28 @@ export function StudentResultsPanel({
             </div>
           </div>
 
-          {!results.data.any_peer_scores_disclosed && (
-            /* Порог анонимности — 3 разных одноклассника ПО КАЖДОМУ критерию.
-               Молчать про скрытый слой нельзя: иначе выглядит, будто
-               одноклассники просто не отвечали. */
-            <div className="app-main__sub results-note">
-              Оценки одноклассников скрыты: их слишком мало, чтобы показать
-              анонимно.
-            </div>
+          {scored.length >= 3 && (
+            /* Радар вместо пары полос на критерий: заказчику он читается как
+               единая форма профиля, а расхождение самооценки и окружающих
+               видно тем же зазором между контурами. Меньше трёх осей радар
+               не образует — там остаётся таблица «Детали по компетенциям». */
+            <RadarChart
+              axes={scored.map((c) => shortCompetencyName(c.code, c.name))}
+              axisTitles={scored.map((c) => c.name)}
+              series={[
+                {
+                  label: 'самооценка',
+                  values: scored.map((c) => c.self_avg),
+                  color: 'var(--blue)',
+                },
+                {
+                  label: 'окружающие',
+                  values: scored.map((c) => c.others_avg),
+                  color: 'var(--sage)',
+                },
+              ]}
+            />
           )}
-
-          <CompetencyProfile competencies={scored} />
 
           {results.data.growth_zones.length > 0 && (
             <div className="results-zones">

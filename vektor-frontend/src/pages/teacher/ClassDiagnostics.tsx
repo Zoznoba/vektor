@@ -2,8 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Panel } from '../../components/ui/Panel';
 import { Button } from '../../components/ui/Button';
-import { ClassCompetencyProfile } from '../../components/teacher/ClassCompetencyProfile';
-import { RadarChart } from '../../components/teacher/RadarChart';
+import { RadarChart } from '../../components/charts/RadarChart';
 import { useApi } from '../../hooks/useApi';
 import { fetchClassResults, fetchClassRoster } from '../../api/results';
 import { fetchMyAssessments } from '../../api/assessments';
@@ -98,6 +97,7 @@ export function ClassDiagnostics({ classId }: ClassDiagnosticsProps) {
     const scored = competencies.filter((c) => c.class_avg !== null || c.school_avg !== null);
     return {
       axes: scored.map((c) => shortCompetencyName(c.code, c.name)),
+      titles: scored.map((c) => c.name),
       classValues: scored.map((c) => c.class_avg),
       schoolValues: scored.map((c) => c.school_avg),
     };
@@ -253,16 +253,20 @@ export function ClassDiagnostics({ classId }: ClassDiagnosticsProps) {
         ) : results.data ? (
           <>
             <div className="app-main__sub">{results.data.class_label} против школы</div>
-            {radar.axes.length >= 3 && (
+            {radar.axes.length >= 3 ? (
               <RadarChart
                 axes={radar.axes}
+                axisTitles={radar.titles}
                 series={[
                   { label: results.data.class_label, values: radar.classValues, color: '#3c8fed' },
                   { label: 'Школа', values: radar.schoolValues, color: '#a6a2a3', dashed: true },
                 ]}
               />
+            ) : (
+              /* Радар — единственное представление профиля класса, поэтому у
+                 вырожденного набора осей нужна явная строка, а не пустота. */
+              <div className="app-main__sub">Критериев с баллом слишком мало для профиля</div>
             )}
-            <ClassCompetencyProfile competencies={results.data.competencies} />
           </>
         ) : (
           <div className="app-main__sub">Профиль пока не посчитан</div>

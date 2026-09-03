@@ -1,5 +1,11 @@
 import { apiRequest } from './client';
-import type { ClassResults, ClassRoster, SubjectDynamics, SubjectResults } from '../types/results';
+import type {
+  CaseResults,
+  ClassResults,
+  ClassRoster,
+  SubjectDynamics,
+  SubjectResults,
+} from '../types/results';
 
 /**
  * Результаты субъекта по критериям.
@@ -46,4 +52,16 @@ export function fetchSubjectDynamics(
 export function fetchClassRoster(classId: number, campaignId?: number): Promise<ClassRoster> {
   const query = campaignId !== undefined ? `?campaign_id=${campaignId}` : '';
   return apiRequest<ClassRoster>(`/results/class/${classId}/roster${query}`);
+}
+
+/**
+ * Средний профиль кейса, сравнение со школой и зоны роста группы.
+ * Доступно админу и руководителю ЭТОГО кейса — остальным 403.
+ * Без campaignId бэкенд берёт последнюю завершённую кампанию кейса; если
+ * кейс ни в одну кампанию не попадал — 404, и это штатное «диагностики по
+ * кейсу ещё не было», а не сбой.
+ */
+export function fetchCaseResults(caseId: number, campaignId?: number): Promise<CaseResults> {
+  const query = campaignId !== undefined ? `?campaign_id=${campaignId}` : '';
+  return apiRequest<CaseResults>(`/results/case/${caseId}${query}`);
 }

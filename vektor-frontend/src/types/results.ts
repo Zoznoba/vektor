@@ -88,6 +88,40 @@ export interface ClassResults {
   growth_zones: ClassGrowthZone[];
 }
 
+/** Профиль кейса: GET /results/case/{id}. Поля названы `case_avg`, а не
+ *  `class_avg` — по ним же видно, чей это профиль. */
+export interface CompetencyCaseScore {
+  competency_id: number;
+  code: string;
+  name: string;
+  case_avg: number | null;
+  /** Среднее по школе за тот же ПЕРИОД — та же оговорка, что у класса. */
+  school_avg: number | null;
+}
+
+export interface CaseGrowthZone {
+  competency_id: number;
+  code: string;
+  name: string;
+  /** У скольких учеников кейса критерий попал в ЛИЧНЫЕ зоны роста. */
+  students_affected: number;
+  case_avg: number | null;
+}
+
+export interface CaseResults {
+  case_id: number;
+  case_name: string;
+  campaign_id: number;
+  campaign_title: string;
+  campaign_period_year: number;
+  campaign_period_month: number;
+  students_with_results: number;
+  case_average: number | null;
+  school_average: number | null;
+  competencies: CompetencyCaseScore[];
+  growth_zones: CaseGrowthZone[];
+}
+
 /** Динамика по годам критерия: GET /results/{id}/dynamics. */
 export interface CompetencyDynamics {
   competency_id: number;
