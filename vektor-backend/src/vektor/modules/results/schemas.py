@@ -138,6 +138,42 @@ class ClassResultsOut(BaseModel):
     growth_zones: list[ClassGrowthZoneOut]
 
 
+class CompetencyCaseScoreOut(BaseModel):
+    """Критерий в профиле кейса. Поля названы иначе, чем у класса
+    (`case_avg` вместо `class_avg`), намеренно: фронт не должен угадывать по
+    одинаковому имени, чей это профиль."""
+
+    competency_id: int
+    code: str
+    name: str
+    case_avg: float | None
+    school_avg: float | None
+
+
+class CaseGrowthZoneOut(BaseModel):
+    competency_id: int
+    code: str
+    name: str
+    students_affected: int
+    case_avg: float | None
+
+
+class CaseResultsOut(BaseModel):
+    case_id: int
+    case_name: str
+    campaign_id: int
+    campaign_title: str
+    campaign_period_year: int
+    campaign_period_month: int
+
+    students_with_results: int
+    case_average: float | None
+    school_average: float | None
+
+    competencies: list[CompetencyCaseScoreOut]
+    growth_zones: list[CaseGrowthZoneOut]
+
+
 class RaterStatusOut(BaseModel):
     """Один оценивающий внутри слоя: кто и заполнил ли анкету.
 

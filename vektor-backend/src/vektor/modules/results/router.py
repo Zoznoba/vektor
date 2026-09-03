@@ -6,6 +6,7 @@ from vektor.modules.auth.dependencies import get_current_user, require_role
 from vektor.modules.results import service
 from vektor.modules.results.schemas import (
     CampaignCoverageOut,
+    CaseResultsOut,
     ClassResultsOut,
     ClassRosterOut,
     DynamicsOut,
@@ -48,6 +49,31 @@ async def get_class_results(
                 detail="У класса пока нет результатов",
             )
     return await service.get_class_results(db, class_id, campaign_id, user)
+
+
+@router.get(
+    "/case/{case_id}",
+    response_model=CaseResultsOut,
+    summary="Профиль кейса",
+    description="Средний профиль профильной группы по критериям (среднее по "
+    "ученикам, не по ответам), сравнение со школой за тот же период и зоны "
+    "роста группы по охвату. Без campaign_id берётся последняя ЗАВЕРШЁННАЯ "
+    "кампания кейса. Доступно админу и руководителю этого кейса.",
+)
+async def get_case_results(
+    case_id: int,
+    campaign_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> CaseResultsOut:
+    if campaign_id is None:
+        campaign_id = await service.latest_campaign_id_for_case(db, case_id)
+        if campaign_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="У кейса пока нет результатов",
+            )
+    return await service.get_case_results(db, case_id, campaign_id, user)
 
 
 @router.get(
