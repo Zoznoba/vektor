@@ -21,12 +21,12 @@ from vektor.modules.competencies.models import (
     Question,
     QuestionnaireVersion,
 )
-from vektor.modules.results.service import (
+from vektor.modules.results.domain import (
     ScoredAnswer,
     aggregate_by_competency_and_rater,
     average_profiles,
     can_disclose_peer_scores,
-    can_view_class_results,
+    can_view_group_results,
     can_view_results,
     compute_deltas,
     compute_gap,
@@ -242,25 +242,25 @@ def test_can_view_results_unrelated_denied() -> None:
     assert can_view_results(2, UserRole.STUDENT, 1, {10}, {20}) is False
 
 
-# --- can_view_class_results (5e) ---
+# --- can_view_group_results (5e) ---
 
 
-def test_can_view_class_results_admin() -> None:
-    assert can_view_class_results(1, UserRole.ADMIN, set()) is True
+def test_can_view_group_results_admin() -> None:
+    assert can_view_group_results(1, UserRole.ADMIN, set()) is True
 
 
-def test_can_view_class_results_teacher_of_class() -> None:
-    assert can_view_class_results(10, UserRole.TEACHER, {10, 11}) is True
+def test_can_view_group_results_teacher_of_class() -> None:
+    assert can_view_group_results(10, UserRole.TEACHER, {10, 11}) is True
 
 
-def test_can_view_class_results_other_teacher_denied() -> None:
+def test_can_view_group_results_other_teacher_denied() -> None:
     # Учитель ЧУЖОГО класса класс целиком не видит.
-    assert can_view_class_results(12, UserRole.TEACHER, {10, 11}) is False
+    assert can_view_group_results(12, UserRole.TEACHER, {10, 11}) is False
 
 
-def test_can_view_class_results_parent_and_student_denied() -> None:
-    assert can_view_class_results(20, UserRole.PARENT, {10}) is False
-    assert can_view_class_results(1, UserRole.STUDENT, {10}) is False
+def test_can_view_group_results_parent_and_student_denied() -> None:
+    assert can_view_group_results(20, UserRole.PARENT, {10}) is False
+    assert can_view_group_results(1, UserRole.STUDENT, {10}) is False
 
 
 # --- overall_scores_from_answers: цепочка целиком ---
@@ -1740,3 +1740,140 @@ async def test_coverage_student_appears_in_both_class_and_case_rows(
     assert ids["s2"] in {st["subject"]["id"] for st in class_row["students"]}
     # Счётчики строк не задваиваются: анкета лежит ровно в одной группе.
     assert sum(g["total"] for g in body["groups"]) == body["total"]
+
+
+# --- Профиль кейса (Этап 8): те же правила, что у класса, но состав из разных классов ---
+
+
+@pytest.fixture
+async def case_profile_scenario(
+    client: AsyncClient, admin_headers: dict[str, str], db_session
+) -> dict:
+    """Кейс «Робототехника» из учеников ДВУХ разных классов.
+
+    Ровно та конфигурация, ради которой кейс и заведён: у группы нет «своего
+    класса», поэтому профиль обязан собираться по снапшоту анкет кейса, а не
+    по классам участников.
+    """
+    s1 = await _register(client, "kp1@vektor.ru", "student")
+    s2 = await _register(client, "kp2@vektor.ru", "student")
+    t1 = await _register(client, "kt1@vektor.ru", "teacher")
+    outsider = await _register(client, "kt2@vektor.ru", "teacher")
+
+    classes = {}
+    for grade, section, student in ((5, "п", s1), (8, "п", s2)):
+        created = (
+            await client.post(
+                "/classes", json={"grade": grade, "section": section}, headers=admin_headers
+            )
+        ).json()
+        classes[grade] = created["id"]
+        await client.post(
+            f"/classes/{created['id']}/students",
+            json={"student_ids": [student]},
+            headers=admin_headers,
+        )
+
+    kase = (
+        await client.post("/cases", json={"name": "Робототехника"}, headers=admin_headers)
+    ).json()
+    case_id = kase["id"]
+    await client.post(
+        f"/cases/{case_id}/students", json={"user_ids": [s1, s2]}, headers=admin_headers
+    )
+    await client.post(f"/cases/{case_id}/teachers", json={"user_ids": [t1]}, headers=admin_headers)
+
+    comp_a = await _seed_competency(db_session, "case_a", order=1)
+    comp_b = await _seed_competency(db_session, "case_b", order=2)
+    q_a = await _question_id_for(db_session, comp_a)
+    q_b = await _question_id_for(db_session, comp_b)
+
+    campaign = (
+        await client.post(
+            "/campaigns",
+            json={"title": "360 · кейс", "period_year": 2026, "period_month": 6},
+            headers=admin_headers,
+        )
+    ).json()
+    campaign_id = campaign["id"]
+    await client.post(
+        f"/campaigns/{campaign_id}/generate",
+        json={"case_ids": [case_id]},
+        headers=admin_headers,
+    )
+
+    # s1: A оценён двумя (оба ставят 2 → 2.0), B — только собой (5.0).
+    for email, rid in (("kp1@vektor.ru", s1), ("kt1@vektor.ru", t1)):
+        await _answer_in_campaign(client, db_session, email, rid, s1, campaign_id, q_a, 2)
+    await _answer_in_campaign(client, db_session, "kp1@vektor.ru", s1, s1, campaign_id, q_b, 5)
+
+    # s2: оба критерия только самооценка — A=4.0, B=5.0.
+    await _answer_in_campaign(client, db_session, "kp2@vektor.ru", s2, s2, campaign_id, q_a, 4)
+    await _answer_in_campaign(client, db_session, "kp2@vektor.ru", s2, s2, campaign_id, q_b, 5)
+
+    return {
+        "case_id": case_id,
+        "campaign_id": campaign_id,
+        "comp_a": comp_a,
+        "comp_b": comp_b,
+        "ids": {"s1": s1, "s2": s2, "t1": t1, "outsider": outsider},
+    }
+
+
+async def test_case_results_visible_to_case_teacher(
+    client: AsyncClient, case_profile_scenario
+) -> None:
+    headers = await _login(client, "kt1@vektor.ru")
+    response = await client.get(
+        f"/results/case/{case_profile_scenario['case_id']}", headers=headers
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["case_name"] == "Робототехника"
+    # Ученики кейса из разных классов, и оба попали в профиль.
+    assert body["students_with_results"] == 2
+
+
+async def test_case_results_forbidden_for_other_teacher(
+    client: AsyncClient, case_profile_scenario
+) -> None:
+    # Учитель, не ведущий кейс, к группе целиком доступа не имеет — то же
+    # правило, что у чужого класса.
+    headers = await _login(client, "kt2@vektor.ru")
+    response = await client.get(
+        f"/results/case/{case_profile_scenario['case_id']}", headers=headers
+    )
+    assert response.status_code == 403
+
+
+async def test_case_profile_weighs_students_equally(
+    client: AsyncClient, admin_headers, case_profile_scenario
+) -> None:
+    # s1 по критерию A = 2.0 (оценили двое), s2 = 4.0 (только сам).
+    # Среднее по УЧЕНИКАМ = 3.0; по ответам вышло бы 2.67.
+    response = await client.get(
+        f"/results/case/{case_profile_scenario['case_id']}", headers=admin_headers
+    )
+    body = response.json()
+    comp_a = next(
+        c for c in body["competencies"] if c["competency_id"] == case_profile_scenario["comp_a"]
+    )
+    assert comp_a["case_avg"] == pytest.approx(3.0)
+    assert body["case_average"] == pytest.approx(4.0)
+
+
+async def test_case_growth_zones_ranked_by_coverage(
+    client: AsyncClient, admin_headers, case_profile_scenario
+) -> None:
+    # Критерий A ниже B у обоих учеников — значит он первый по охвату.
+    response = await client.get(
+        f"/results/case/{case_profile_scenario['case_id']}", headers=admin_headers
+    )
+    zones = response.json()["growth_zones"]
+    assert zones[0]["competency_id"] == case_profile_scenario["comp_a"]
+    assert zones[0]["students_affected"] == 2
+
+
+async def test_case_results_unknown_case_404(client: AsyncClient, admin_headers) -> None:
+    response = await client.get("/results/case/99999", headers=admin_headers)
+    assert response.status_code == 404
