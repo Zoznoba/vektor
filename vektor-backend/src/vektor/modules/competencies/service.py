@@ -5,7 +5,16 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from vektor.core.errors import DomainError
+from vektor.modules.competencies.errors import (
+    CompetencyNotFound,
+    DraftAlreadyExists,
+    EmptyQuestionnaire,
+    NoCurrentQuestionnaireVersion,
+    OutcomeAreaNotFound,
+    QuestionNotFound,
+    VersionNotDraft,
+    VersionNotFound,
+)
 from vektor.modules.competencies.models import (
     Competency,
     OutcomeArea,
@@ -34,62 +43,6 @@ async def list_competencies(db: AsyncSession) -> Sequence[Competency]:
 # Конструктор анкеты (Этап 7). См. models.py — OutcomeArea/Competency общие
 # на все редакции (is_archived/is_draft), Question версионируется (version_id).
 # ---------------------------------------------------------------------------
-
-
-class VersionNotFound(DomainError):
-    status_code = 404
-    code = "questionnaire_version_not_found"
-    message = "Редакция анкеты не найдена"
-
-
-class VersionNotDraft(DomainError):
-    """Структуру можно менять только в черновике — опубликованная редакция
-    заморожена навсегда, иначе задним числом поехала бы историческая
-    аналитика по кампаниям, которые её уже используют."""
-
-    status_code = 409
-    code = "questionnaire_version_not_draft"
-    message = "Редактировать можно только черновик"
-
-
-class DraftAlreadyExists(DomainError):
-    """Одновременно редактируется не больше одного черновика — иначе
-    is_draft на Competency/OutcomeArea не сказал бы, какому черновику
-    принадлежит строка."""
-
-    status_code = 409
-    code = "draft_already_exists"
-    message = "Черновик уже существует — опубликуйте или отмените его, прежде чем создавать новый"
-
-
-class NoCurrentQuestionnaireVersion(DomainError):
-    status_code = 409
-    code = "no_current_questionnaire_version"
-    message = "Нет действующей редакции анкеты"
-
-
-class EmptyQuestionnaire(DomainError):
-    status_code = 409
-    code = "empty_questionnaire"
-    message = "В черновике нет ни одного вопроса — публиковать нечего"
-
-
-class OutcomeAreaNotFound(DomainError):
-    status_code = 404
-    code = "outcome_area_not_found"
-    message = "«ОР / навык» не найдена"
-
-
-class CompetencyNotFound(DomainError):
-    status_code = 404
-    code = "competency_not_found"
-    message = "Критерий не найден"
-
-
-class QuestionNotFound(DomainError):
-    status_code = 404
-    code = "question_not_found"
-    message = "Вопрос не найден"
 
 
 def _generate_code(prefix: str) -> str:
