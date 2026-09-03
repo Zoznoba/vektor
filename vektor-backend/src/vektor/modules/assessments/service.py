@@ -9,79 +9,21 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from vektor.core.errors import DomainError
+from vektor.modules.assessments.errors import (
+    AssessmentNotFound,
+    CampaignNotActive,
+    CampaignNotClosed,
+    CampaignNotFound,
+    NotAssessmentOwner,
+    QuestionNotAllowed,
+)
 from vektor.modules.assessments.models import Answer, Assessment, Campaign
 from vektor.modules.cases.models import Case
 from vektor.modules.classes.models import SchoolClass
+from vektor.modules.competencies.errors import NoCurrentQuestionnaireVersion
 from vektor.modules.competencies.models import Competency, Question, QuestionnaireVersion
 from vektor.modules.users.models import User
 from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole
-
-
-class CampaignNotFound(DomainError):
-    """Кампания с таким id не найдена."""
-
-    status_code = 404
-    code = "campaign_not_found"
-    message = "Кампания не найдена"
-
-
-class AssessmentNotFound(DomainError):
-    """Анкета с таким id не найдена."""
-
-    status_code = 404
-    code = "assessment_not_found"
-    message = "Анкета не найдена"
-
-
-class NotAssessmentOwner(DomainError):
-    """Пользователь пытается открыть/заполнить не свою анкету."""
-
-    status_code = 403
-    code = "not_assessment_owner"
-    message = "Пользователь не является владельцем анкеты"
-
-
-class CampaignNotClosed(DomainError):
-    """Возобновить можно только завершённую кампанию."""
-
-    status_code = 409
-    code = "campaign_not_closed"
-    message = "Возобновить можно только завершённую кампанию"
-
-
-class CampaignNotActive(DomainError):
-    """Кампания не в статусе active.
-
-    Сообщение переопределяется в точке возбуждения: для приёма ответов это
-    «прием закрыт», для закрытия кампании — «закрыть можно только активную».
-    """
-
-    status_code = 409
-    code = "campaign_not_active"
-    message = "Кампания не активна"
-
-
-class QuestionNotAllowed(DomainError):
-    """Ответ на вопрос, которого нет в видимом наборе этой анкеты."""
-
-    status_code = 422
-    code = "question_not_allowed"
-    message = "Ответ на недоступный вопрос"
-
-
-class NoCurrentQuestionnaireVersion(DomainError):
-    """Ни одна редакция анкеты не помечена действующей — не по чему создавать
-    кампанию. В норме недостижимо: миграция c3f81ad0e7b5 ставит флаг, а
-    частичный уникальный индекс не даёт завести вторую действующую.
-
-    Раньше это исключение не ловил никто, и вместо осмысленного ответа клиент
-    получал 500 — ровно тот случай, ради которого заведён общий обработчик.
-    """
-
-    status_code = 409
-    code = "no_current_questionnaire_version"
-    message = "Нет действующей редакции анкеты"
 
 
 async def create_campaign(
