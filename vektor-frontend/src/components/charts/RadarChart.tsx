@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import './RadarChart.css';
 
 const SCALE_MIN = 1;
@@ -27,6 +28,142 @@ interface RadarChartProps {
   size?: number;
 }
 
+/** Длительность роста/перетекания контуров, мс. */
+const GROW_MS = 700;
+
+/**
+ * Показы радара: сколько раз он появлялся в поле зрения и не спрятан ли
+ * сейчас целиком.
+ *
+ * Рост контура должен играть КАЖДЫЙ раз, когда радар показывают, а не один
+ * раз за жизнь компонента: свёрнутый блок аналитики держит содержимое в DOM
+ * (иначе не проигрывается сворачивание и данные грузились бы заново), и при
+ * повторном раскрытии зритель видел бы готовую фигуру.
+ *
+ * Порогов два, и оба нужны:
+ *   0.35 — «показали»: анимация не стартует, пока виден только край;
+ *   0    — «спрятали целиком»: по нему фигуру сбрасывают в центр ЗАРАНЕЕ,
+ *          пока её никто не видит. Без этого сброса при раскрытии на кадр
+ *          проступала прежняя, уже готовая фигура, и рост натягивался
+ *          поверх неё — наблюдатель срабатывает уже после отрисовки кадра.
+ */
+function useVisibility(target: RefObject<HTMLElement | null>): {
+  appearances: number;
+  hidden: boolean;
+} {
+  const [state, setState] = useState({ appearances: 0, hidden: false });
+  const visibleRef = useRef(false);
+
+  useEffect(() => {
+    const node = target.current;
+    if (!node || typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.intersectionRatio === 0) {
+          visibleRef.current = false;
+          setState((prev) => (prev.hidden ? prev : { ...prev, hidden: true }));
+          return;
+        }
+        // Считаем именно ПЕРЕХОД «не видно → видно»: без этого прокрутка
+        // внутри уже видимого блока перезапускала бы анимацию.
+        if (entry.intersectionRatio >= 0.35 && !visibleRef.current) {
+          visibleRef.current = true;
+          setState((prev) => ({ appearances: prev.appearances + 1, hidden: false }));
+        }
+      },
+      { threshold: [0, 0.35] },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [target]);
+
+  return state;
+}
+
+/**
+ * Значения серий, «догоняющие» целевые: при появлении контур вырастает из
+ * центра, при смене данных (другой класс, другой период) перетекает в новую
+ * форму, а не моргает.
+ *
+ * Анимируем САМИ ЗНАЧЕНИЯ, а не CSS-масштаб фигуры: масштаб потащил бы за
+ * собой обводку и точки вершин, а нам нужно, чтобы кольца шкалы и подписи
+ * стояли на месте, пока контур растёт по ним.
+ *
+ * `null` (нет данных) целится в минимум шкалы — там же, где его рисует
+ * polygonFor: подсказка и точки берут СЫРЫЕ значения, поэтому «—» в них
+ * сохраняется, а фигура не врёт разрывом.
+ */
+function useGrowingValues(
+  series: RadarSeries[],
+  axisCount: number,
+  appearances: number,
+  hidden: boolean,
+): number[][] {
+  const target = series.map((item) =>
+    item.values.slice(0, axisCount).map((value) => value ?? SCALE_MIN),
+  );
+  // Ключ по значениям, а не по ссылке: вызывающие строят массив серий прямо
+  // в JSX, и на каждый рендер это новый объект — эффект бы не выключался.
+  const targetKey = JSON.stringify(target);
+
+  const [display, setDisplay] = useState<number[][]>(() =>
+    target.map((values) => values.map(() => SCALE_MIN)),
+  );
+  // Ref ведёт эффект, а не рендер: ему нужно знать, откуда стартовать, когда
+  // данные сменились на полпути прошлой анимации.
+  const displayRef = useRef<number[][]>(display);
+
+  // Какое по счёту появление уже отыграно: пока оно новое, растим из центра,
+  // а не перетекаем из текущей формы.
+  const playedRef = useRef(-1);
+
+  useEffect(() => {
+    const values: number[][] = JSON.parse(targetKey);
+    const center = values.map((row) => row.map(() => SCALE_MIN));
+
+    // Спрятан целиком — целимся в центр: анимировать невидимое незачем, зато
+    // к следующему показу фигура уже стоит в стартовом положении и прежняя
+    // не успевает проступить на кадр (наблюдатель срабатывает уже после
+    // отрисовки, поэтому сбрасывать при ПОЯВЛЕНИИ поздно).
+    const to = hidden ? center : values;
+
+    const from = displayRef.current;
+    const sameShape =
+      from.length === to.length && from.every((row, i) => row.length === to[i].length);
+    const isNewAppearance = playedRef.current !== appearances;
+    playedRef.current = appearances;
+    // Из центра — при каждом новом появлении на экране и при смене числа осей
+    // (другой набор критериев): тянуть старую фигуру к чужой форме не к чему.
+    // Иначе перетекаем из текущей формы — так смена класса читается как
+    // изменение, а не как перерисовка.
+    const start = sameShape && !isNewAppearance ? from : center;
+
+    // Нулевая длительность = первый же кадр ставит финальные значения, без
+    // отдельной ветки в коде: так обрабатываются и «спрятан», и системная
+    // настройка «меньше движения».
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const duration = hidden || reduceMotion ? 0 : GROW_MS;
+
+    let raf = 0;
+    const began = performance.now();
+    const step = (now: number) => {
+      const t = duration === 0 ? 1 : Math.min(1, (now - began) / duration);
+      // easeOutCubic: быстрый старт и мягкая остановка — рост читается как
+      // «дошло до значения», а не как равномерная прокрутка.
+      const eased = 1 - (1 - t) ** 3;
+      const frame = to.map((row, i) => row.map((v, j) => start[i][j] + (v - start[i][j]) * eased));
+      displayRef.current = frame;
+      setDisplay(frame);
+      if (t < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [targetKey, appearances, hidden]);
+
+  return display;
+}
+
 interface HoveredAxis {
   index: number;
   x: number;
@@ -43,6 +180,9 @@ interface HoveredAxis {
  */
 export function RadarChart({ axes, axisTitles, series, size = 320 }: RadarChartProps) {
   const [hovered, setHovered] = useState<HoveredAxis | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const { appearances, hidden } = useVisibility(root);
+  const grown = useGrowingValues(series, axes.length, appearances, hidden);
 
   const center = size / 2;
   // По вертикали подписи тоже снаружи, но там их всего одна-две и они короткие.
@@ -88,7 +228,7 @@ export function RadarChart({ axes, axisTitles, series, size = 320 }: RadarChartP
   };
 
   return (
-    <div className="radar">
+    <div className="radar" ref={root}>
       <svg
         viewBox={`${-PAD_X} 0 ${size + PAD_X * 2} ${size}`}
         className="radar__svg"
@@ -119,10 +259,10 @@ export function RadarChart({ axes, axisTitles, series, size = 320 }: RadarChartP
           );
         })}
 
-        {series.map((item) => (
+        {series.map((item, seriesIndex) => (
           <polygon
             key={item.label}
-            points={polygonFor(item.values)}
+            points={polygonFor(grown[seriesIndex] ?? item.values)}
             fill={item.color}
             fillOpacity={0.1}
             stroke={item.color}

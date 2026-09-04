@@ -1,9 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
+import { GroupAnalytics } from '../../components/dashboard/GroupProfile';
+import { classResultsToAnalytics } from '../../data/groupAnalytics';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
+import { Collapsible } from '../../components/ui/Collapsible';
 import { Icon } from '../../components/icons/Icon';
 import { ActionMenu } from '../../components/ui/ActionMenu';
 import type { ActionMenuItem } from '../../components/ui/ActionMenu';
@@ -26,9 +29,13 @@ import { ApiError } from '../../api/client';
 import { classLabel, homeroomTeachers } from '../../types/school';
 import type { SchoolClass, TeacherInClass } from '../../types/school';
 import type { User } from '../../types/auth';
+import { fetchClassResults, fetchGroupDynamics } from '../../api/results';
 import './admin.css';
 
-/** Вкладки состава класса. Определяют и таблицу, и контекстную кнопку добавления. */
+/** Вкладки состава класса. Определяют и таблицу, и контекстную кнопку
+ *  добавления. Аналитика сюда НЕ входит: она ничего не добавляет и ничего не
+ *  выделяет, поэтому живёт отдельным сворачиваемым блоком под составом —
+ *  внутри таблицы состава она читалась как чужеродная вкладка. */
 type CompositionTab = 'students' | 'teachers' | 'homeroom';
 
 /** Стабильная пустая ссылка: `[]` в рендере ломал бы мемоизацию выбора. */
@@ -51,6 +58,7 @@ export function AdminClassesPage() {
     () => (location.state as { classId?: number } | null)?.classId ?? null,
   );
   const [tab, setTab] = useState<CompositionTab>('students');
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   // Модалка назначения: режим совпадает с активной вкладкой — «добавить» на
   // вкладке всегда добавляет именно тех, кого эта вкладка показывает.
@@ -84,6 +92,18 @@ export function AdminClassesPage() {
   // resetKey — класс + вкладка: выбор не переживает ни переключение вкладки,
   // ни переход на другой класс, иначе откреплялись бы невидимые люди.
   const selection = useRowSelection(rowIds, `${selected?.id ?? 'none'}:${tab}`);
+
+  // useApi внутри GroupAnalytics требует стабильную ссылку — иначе effect
+  // уходит в цикл запросов.
+  const selectedClassId = selected?.id;
+  const loadClassAnalytics = useCallback(
+    async () => classResultsToAnalytics(await fetchClassResults(selectedClassId as number)),
+    [selectedClassId],
+  );
+  const loadClassDynamics = useCallback(
+    () => fetchGroupDynamics('class', selectedClassId as number),
+    [selectedClassId],
+  );
   const selectedRows = rows.filter((u) => selection.selectedIds.includes(u.id));
 
   const addLabel: Record<CompositionTab, string> = {
@@ -133,6 +153,29 @@ export function AdminClassesPage() {
               </button>
             ))}
           </div>
+
+          {selected && (
+            /* Аналитика — сворачиваемый блок НАД составом, а не вкладка
+               внутри него: это ответ на вопрос «как класс выглядит», а состав
+               ниже — рабочий инструмент. Свёрнут по умолчанию, и потому же
+               запрос уходит только при первом раскрытии: он считает средние
+               по всей школе за период, а профиль смотрят изредка. */
+            <Collapsible
+              title={`Аналитика класса ${classLabel(selected)}`}
+              hint="Средний профиль против школы и зоны роста"
+              open={analyticsOpen}
+              onToggle={() => setAnalyticsOpen((value) => !value)}
+            >
+              <GroupAnalytics
+                label={classLabel(selected)}
+                averageLabel="Средний балл класса"
+                groupNoun="класс"
+                load={loadClassAnalytics}
+                loadDynamics={loadClassDynamics}
+                emptyText="По этому классу ещё не было завершённой диагностики — аналитика появится после закрытия кампании."
+              />
+            </Collapsible>
+          )}
 
           {selected && (
             <Panel title={`Состав класса ${classLabel(selected)}`}>
@@ -210,6 +253,7 @@ export function AdminClassesPage() {
               )}
             </Panel>
           )}
+
         </>
       )}
 
@@ -1132,3 +1176,6 @@ function DetachModal({
     </Modal>
   );
 }
+
+
+

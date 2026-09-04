@@ -1,9 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
+import { Collapsible } from '../../components/ui/Collapsible';
+import { GroupAnalytics } from '../../components/dashboard/GroupProfile';
+import { caseResultsToAnalytics } from '../../data/groupAnalytics';
 import { Icon } from '../../components/icons/Icon';
 import { ActionMenu } from '../../components/ui/ActionMenu';
 import type { ActionMenuItem } from '../../components/ui/ActionMenu';
@@ -21,6 +24,7 @@ import {
   deleteCase,
 } from '../../api/cases';
 import { fetchUsers } from '../../api/users';
+import { fetchCaseResults, fetchGroupDynamics } from '../../api/results';
 import { ApiError } from '../../api/client';
 import { caseMembers } from '../../types/case';
 import type { Case } from '../../types/case';
@@ -68,6 +72,7 @@ export function AdminCasesPage() {
     () => (location.state as { caseId?: number } | null)?.caseId ?? null,
   );
   const [tab, setTab] = useState<MemberTab>('students');
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   // Режим модалки назначения совпадает с активной вкладкой: «добавить»
   // всегда добавляет именно тех, кого показывает вкладка.
@@ -94,6 +99,18 @@ export function AdminCasesPage() {
   // resetKey — кейс + вкладка: выбор не должен переживать ни переключение
   // вкладки, ни переход на другой кейс (иначе откреплялись бы невидимые люди).
   const selection = useRowSelection(rowIds, `${selected?.id ?? 'none'}:${tab}`);
+
+  // useApi внутри GroupAnalytics требует стабильную ссылку — иначе effect
+  // уходит в цикл запросов.
+  const selectedCaseId = selected?.id;
+  const loadCaseAnalytics = useCallback(
+    async () => caseResultsToAnalytics(await fetchCaseResults(selectedCaseId as number)),
+    [selectedCaseId],
+  );
+  const loadCaseDynamics = useCallback(
+    () => fetchGroupDynamics('case', selectedCaseId as number),
+    [selectedCaseId],
+  );
 
   const addLabel: Record<MemberTab, string> = {
     students: 'Добавить учеников',
@@ -144,6 +161,28 @@ export function AdminCasesPage() {
               </button>
             ))}
           </div>
+
+          {selected && (
+            /* Аналитика кейса — тем же блоком и на том же месте, что у
+               класса: экраны разные, а вопрос один — «как выглядит группа».
+               Сравнение идёт со ШКОЛОЙ, а не с классами участников: их
+               набирают из разных классов, «своего класса» у кружка нет. */
+            <Collapsible
+              title={`Аналитика кейса «${selected.name}»`}
+              hint="Средний профиль против школы и зоны роста"
+              open={analyticsOpen}
+              onToggle={() => setAnalyticsOpen((value) => !value)}
+            >
+              <GroupAnalytics
+                label={`Кейс «${selected.name}»`}
+                averageLabel="Средний балл кейса"
+                groupNoun="кейс"
+                load={loadCaseAnalytics}
+                loadDynamics={loadCaseDynamics}
+                emptyText="По этому кейсу ещё не было завершённой диагностики — аналитика появится после закрытия кампании."
+              />
+            </Collapsible>
+          )}
 
           {selected && (
             <Panel title={`Состав кейса «${selected.name}»`}>

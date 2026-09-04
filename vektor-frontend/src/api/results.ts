@@ -1,6 +1,7 @@
 import { apiRequest } from './client';
 import type {
   CaseResults,
+  GroupDynamics,
   ClassResults,
   ClassRoster,
   SubjectDynamics,
@@ -64,4 +65,18 @@ export function fetchClassRoster(classId: number, campaignId?: number): Promise<
 export function fetchCaseResults(caseId: number, campaignId?: number): Promise<CaseResults> {
   const query = campaignId !== undefined ? `?campaign_id=${campaignId}` : '';
   return apiRequest<CaseResults>(`/results/case/${caseId}${query}`);
+}
+
+/**
+ * Динамика группы по критериям: текущий период против предыдущего.
+ * `kind` выбирает эндпоинт — у класса и кейса они разные, а схема ответа одна.
+ * Права те же, что у профиля группы. Нет ни одной завершённой кампании — 404.
+ */
+export function fetchGroupDynamics(
+  kind: 'class' | 'case',
+  groupId: number,
+  campaignId?: number,
+): Promise<GroupDynamics> {
+  const query = campaignId !== undefined ? `?campaign_id=${campaignId}` : '';
+  return apiRequest<GroupDynamics>(`/results/${kind}/${groupId}/dynamics${query}`);
 }
