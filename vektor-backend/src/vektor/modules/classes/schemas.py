@@ -38,7 +38,9 @@ class SchoolClassOut(BaseModel):
 
 class SchoolClassCreate(BaseModel):
     grade: int = Field(ge=1, le=11)
-    section: str = Field(min_length=1, max_length=10)
+    # min_length=0: у 10 и 11 классов параллели нет — секция пустая, и фронтовый
+    # classLabel подписывает такой класс просто «10». Импорт заводит их так же.
+    section: str = Field(min_length=0, max_length=10)
 
 
 class AssignStudentsIn(BaseModel):
