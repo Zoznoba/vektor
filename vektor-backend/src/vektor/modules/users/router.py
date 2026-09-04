@@ -24,6 +24,7 @@ from vektor.modules.users.schemas import (
     SetUserActiveIn,
 )
 from vektor.shared.academic_year import academic_year_label
+from vektor.shared.class_label import class_label
 from vektor.shared.enums import UserRole
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -55,7 +56,7 @@ async def read_me(
         full_name=user.full_name,
         role=user.role,
         is_active=user.is_active,
-        class_label=f"{school_class.grade}-{school_class.section}" if school_class else None,
+        class_label=class_label(school_class.grade, school_class.section) if school_class else None,
         case_name=kase.name if kase else None,
         academic_year=academic_year_label(date.today()),
     )
