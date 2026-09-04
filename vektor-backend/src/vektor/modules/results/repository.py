@@ -18,8 +18,10 @@ from vektor.modules.competencies.models import Competency, Question, Questionnai
 from vektor.modules.results.domain import (
     CoverageKey,
     ScoredAnswer,
+    SubjectProfile,
     coverage_key,
     overall_scores_from_answers,
+    profile_from_answers,
 )
 from vektor.modules.results.errors import CampaignNotCompleted
 from vektor.modules.users.models import User
@@ -180,11 +182,11 @@ async def subject_group_map(
 
 async def profiles_by_campaign_and_subject(
     db: AsyncSession, campaign_ids: set[int]
-) -> dict[tuple[int, int], dict[int, float]]:
+) -> dict[tuple[int, int], SubjectProfile]:
     """Индивидуальные профили пачкой: один запрос на все нужные кампании,
     дальше группировка в памяти. Ключ — (campaign_id, subject_id).
 
-    Считаем ПОВЕРХ индивидуальных профилей (overall_scores_from_answers), а не
+    Считаем ПОВЕРХ индивидуальных профилей (profile_from_answers), а не
     отдельным запросом по сырым ответам: иначе правило анонимности пришлось бы
     применять второй раз, в другом месте и по другой формуле — такие дубли
     неизбежно расходятся.
@@ -217,7 +219,7 @@ async def profiles_by_campaign_and_subject(
             )
         )
 
-    return {key: overall_scores_from_answers(answers) for key, answers in grouped.items()}
+    return {key: profile_from_answers(answers) for key, answers in grouped.items()}
 
 
 async def campaign_students_by_group(

@@ -112,14 +112,37 @@ class CompetencyClassScoreOut(BaseModel):
     school_avg: float | None
 
 
-class ClassGrowthZoneOut(BaseModel):
+class ClassSchoolGapOut(BaseModel):
+    """Критерий, по которому класс отстаёт от школы за тот же период.
+
+    Отвечает на вопрос «чем ЭТОТ класс отличается»: критерий, низкий у всей
+    школы, — не проблема класса, и классный час по нему бессмысленен.
+    `delta` всегда отрицательная — в список попадают только отстающие.
+    """
+
     competency_id: int
     code: str
     name: str
-    # У скольких учеников критерий попал в ЛИЧНЫЕ зоны роста — ранжирование
-    # идёт по охвату, а не по худшему среднему.
-    students_affected: int
+    delta: float
     class_avg: float | None
+    school_avg: float | None
+
+
+class GroupSelfGapOut(BaseModel):
+    """Критерий с наибольшим расхождением «самооценка − окружающие» по группе.
+
+    Единственное место на экране группы, где видно собственно 360°: средний
+    балл и сравнение со школой одинаково считались бы и по обычной оценке
+    учителя. Знак сохраняется: «себя выше» и «себя ниже» — два разных
+    разговора с классом.
+    """
+
+    competency_id: int
+    code: str
+    name: str
+    gap: float
+    self_avg: float | None
+    others_avg: float | None
 
 
 class ClassResultsOut(BaseModel):
@@ -135,7 +158,8 @@ class ClassResultsOut(BaseModel):
     school_average: float | None
 
     competencies: list[CompetencyClassScoreOut]
-    growth_zones: list[ClassGrowthZoneOut]
+    school_gaps: list[ClassSchoolGapOut]
+    self_gaps: list[GroupSelfGapOut]
 
 
 class CompetencyCaseScoreOut(BaseModel):
@@ -150,12 +174,15 @@ class CompetencyCaseScoreOut(BaseModel):
     school_avg: float | None
 
 
-class CaseGrowthZoneOut(BaseModel):
+class CaseSchoolGapOut(BaseModel):
+    """То же, что ClassSchoolGapOut, но для кейса."""
+
     competency_id: int
     code: str
     name: str
-    students_affected: int
+    delta: float
     case_avg: float | None
+    school_avg: float | None
 
 
 class CaseResultsOut(BaseModel):
@@ -171,7 +198,51 @@ class CaseResultsOut(BaseModel):
     school_average: float | None
 
     competencies: list[CompetencyCaseScoreOut]
-    growth_zones: list[CaseGrowthZoneOut]
+    school_gaps: list[CaseSchoolGapOut]
+    self_gaps: list[GroupSelfGapOut]
+
+
+class GroupDynamicsOut(BaseModel):
+    """Динамика группы по критериям: текущий период против предыдущего.
+
+    Сравниваются ОДНИ И ТЕ ЖЕ ученики — те, у кого есть оба периода, —
+    поэтому `students_compared` может быть меньше состава группы
+    (`students_total`): пришедший в этом году новичок сдвигал бы «текущее», и
+    разница читалась бы как рост коллектива.
+
+    `class_id`/`class_label` и `case_id`/`case_name` — взаимоисключающие:
+    заполнена та пара, чей эндпоинт вызвали. Одна схема на оба, потому что
+    остальные два десятка полей совпадают полностью.
+    """
+
+    class_id: int | None = None
+    class_label: str | None = None
+    case_id: int | None = None
+    case_name: str | None = None
+
+    campaign_id: int
+    campaign_title: str
+    campaign_period_year: int
+    campaign_period_month: int
+
+    # None — предыдущего периода нет вовсе (пятиклассники). Это штатное
+    # состояние, а не ошибка: отдаём текущие баллы без дельт.
+    previous_campaign_id: int | None
+    previous_campaign_period_year: int | None
+    previous_campaign_period_month: int | None
+
+    students_compared: int
+    students_total: int
+
+    versions_differ: bool
+    version_note: str | None
+
+    core_competencies_count: int
+    core_average: float | None
+    previous_core_average: float | None
+    core_average_delta: float | None
+
+    competencies: list[CompetencyDynamicsOut]
 
 
 class RaterStatusOut(BaseModel):

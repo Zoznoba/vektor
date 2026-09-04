@@ -177,6 +177,36 @@ def pick_growth_zones(
     return [competency_id for competency_id, _ in ordered[:n]]
 
 
+@dataclass(frozen=True)
+class SubjectProfile:
+    """Профиль одного ученика тремя срезами: итог, самооценка, окружающие.
+
+    Считается за один проход по ответам, потому что все три получаются из
+    ОДНОГО отредактированного role_scores: посчитай их порознь — и правило
+    анонимности пришлось бы применять трижды, а разъехавшись, срезы дали бы
+    разные ответы по одним данным.
+    """
+
+    overall: dict[int, float]
+    self_scores: dict[int, float]
+    others_scores: dict[int, float]
+
+
+def profile_from_answers(
+    answers: list[ScoredAnswer], threshold: int = DEFAULT_PEER_ANONYMITY_THRESHOLD
+) -> SubjectProfile:
+    """Ответы → профиль ученика. Та же цепочка, что в overall_scores_from_answers,
+    только отдаёт ещё и слои self/others — они нужны агрегатам группы."""
+    peer_rater_counts = count_peer_raters_by_competency(answers)
+    raw_scores = aggregate_by_competency_and_rater(answers)
+    role_scores = redact_peer_scores(raw_scores, peer_rater_counts, threshold)
+    return SubjectProfile(
+        overall=overall_by_competency(role_scores),
+        self_scores=self_by_competency(role_scores),
+        others_scores=others_by_competency(role_scores),
+    )
+
+
 def overall_scores_from_answers(
     answers: list[ScoredAnswer], threshold: int = DEFAULT_PEER_ANONYMITY_THRESHOLD
 ) -> dict[int, float]:
@@ -256,28 +286,66 @@ def average_profiles(profiles: list[dict[int, float]]) -> dict[int, float]:
     return {competency_id: sums[competency_id] / counts[competency_id] for competency_id in sums}
 
 
-def count_growth_zone_hits(growth_zone_lists: list[list[int]]) -> dict[int, int]:
-    """У скольких учеников критерий попал в ЛИЧНЫЕ зоны роста."""
-    hits: dict[int, int] = {}
-    for zones in growth_zone_lists:
-        for competency_id in zones:
-            hits[competency_id] = hits.get(competency_id, 0) + 1
-    return hits
+# Меньше этого расхождения — шум на трёх вопросах, подписывать нечего. Тот
+# же порог, что стоял у подписей «выше школы на …» в прежних полосах.
+MEANINGFUL_DIFF = 0.3
 
 
-def rank_growth_zones_by_hits(
-    hits: dict[int, int], n: int = DEFAULT_GROWTH_ZONES_COUNT
-) -> list[int]:
-    """Зоны роста класса — по ОХВАТУ, а не по худшему среднему.
+def rank_school_gaps(
+    group_scores: dict[int, float],
+    school_scores: dict[int, float],
+    n: int = DEFAULT_GROWTH_ZONES_COUNT,
+) -> list[tuple[int, float]]:
+    """Критерии, где группа ОТСТАЁТ от школы: (competency_id, отставание).
 
-    Критерий может быть слабым местом у восьми учеников из двенадцати и при
-    этом не иметь худшего среднего по классу. В прототипе подпись прямая:
-    «темы для классных часов, а не список слабых учеников» — поэтому считаем,
-    у скольких он в личных зонах, а не насколько низко просел средний балл.
-    Сортировка по (-охват, competency_id) — детерминированно при равенстве.
+    Пришло на смену ранжированию по охвату личных зон роста (5e, удалено
+    2026-09-04). У той метрики было два изъяна: она относительная (у каждого
+    ученика ровно три личные зоны независимо от того, насколько плохи дела,
+    поэтому критерий с 4.0 у всех мог возглавить список), и её счётчик
+    «6 учеников» читался как «шестеро провалились».
+
+    Отставание от школы отвечает на вопрос, ради которого экран и открывают:
+    чем ЭТА группа отличается. Критерий, низкий у всей школы, — не проблема
+    класса, а свойство методики или возраста, и вести по нему классный час
+    бессмысленно.
+
+    Возвращаются ТОЛЬКО отстающие (разница меньше −MEANINGFUL_DIFF), от
+    худшего к лучшему. Группа может нигде не отставать — тогда список пуст,
+    и это честный ответ, а не повод показать три случайных критерия.
     """
-    ordered = sorted(hits.items(), key=lambda item: (-item[1], item[0]))
-    return [competency_id for competency_id, _ in ordered[:n]]
+    gaps = [
+        (competency_id, score - school_scores[competency_id])
+        for competency_id, score in group_scores.items()
+        if competency_id in school_scores
+    ]
+    behind = [(cid, gap) for cid, gap in gaps if gap <= -MEANINGFUL_DIFF]
+    # Сортировка по (отставание, id): при равенстве меньший id раньше, чтобы
+    # порядок не плавал между запросами.
+    return sorted(behind, key=lambda item: (item[1], item[0]))[:n]
+
+
+def rank_self_gaps(
+    self_scores: dict[int, float],
+    others_scores: dict[int, float],
+    n: int = DEFAULT_GROWTH_ZONES_COUNT,
+) -> list[tuple[int, float]]:
+    """Критерии с наибольшим расхождением «самооценка − окружающие» по группе.
+
+    Это единственное место, где на экране группы видно собственно 360°:
+    средний балл и сравнение со школой одинаково считались бы и по обычной
+    оценке учителя. Знак важен и сохраняется: «себя выше» и «себя ниже» —
+    это два разных разговора с классом, а не одна «величина расхождения».
+
+    Сортировка по МОДУЛЮ разрыва (сначала самое яркое расхождение), но в
+    список попадает только то, что больше MEANINGFUL_DIFF.
+    """
+    gaps = [
+        (competency_id, score - others_scores[competency_id])
+        for competency_id, score in self_scores.items()
+        if competency_id in others_scores
+    ]
+    meaningful = [(cid, gap) for cid, gap in gaps if abs(gap) >= MEANINGFUL_DIFF]
+    return sorted(meaningful, key=lambda item: (-abs(item[1]), item[0]))[:n]
 
 
 def can_view_results(

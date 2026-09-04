@@ -25,20 +25,21 @@ from vektor.modules.results.domain import (
     compute_deltas,
     compute_gap,
     core_average,
-    count_growth_zone_hits,
     count_peer_raters_by_competency,
     coverage_key,
     coverage_sort_key,
     others_by_competency,
     overall_by_competency,
     pick_growth_zones,
-    rank_growth_zones_by_hits,
+    rank_school_gaps,
+    rank_self_gaps,
     redact_peer_scores,
     self_by_competency,
     shared_competencies,
 )
 from vektor.modules.results.errors import NotAllowedToViewResults, SubjectNotFound
 from vektor.modules.users.models import User
+from vektor.shared.class_label import class_label
 from vektor.shared.enums import RaterRole
 
 
@@ -302,8 +303,8 @@ async def _group_profile(
 
     Различий ровно три, и все три — параметры: колонка снапшота, id группы и
     префикс ключей в ответе (`class_avg` / `case_avg`). Всё остальное —
-    состав по снапшоту, «школа» за период, среднее по ученикам, зоны роста по
-    охвату — одно и то же, и раздваивать это нельзя: разъехавшись, две копии
+    состав по снапшоту, «школа» за период, среднее по ученикам, обе метрики
+    под радаром — одно и то же, и раздваивать это нельзя: разъехавшись, две копии
     дали бы двум экранам разные числа по одним данным.
 
     Права и загрузка самой группы остаются у вызывающего: они у класса и
@@ -327,20 +328,23 @@ async def _group_profile(
     group_profiles = [
         profile
         for (cid, sid), profile in all_profiles.items()
-        if cid == campaign_id and sid in subject_ids and profile
+        if cid == campaign_id and sid in subject_ids and profile.overall
     ]
-    school_profiles = [profile for profile in all_profiles.values() if profile]
+    school_profiles = [profile for profile in all_profiles.values() if profile.overall]
 
     # Среднее ПО УЧЕНИКАМ (каждый весит одинаково), а не по ответам: иначе
     # ученик, про которого ответили пятеро, перевесил бы того, про кого
     # ответил один.
-    group_scores = average_profiles(group_profiles)
-    school_scores = average_profiles(school_profiles)
+    group_scores = average_profiles([p.overall for p in group_profiles])
+    school_scores = average_profiles([p.overall for p in school_profiles])
 
-    # Зоны роста — по охвату личных зон, а не по худшему среднему: это темы
-    # для занятий, а не список слабых учеников.
-    hits = count_growth_zone_hits([pick_growth_zones(profile) for profile in group_profiles])
-    zone_ids = rank_growth_zones_by_hits(hits)
+    # Слои усредняются ПО ТЕМ ЖЕ правилам, что итог: ученик весит одинаково,
+    # а критерий, которого у него нет, просто не участвует.
+    group_self = average_profiles([p.self_scores for p in group_profiles])
+    group_others = average_profiles([p.others_scores for p in group_profiles])
+
+    school_gaps = rank_school_gaps(group_scores, school_scores)
+    self_gaps = rank_self_gaps(group_self, group_others)
 
     competencies = await repo.list_competencies(db)
     competencies_by_id = {c.id: c for c in competencies}
@@ -366,15 +370,27 @@ async def _group_profile(
             for comp in competencies
             if comp.id in group_scores or comp.id in school_scores
         ],
-        "growth_zones": [
+        "school_gaps": [
             {
                 "competency_id": competency_id,
                 "code": competencies_by_id[competency_id].code,
                 "name": competencies_by_id[competency_id].name,
-                "students_affected": hits[competency_id],
+                "delta": delta,
                 score_key: group_scores.get(competency_id),
+                "school_avg": school_scores.get(competency_id),
             }
-            for competency_id in zone_ids
+            for competency_id, delta in school_gaps
+        ],
+        "self_gaps": [
+            {
+                "competency_id": competency_id,
+                "code": competencies_by_id[competency_id].code,
+                "name": competencies_by_id[competency_id].name,
+                "gap": gap,
+                "self_avg": group_self.get(competency_id),
+                "others_avg": group_others.get(competency_id),
+            }
+            for competency_id, gap in self_gaps
         ],
     }
 
@@ -396,7 +412,7 @@ async def get_class_results(
     )
     return {
         "class_id": class_id,
-        "class_label": f"{school_class.grade}-{school_class.section}",
+        "class_label": class_label(school_class.grade, school_class.section),
         "class_average": profile.pop("average"),
         **profile,
     }
@@ -426,6 +442,184 @@ async def get_case_results(
         "case_name": case.name,
         "case_average": profile.pop("average"),
         **profile,
+    }
+
+
+async def _group_dynamics(
+    db: AsyncSession,
+    campaign_id: int,
+    snapshot_column,
+    group_id: int,
+) -> dict:
+    """Динамика группы по критериям: текущий период против предыдущего.
+
+    Общее ядро для класса и кейса — как и `_group_profile`, различается
+    только колонкой снапшота и id группы.
+
+    Два правила, без которых сравнение врёт:
+
+    1. **Сравниваем ОДНИХ И ТЕХ ЖЕ учеников.** Предыдущая кампания ищется по
+       СУБЪЕКТУ (`previous_campaign_by_subject`), а не по группе: нынешний
+       8-1 в прошлом году был 7-1, и поиск по id класса не нашёл бы ничего.
+       В обе средние идут только те, у кого есть оба периода, — иначе
+       пришедший в этом году новичок сдвигал бы «текущее» и разница читалась
+       бы как рост коллектива.
+
+    2. **Дельты только по общему ядру критериев.** Состав меняется
+       (профпробы открываются с 9 класса), и появившийся критерий показываем
+       со значением, но без дельты — иначе смена состава анкеты прочиталась
+       бы как прирост.
+    """
+    campaign = await repo.load_completed_campaign(db, campaign_id)
+
+    group_map = await repo.subject_group_map(db, campaign_id, snapshot_column)
+    subject_ids = {sid for sid, gid in group_map.items() if gid == group_id}
+
+    previous_ids = await repo.previous_campaign_by_subject(
+        db, subject_ids, campaign.period_year, campaign.period_month
+    )
+    profiles = await repo.profiles_by_campaign_and_subject(
+        db, {campaign_id} | set(previous_ids.values())
+    )
+
+    # Пары «сейчас / тогда» по каждому ученику: обе половины должны быть
+    # непустыми, иначе это не сравнение.
+    current_profiles: list[dict[int, float]] = []
+    previous_profiles: list[dict[int, float]] = []
+    compared_previous_campaigns: set[int] = set()
+    for subject_id in subject_ids:
+        current = profiles.get((campaign_id, subject_id))
+        previous_id = previous_ids.get(subject_id)
+        previous = profiles.get((previous_id, subject_id)) if previous_id else None
+        if current is None or previous is None or not current.overall or not previous.overall:
+            continue
+        current_profiles.append(current.overall)
+        previous_profiles.append(previous.overall)
+        compared_previous_campaigns.add(previous_id)
+
+    if not current_profiles:
+        # Прошлого периода нет ни у кого (пятиклассники, первый год кружка) —
+        # отдаём текущие баллы по всему составу без дельт. Пустой ответ здесь
+        # был бы неотличим от «результатов нет вовсе».
+        current_profiles = [
+            profile.overall
+            for (cid, sid), profile in profiles.items()
+            if cid == campaign_id and sid in subject_ids and profile.overall
+        ]
+
+    current_scores = average_profiles(current_profiles)
+    previous_scores = average_profiles(previous_profiles)
+    core = shared_competencies(current_scores, previous_scores)
+    deltas = compute_deltas(current_scores, previous_scores, core)
+
+    # Ярлык прошлого периода берём по САМОЙ СВЕЖЕЙ из прошлых кампаний: в
+    # норме она у всех одна (класс диагностируют целиком), но у кейса
+    # ученики из разных классов и прошлые кампании у них могут различаться.
+    previous_campaign = None
+    if compared_previous_campaigns:
+        candidates = [await repo.get_campaign(db, cid) for cid in compared_previous_campaigns]
+        previous_campaign = max(
+            (c for c in candidates if c is not None),
+            key=lambda c: (c.period_year, c.period_month, c.id),
+            default=None,
+        )
+
+    # Оговорка о смене редакции — как в get_subject_dynamics: текст берём из
+    # самой редакции, придумывать его здесь нельзя.
+    versions_differ = bool(
+        previous_campaign
+        and previous_campaign.questionnaire_version_id != campaign.questionnaire_version_id
+    )
+    version_note = None
+    if versions_differ and previous_campaign:
+        version_note = await repo.questionnaire_version_note(
+            db, previous_campaign.questionnaire_version_id
+        )
+
+    competencies = await repo.list_competencies(db)
+    current_core_average = core_average(current_scores, core)
+    previous_core_average = core_average(previous_scores, core)
+
+    return {
+        "campaign_id": campaign_id,
+        "campaign_title": campaign.title,
+        "campaign_period_year": campaign.period_year,
+        "campaign_period_month": campaign.period_month,
+        "previous_campaign_id": previous_campaign.id if previous_campaign else None,
+        "previous_campaign_period_year": (
+            previous_campaign.period_year if previous_campaign else None
+        ),
+        "previous_campaign_period_month": (
+            previous_campaign.period_month if previous_campaign else None
+        ),
+        # Сколько учеников реально попало в сравнение и сколько их в группе
+        # вообще: числа расходятся у классов, куда кто-то пришёл в этом году,
+        # и это надо показывать, а не прятать.
+        "students_compared": len(previous_profiles),
+        "students_total": len(subject_ids),
+        "versions_differ": versions_differ,
+        "version_note": version_note,
+        "core_competencies_count": len(core),
+        "core_average": current_core_average,
+        "previous_core_average": previous_core_average,
+        "core_average_delta": (
+            current_core_average - previous_core_average
+            if current_core_average is not None and previous_core_average is not None
+            else None
+        ),
+        "competencies": [
+            {
+                "competency_id": comp.id,
+                "code": comp.code,
+                "name": comp.name,
+                "overall_avg": current_scores.get(comp.id),
+                "previous_avg": previous_scores.get(comp.id),
+                "delta": deltas.get(comp.id),
+                "in_core": comp.id in core,
+            }
+            for comp in competencies
+            if comp.id in current_scores or comp.id in previous_scores
+        ],
+    }
+
+
+async def get_class_dynamics(
+    db: AsyncSession, class_id: int, campaign_id: int, current_user: User
+) -> dict:
+    """Динамика класса по критериям. Права те же, что у профиля класса."""
+    school_class = await repo.load_class_with_teachers(db, class_id)
+    if school_class is None:
+        raise ClassNotFound()
+    if not can_view_group_results(
+        current_user.id, current_user.role, {t.id for t in school_class.teachers}
+    ):
+        raise NotAllowedToViewResults()
+
+    dynamics = await _group_dynamics(db, campaign_id, Assessment.subject_class_id, class_id)
+    return {
+        "class_id": class_id,
+        "class_label": f"{school_class.grade}-{school_class.section}",
+        **dynamics,
+    }
+
+
+async def get_case_dynamics(
+    db: AsyncSession, case_id: int, campaign_id: int, current_user: User
+) -> dict:
+    """Динамика кейса по критериям. Права те же, что у профиля кейса."""
+    case = await repo.load_case_with_teachers(db, case_id)
+    if case is None:
+        raise CaseNotFound()
+    if not can_view_group_results(
+        current_user.id, current_user.role, {t.id for t in case.teachers}
+    ):
+        raise NotAllowedToViewResults()
+
+    dynamics = await _group_dynamics(db, campaign_id, Assessment.subject_case_id, case_id)
+    return {
+        "case_id": case_id,
+        "case_name": case.name,
+        **dynamics,
     }
 
 
@@ -473,7 +667,7 @@ async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
                 # проставлен: ученики кружка из разных классов, и любой один
                 # из них в заголовке строки был бы враньём.
                 "class_id": class_id if kind == "class" else None,
-                "class_label": f"{grade}-{section}" if kind == "class" else None,
+                "class_label": class_label(grade, section) if kind == "class" else None,
                 "case_id": case_id if kind == "case" else None,
                 "case_name": case_name if kind == "case" else None,
                 "total": 0,
@@ -548,9 +742,13 @@ async def get_class_roster(
     deltas: list[float] = []
     averages: list[float] = []
     for subject_id in sorted(subject_ids, key=lambda sid: users[sid].full_name):
-        current_profile = profiles.get((campaign_id, subject_id), {})
+        # Экрану состава нужен только итог; слои self/others профиль тоже
+        # несёт, но здесь они ни к чему.
+        current = profiles.get((campaign_id, subject_id))
+        current_profile = current.overall if current else {}
         previous_id = previous_campaign_ids.get(subject_id)
-        previous_profile = profiles.get((previous_id, subject_id), {}) if previous_id else {}
+        previous = profiles.get((previous_id, subject_id)) if previous_id else None
+        previous_profile = previous.overall if previous else {}
 
         # Итог и дельта — по общему ядру критериев обоих периодов (как в
         # get_subject_dynamics): иначе появление возрастного критерия в 9
@@ -593,7 +791,7 @@ async def get_class_roster(
 
     return {
         "class_id": class_id,
-        "class_label": f"{school_class.grade}-{school_class.section}",
+        "class_label": class_label(school_class.grade, school_class.section),
         "campaign_id": campaign_id,
         "campaign_title": campaign.title,
         "campaign_period_year": campaign.period_year,
