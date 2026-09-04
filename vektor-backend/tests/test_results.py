@@ -31,13 +31,14 @@ from vektor.modules.results.domain import (
     compute_deltas,
     compute_gap,
     core_average,
-    count_growth_zone_hits,
     count_peer_raters_by_competency,
     others_by_competency,
     overall_by_competency,
     overall_scores_from_answers,
     pick_growth_zones,
-    rank_growth_zones_by_hits,
+    profile_from_answers,
+    rank_school_gaps,
+    rank_self_gaps,
     redact_peer_scores,
     self_by_competency,
     shared_competencies,
@@ -331,38 +332,81 @@ def test_core_average_ignores_missing_competency() -> None:
     assert core_average({1: 4.0}, {1, 42}) == 4.0
 
 
-# --- 5e: average_profiles / count_growth_zone_hits / rank_growth_zones_by_hits ---
+# --- 5e: average_profiles / rank_group_growth_zones / count_students_below ---
 
 
 def test_average_profiles_weighs_students_equally() -> None:
-    # Каждый ученик — один голос, независимо от числа оценивших его людей.
-    assert average_profiles([{1: 2.0}, {1: 4.0}]) == {1: 3.0}
+    # Про первого ученика ответили трое (2.0), про второго — один (4.0).
+    # Среднее по УЧЕНИКАМ = 3.0; по ответам вышло бы 2.5.
+    assert average_profiles([{1: 2.0}, {1: 4.0}]) == {1: pytest.approx(3.0)}
 
 
-def test_average_profiles_handles_partial_competencies() -> None:
-    # Критерий 2 есть только у одного ученика — усредняем по тем, у кого он есть.
-    assert average_profiles([{1: 2.0, 2: 5.0}, {1: 4.0}]) == {1: 3.0, 2: 5.0}
+def test_average_profiles_ignores_missing_competency() -> None:
+    # Критерий, которого нет у части учеников (закрыт по возрасту), считается
+    # по тем, у кого он есть, а не как ноль.
+    assert average_profiles([{1: 4.0, 2: 2.0}, {1: 2.0}]) == {
+        1: pytest.approx(3.0),
+        2: pytest.approx(2.0),
+    }
 
 
-def test_average_profiles_empty() -> None:
-    assert average_profiles([]) == {}
+def test_rank_school_gaps_returns_only_behind() -> None:
+    # Впереди школы и вровень — не отставание; список только про то, где
+    # группа просела относительно школы.
+    ranked = rank_school_gaps({1: 2.5, 2: 4.0, 3: 3.0}, {1: 3.3, 2: 3.2, 3: 3.0})
+    assert ranked == [(1, pytest.approx(-0.8))]
 
 
-def test_count_growth_zone_hits() -> None:
-    assert count_growth_zone_hits([[1, 2], [2, 3], [2]]) == {1: 1, 2: 3, 3: 1}
+def test_rank_school_gaps_ignores_noise() -> None:
+    # 0.2 балла на трёх вопросах — шум, в список не идёт.
+    assert rank_school_gaps({1: 3.1}, {1: 3.3}) == []
 
 
-def test_rank_growth_zones_by_coverage_not_by_score() -> None:
-    # 5 учеников против 2 — первым идёт более массовый критерий.
-    assert rank_growth_zones_by_hits({1: 2, 2: 5}, n=2) == [2, 1]
+def test_rank_school_gaps_worst_first() -> None:
+    ranked = rank_school_gaps({1: 2.9, 2: 2.0, 3: 2.5}, {1: 3.5, 2: 3.5, 3: 3.5})
+    assert [cid for cid, _ in ranked] == [2, 3, 1]
 
 
-def test_rank_growth_zones_tie_broken_by_competency_id() -> None:
-    assert rank_growth_zones_by_hits({3: 2, 1: 2, 2: 2}, n=2) == [1, 2]
+def test_rank_school_gaps_empty_when_group_is_the_whole_school() -> None:
+    # Единственная группа периода сравнивается сама с собой — честный пустой
+    # список, а не три случайных критерия.
+    scores = {1: 3.0, 2: 4.0}
+    assert rank_school_gaps(scores, scores) == []
 
 
-def test_rank_growth_zones_n_larger_than_available() -> None:
-    assert rank_growth_zones_by_hits({1: 1}, n=5) == [1]
+def test_rank_self_gaps_keeps_sign_and_sorts_by_magnitude() -> None:
+    # «Себя выше» и «себя ниже» — разные разговоры, знак сохраняем;
+    # порядок — по величине расхождения.
+    ranked = rank_self_gaps({1: 4.1, 2: 2.8, 3: 3.0}, {1: 2.9, 2: 3.3, 3: 3.05})
+    assert ranked[0][0] == 1
+    assert ranked[0][1] == pytest.approx(1.2)
+    assert ranked[1][0] == 2
+    assert ranked[1][1] == pytest.approx(-0.5)
+    # Третий критерий — расхождение 0.05, шум.
+    assert len(ranked) == 2
+
+
+def test_rank_self_gaps_skips_competency_without_others() -> None:
+    # Критерий, где ответил только сам ученик, разрыва не даёт: сравнивать
+    # не с чем.
+    assert rank_self_gaps({1: 5.0}, {}) == []
+
+
+def test_profile_from_answers_redacts_peers_in_every_layer() -> None:
+    # Правило анонимности применяется ОДИН раз, до раскладки на слои: два
+    # одноклассника ниже порога не должны просочиться ни в итог, ни в
+    # «окружающих», по которым считается разрыв самооценки.
+    answers = [
+        ScoredAnswer(competency_id=1, rater_role=RaterRole.SELF, respondent_id=1, value=5),
+        ScoredAnswer(competency_id=1, rater_role=RaterRole.PEER, respondent_id=2, value=1),
+        ScoredAnswer(competency_id=1, rater_role=RaterRole.PEER, respondent_id=3, value=1),
+        ScoredAnswer(competency_id=1, rater_role=RaterRole.TEACHER, respondent_id=4, value=3),
+    ]
+    profile = profile_from_answers(answers)
+    assert profile.self_scores == {1: pytest.approx(5.0)}
+    # Только учитель: единицы двух пиров вырезаны вместе со слоем.
+    assert profile.others_scores == {1: pytest.approx(3.0)}
+    assert profile.overall == {1: pytest.approx(4.0)}
 
 
 # --- Интеграционные тесты GET /results/{subject_id} ---
@@ -1193,17 +1237,30 @@ async def test_class_profile_weighs_students_equally(
     assert body["students_with_results"] == 2
 
 
-async def test_class_growth_zones_ranked_by_coverage(
+async def test_class_self_gap_uses_group_layers(
     client: AsyncClient, admin_headers, class_scenario
 ) -> None:
-    # Критерий A в личных зонах роста у ОБОИХ учеников (у каждого он ниже B),
-    # значит он идёт первым — по охвату.
+    # Критерий A: самооценка (2.0 и 4.0) в среднем 3.0, окружающие есть
+    # только у s1 — 2.0. Разрыв +1.0, «себя выше».
     response = await client.get(
         f"/results/class/{class_scenario['class_id']}", headers=admin_headers
     )
-    zones = response.json()["growth_zones"]
-    assert zones[0]["competency_id"] == class_scenario["comp_a"]
-    assert zones[0]["students_affected"] == 2
+    gaps = response.json()["self_gaps"]
+    assert [g["competency_id"] for g in gaps] == [class_scenario["comp_a"]]
+    assert gaps[0]["gap"] == pytest.approx(1.0)
+    assert gaps[0]["self_avg"] == pytest.approx(3.0)
+    assert gaps[0]["others_avg"] == pytest.approx(2.0)
+
+
+async def test_class_school_gaps_empty_when_class_is_the_whole_school(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    # В периоде одна кампания, поэтому «школа» — это тот же класс: отставания
+    # нет и список пуст. Честнее, чем показывать три случайных критерия.
+    response = await client.get(
+        f"/results/class/{class_scenario['class_id']}", headers=admin_headers
+    )
+    assert response.json()["school_gaps"] == []
 
 
 async def test_coverage_requires_admin(client: AsyncClient, class_scenario) -> None:
@@ -1862,18 +1919,93 @@ async def test_case_profile_weighs_students_equally(
     assert body["case_average"] == pytest.approx(4.0)
 
 
-async def test_case_growth_zones_ranked_by_coverage(
+async def test_case_self_gap_uses_group_layers(
     client: AsyncClient, admin_headers, case_profile_scenario
 ) -> None:
-    # Критерий A ниже B у обоих учеников — значит он первый по охвату.
+    # Та же раскладка, что у класса: самооценка 3.0 в среднем, окружающие
+    # только у s1 (2.0) — разрыв +1.0.
     response = await client.get(
         f"/results/case/{case_profile_scenario['case_id']}", headers=admin_headers
     )
-    zones = response.json()["growth_zones"]
-    assert zones[0]["competency_id"] == case_profile_scenario["comp_a"]
-    assert zones[0]["students_affected"] == 2
+    gaps = response.json()["self_gaps"]
+    assert [g["competency_id"] for g in gaps] == [case_profile_scenario["comp_a"]]
+    assert gaps[0]["gap"] == pytest.approx(1.0)
 
 
 async def test_case_results_unknown_case_404(client: AsyncClient, admin_headers) -> None:
     response = await client.get("/results/case/99999", headers=admin_headers)
     assert response.status_code == 404
+
+
+# --- Динамика группы по критериям (7t) ---
+
+
+async def test_class_dynamics_compares_same_students(
+    client: AsyncClient, admin_headers, dynamics_scenario
+) -> None:
+    # Критерий A есть в обоих периодах: 3.0 → 4.0, дельта +1.0. Критерий B
+    # появился только сейчас — значение есть, дельты нет.
+    response = await client.get(
+        f"/results/class/{dynamics_scenario['class_id']}/dynamics", headers=admin_headers
+    )
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["class_label"] == "9-д"
+    assert body["students_compared"] == 1
+    assert body["students_total"] == 1
+    assert body["core_competencies_count"] == 1
+    assert body["core_average_delta"] == pytest.approx(1.0)
+
+    by_id = {c["competency_id"]: c for c in body["competencies"]}
+    assert by_id[dynamics_scenario["comp_a"]]["delta"] == pytest.approx(1.0)
+    assert by_id[dynamics_scenario["comp_a"]]["in_core"] is True
+    assert by_id[dynamics_scenario["comp_b"]]["delta"] is None
+    assert by_id[dynamics_scenario["comp_b"]]["in_core"] is False
+
+
+async def test_class_dynamics_without_previous_period_is_not_an_error(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    # У класса единственная кампания. Это штатное состояние (пятиклассники),
+    # а не ошибка: отдаём текущие баллы без дельт.
+    response = await client.get(
+        f"/results/class/{class_scenario['class_id']}/dynamics", headers=admin_headers
+    )
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["previous_campaign_id"] is None
+    assert body["students_compared"] == 0
+    assert body["core_average_delta"] is None
+    # Значения текущего периода при этом есть — пустой ответ был бы
+    # неотличим от «результатов нет вовсе».
+    assert [c["overall_avg"] for c in body["competencies"] if c["overall_avg"] is not None]
+    assert all(c["delta"] is None for c in body["competencies"])
+
+
+async def test_class_dynamics_forbidden_for_other_teacher(
+    client: AsyncClient, dynamics_scenario, case_profile_scenario
+) -> None:
+    # Учитель, не ведущий этот класс, к динамике доступа не имеет — те же
+    # права, что у профиля класса.
+    headers = await _login(client, "kt1@vektor.ru")
+    response = await client.get(
+        f"/results/class/{dynamics_scenario['class_id']}/dynamics", headers=headers
+    )
+    assert response.status_code == 403
+
+
+async def test_case_dynamics_available_to_case_teacher(
+    client: AsyncClient, case_profile_scenario
+) -> None:
+    # У кейса прошлого периода нет, но эндпоинт доступен руководителю и
+    # отвечает штатно.
+    headers = await _login(client, "kt1@vektor.ru")
+    response = await client.get(
+        f"/results/case/{case_profile_scenario['case_id']}/dynamics", headers=headers
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["case_name"] == "Робототехника"
+    assert body["previous_campaign_id"] is None
