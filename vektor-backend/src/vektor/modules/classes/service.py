@@ -7,67 +7,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from vektor.core.errors import DomainError
+from vektor.modules.classes.errors import (
+    ClassAlreadyExists,
+    ClassNotFound,
+    StudentNotInClass,
+    TeacherAlreadyAssigned,
+    TeacherNotInClass,
+)
 from vektor.modules.classes.models import SchoolClass, TeacherClass
+from vektor.modules.users.errors import UserNotFound, WrongRole
 from vektor.modules.users.models import User
 from vektor.shared.enums import UserRole
-
-
-class ClassAlreadyExists(DomainError):
-    """Класс с таким grade+section уже существует."""
-
-    status_code = 409
-    code = "class_already_exists"
-    message = "Класс с таким номером уже существует"
-
-
-class UserNotFound(DomainError):
-    """Один или несколько пользователей с такими id не найдены."""
-
-    status_code = 404
-    code = "user_not_found"
-    message = "Пользователь не найден"
-
-
-class ClassNotFound(DomainError):
-    """Класс с таким id не найден."""
-
-    status_code = 404
-    code = "class_not_found"
-    message = "Класс не найден"
-
-
-class TeacherAlreadyAssigned(DomainError):
-    """Один или несколько учителей уже привязаны к этому классу."""
-
-    status_code = 409
-    code = "teacher_already_assigned"
-    message = "Учитель уже привязан к этому классу"
-
-
-class WrongRole(DomainError):
-    """Роль пользователя не подходит для операции."""
-
-    status_code = 409
-    code = "wrong_role"
-    message = "Роль пользователя не подходит для операции"
-
-
-class TeacherNotInClass(DomainError):
-    """Учитель не привязан к этому классу — нечего править или откреплять."""
-
-    status_code = 404
-    code = "teacher_not_in_class"
-    message = "Учитель не привязан к этому классу"
-
-
-class StudentNotInClass(DomainError):
-    """Ученик числится не в этом классе — открепление относится не к нему."""
-
-    status_code = 404
-    code = "student_not_in_class"
-    message = "Ученик не числится в этом классе"
-
 
 # Состав класса всегда возвращаем целиком: список учителей теперь идёт с
 # атрибутами связи, и `teacher_links` без явной догрузки развалится на
@@ -110,7 +60,9 @@ async def create_class(db: AsyncSession, grade: int, section: str) -> SchoolClas
 
 
 async def all_classes(db: AsyncSession) -> list[SchoolClass]:
-    result = await db.execute(select(SchoolClass).options(*_CLASS_LOAD))
+    result = await db.execute(
+        select(SchoolClass).options(*_CLASS_LOAD).order_by(SchoolClass.grade, SchoolClass.section)
+    )
     return result.scalars().all()
 
 
@@ -185,12 +137,37 @@ async def update_teacher_in_class(
 async def remove_teacher_from_class(
     db: AsyncSession, class_id: int, teacher_id: int
 ) -> SchoolClass:
-    """Открепить учителя от класса. Классное руководство снимается вместе со
-    связью — отдельно «разжаловать» перед откреплением не нужно."""
-    school_class = await _load_class(db, class_id)
-    link = _find_link(school_class, teacher_id)
+    """Открепить одного учителя — частный случай remove_teachers_from_class.
 
-    school_class.teacher_links.remove(link)  # delete-orphan удалит строку
+    Своей логики здесь нет намеренно: одиночный DELETE и bulk обязаны вести
+    себя одинаково, а два пути с одинаковыми проверками разъезжаются.
+    """
+    return await remove_teachers_from_class(db, class_id, [teacher_id])
+
+
+async def remove_teachers_from_class(
+    db: AsyncSession, class_id: int, teacher_ids: list[int]
+) -> SchoolClass:
+    """Открепить учителей от класса (bulk). Классное руководство снимается
+    вместе со связью — отдельно «разжаловать» перед откреплением не нужно.
+
+    Вся пачка проверяется ДО записи, зеркально assign_teachers: падение на
+    середине оставило бы состав разобранным наполовину. Открепление, в отличие
+    от привязки, НЕ идемпотентно — учитель, которого в классе нет, значит, что
+    выделение на экране разошлось с реальным составом, и молчать об этом
+    нельзя.
+    """
+    school_class = await _load_class(db, class_id)
+
+    if not teacher_ids:
+        return school_class
+
+    # dict.fromkeys — дедупликация с сохранением порядка: повторный id в теле
+    # иначе уронил бы list.remove на второй попытке.
+    links = [_find_link(school_class, teacher_id) for teacher_id in dict.fromkeys(teacher_ids)]
+
+    for link in links:
+        school_class.teacher_links.remove(link)  # delete-orphan удалит строку
     await db.commit()
     return await _load_class(db, class_id)
 
@@ -198,7 +175,7 @@ async def remove_teacher_from_class(
 async def remove_student_from_class(
     db: AsyncSession, class_id: int, student_id: int
 ) -> SchoolClass:
-    """Открепить ученика от класса: `school_class_id = None`.
+    """Открепить одного ученика — частный случай remove_students_from_class.
 
     Ученик остаётся в системе со всей историей — анкеты хранят снапшот класса
     (`Assessment.subject_class_id`, Этап 5e), поэтому прошлые результаты
@@ -206,15 +183,34 @@ async def remove_student_from_class(
     assign_students на новый класс: у ученика класс один, и присвоение
     перезаписывает старый.
     """
+    return await remove_students_from_class(db, class_id, [student_id])
+
+
+async def remove_students_from_class(
+    db: AsyncSession, class_id: int, student_ids: list[int]
+) -> SchoolClass:
+    """Открепить учеников от класса (bulk): `school_class_id = None`.
+
+    Атомарность и неидемпотентность — те же, что в remove_teachers_from_class.
+    """
     school_class = await _load_class(db, class_id)
 
-    student = await db.get(User, student_id)
-    if student is None:
-        raise UserNotFound(f"Пользователь {student_id} не найден")
-    if student.school_class_id != class_id:
-        raise StudentNotInClass(f"Ученик {student_id} не числится в классе {class_id}")
+    if not student_ids:
+        return school_class
 
-    student.school_class_id = None
+    found = await db.execute(select(User).where(User.id.in_(set(student_ids))))
+    students = {student.id: student for student in found.scalars()}
+
+    for student_id in student_ids:
+        student = students.get(student_id)
+        if student is None:
+            raise UserNotFound(f"Пользователь {student_id} не найден")
+        if student.school_class_id != class_id:
+            raise StudentNotInClass(f"Ученик {student_id} не числится в классе {class_id}")
+
+    for student_id in student_ids:
+        students[student_id].school_class_id = None
+
     await db.commit()
     return await _load_class(db, school_class.id)
 

@@ -7,9 +7,11 @@ import { AssessmentFillPage } from './pages/student/AssessmentFillPage';
 import { SurveysPage } from './pages/surveys/SurveysPage';
 import { TeacherClassesPage } from './pages/teacher/TeacherClassesPage';
 import { TeacherStudentPage } from './pages/teacher/TeacherStudentPage';
+import { TeacherCasesPage } from './pages/teacher/TeacherCasesPage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminUsersPage } from './pages/admin/AdminUsersPage';
 import { AdminClassesPage } from './pages/admin/AdminClassesPage';
+import { AdminCasesPage } from './pages/admin/AdminCasesPage';
 import { AdminCampaignsPage } from './pages/admin/AdminCampaignsPage';
 import { AdminQuestionnairePage } from './pages/admin/AdminQuestionnairePage';
 import { AdminResultsPage } from './pages/admin/AdminResultsPage';
@@ -73,6 +75,14 @@ function App() {
               }
             />
             <Route
+              path="/teacher/cases"
+              element={
+                <RequireTeacher>
+                  <TeacherCasesPage />
+                </RequireTeacher>
+              }
+            />
+            <Route
               path="/teacher/students"
               element={
                 <RequireTeacher>
@@ -109,6 +119,14 @@ function App() {
               element={
                 <RequireAdmin>
                   <AdminClassesPage />
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/admin/cases"
+              element={
+                <RequireAdmin>
+                  <AdminCasesPage />
                 </RequireAdmin>
               }
             />

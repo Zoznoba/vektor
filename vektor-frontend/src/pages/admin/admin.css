@@ -65,6 +65,18 @@
   width: 210px;
 }
 
+/* Поиск во всю ширину — в модалке назначения, где рядом ничего нет. */
+.search-box--block {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.search-box--block input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
 .search-box input::placeholder {
   color: var(--ink-faint);
 }
@@ -236,6 +248,17 @@
   margin-bottom: 6px;
 }
 
+/* Колонка чекбоксов в таблице состава — по ширине галочки, не тянется. */
+.admin-table__select-col {
+  width: 34px;
+}
+
+.admin-table__select-col input {
+  display: block;
+  margin: 0;
+  cursor: pointer;
+}
+
 /* --- карточки классов --- */
 .class-grid {
   display: grid;
@@ -252,6 +275,7 @@
   padding: 14px 16px;
   background: var(--surface);
   cursor: pointer;
+  min-width: 0;
 }
 
 .class-card--selected {
@@ -264,6 +288,15 @@
   font-size: 19px;
   font-weight: 600;
   color: var(--ink);
+  /* Длинные названия (у кейсов имя — свободный текст, в отличие от «8-1»)
+     переносим и обрезаем тремя строками, чтобы тайл не распирало.
+     Полное имя остаётся в title карточки. */
+  overflow-wrap: anywhere;
+  hyphens: auto;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .class-card__count {
@@ -451,4 +484,18 @@
   width: 1%;
   text-align: right;
   white-space: nowrap;
+}
+
+/* Поимённый список в подтверждении массового открепления. */
+.detach-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  max-height: 180px;
+  overflow: auto;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+}
+
+.detach-list li {
+  padding: 1px 0;
 }

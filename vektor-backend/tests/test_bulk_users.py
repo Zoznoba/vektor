@@ -165,3 +165,50 @@ async def test_bulk_forbidden_for_non_admin(client: AsyncClient) -> None:
 async def test_bulk_requires_auth(client: AsyncClient) -> None:
     response = await client.post("/users/bulk", json={"users": _rows("z@vektor.ru")})
     assert response.status_code == 401
+
+
+# --- Привязка к кейсу одним вызовом (Этап 8) ---
+
+
+async def test_bulk_attaches_students_and_teachers_to_case(
+    client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """В отличие от класса, кейс получает И учеников, И учителей: членство в
+    кейсе одно на обе роли (FK users.case_id)."""
+    kase = (
+        await client.post("/cases", json={"name": "Робототехника"}, headers=admin_headers)
+    ).json()
+    payload = {
+        "case_id": kase["id"],
+        "users": _rows("k1@vektor.ru", "k2@vektor.ru")
+        + _rows("kt@vektor.ru", role="teacher")
+        + _rows("kp@vektor.ru", role="parent"),
+    }
+
+    response = await client.post("/users/bulk", json=payload, headers=admin_headers)
+
+    assert response.status_code == 201
+    assert response.json()["case_id"] == kase["id"]
+
+    # Отдельного GET /cases/{id} в API нет — состав смотрим в списке кейсов.
+    cases = (await client.get("/cases", headers=admin_headers)).json()
+    stored = next(c for c in cases if c["id"] == kase["id"])
+    assert {u["email"] for u in stored["students"]} == {"k1@vektor.ru", "k2@vektor.ru"}
+    assert {u["email"] for u in stored["teachers"]} == {"kt@vektor.ru"}
+    # Родителя в кейс не кладём — его там не бывает.
+    all_users = (await client.get("/users", headers=admin_headers)).json()
+    parent = next(u for u in all_users if u["email"] == "kp@vektor.ru")
+    assert parent["case_id"] is None
+
+
+async def test_bulk_case_not_found_rejected_atomically(
+    client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """Несуществующий кейс — 404, и в БД не оседает ни одна строка пачки."""
+    payload = {"case_id": 999999, "users": _rows("nope@vektor.ru")}
+
+    response = await client.post("/users/bulk", json=payload, headers=admin_headers)
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "case_not_found"
+    assert "nope@vektor.ru" not in await _all_emails(client, admin_headers)

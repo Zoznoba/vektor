@@ -1,21 +1,27 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
+import { GroupAnalytics } from '../../components/dashboard/GroupProfile';
+import { classResultsToAnalytics } from '../../data/groupAnalytics';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
+import { Collapsible } from '../../components/ui/Collapsible';
 import { Icon } from '../../components/icons/Icon';
 import { ActionMenu } from '../../components/ui/ActionMenu';
 import type { ActionMenuItem } from '../../components/ui/ActionMenu';
+import { SelectAllCheckbox, SelectionBar } from '../../components/ui/SelectionBar';
 import { useApi } from '../../hooks/useApi';
+import { useRowSelection } from '../../hooks/useRowSelection';
+import type { RowSelection } from '../../hooks/useRowSelection';
 import {
   fetchClasses,
   createClass,
   assignStudents,
   assignTeachers,
   updateTeacherInClass,
-  removeTeacherFromClass,
-  removeStudentFromClass,
+  removeTeachersFromClass,
+  removeStudentsFromClass,
 } from '../../api/classes';
 import { fetchUsers, bulkCreateUsers } from '../../api/users';
 import type { BulkUserIn } from '../../api/users';
@@ -23,10 +29,17 @@ import { ApiError } from '../../api/client';
 import { classLabel, homeroomTeachers } from '../../types/school';
 import type { SchoolClass, TeacherInClass } from '../../types/school';
 import type { User } from '../../types/auth';
+import { fetchClassResults, fetchGroupDynamics } from '../../api/results';
 import './admin.css';
 
-/** Вкладки состава класса. Определяют и таблицу, и контекстную кнопку добавления. */
+/** Вкладки состава класса. Определяют и таблицу, и контекстную кнопку
+ *  добавления. Аналитика сюда НЕ входит: она ничего не добавляет и ничего не
+ *  выделяет, поэтому живёт отдельным сворачиваемым блоком под составом —
+ *  внутри таблицы состава она читалась как чужеродная вкладка. */
 type CompositionTab = 'students' | 'teachers' | 'homeroom';
+
+/** Стабильная пустая ссылка: `[]` в рендере ломал бы мемоизацию выбора. */
+const EMPTY_ROWS: User[] = [];
 
 const TABS: { key: CompositionTab; label: string }[] = [
   { key: 'students', label: 'Ученики' },
@@ -45,12 +58,13 @@ export function AdminClassesPage() {
     () => (location.state as { classId?: number } | null)?.classId ?? null,
   );
   const [tab, setTab] = useState<CompositionTab>('students');
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   // Модалка назначения: режим совпадает с активной вкладкой — «добавить» на
   // вкладке всегда добавляет именно тех, кого эта вкладка показывает.
   const [assignMode, setAssignMode] = useState<CompositionTab | null>(null);
   const [editSubjectFor, setEditSubjectFor] = useState<TeacherInClass | null>(null);
-  const [transferStudent, setTransferStudent] = useState<User | null>(null);
+  const [transferring, setTransferring] = useState<User[] | null>(null);
   const [detaching, setDetaching] = useState<DetachTarget | null>(null);
 
   const sorted = useMemo(
@@ -64,6 +78,33 @@ export function AdminClassesPage() {
   // Выбранный класс всегда берём из свежих данных (после reload объект новый);
   // пока ничего не выбрано — показываем первый, чтобы состав не был пустым экраном
   const selected = sorted.find((c) => c.id === selectedId) ?? sorted[0] ?? null;
+
+  // Выделение — на вкладках «Ученики» и «Учителя». На «Классном руководстве»
+  // его нет намеренно: там 1–2 человека, а «открепить» читалось бы двусмысленно
+  // (снять руководство или выкинуть из класса вовсе).
+  const rows: User[] = useMemo(() => {
+    if (!selected) return EMPTY_ROWS;
+    if (tab === 'students') return selected.students;
+    if (tab === 'teachers') return selected.teachers.map((link) => link.teacher);
+    return EMPTY_ROWS;
+  }, [selected, tab]);
+  const rowIds = useMemo(() => rows.map((u) => u.id), [rows]);
+  // resetKey — класс + вкладка: выбор не переживает ни переключение вкладки,
+  // ни переход на другой класс, иначе откреплялись бы невидимые люди.
+  const selection = useRowSelection(rowIds, `${selected?.id ?? 'none'}:${tab}`);
+
+  // useApi внутри GroupAnalytics требует стабильную ссылку — иначе effect
+  // уходит в цикл запросов.
+  const selectedClassId = selected?.id;
+  const loadClassAnalytics = useCallback(
+    async () => classResultsToAnalytics(await fetchClassResults(selectedClassId as number)),
+    [selectedClassId],
+  );
+  const loadClassDynamics = useCallback(
+    () => fetchGroupDynamics('class', selectedClassId as number),
+    [selectedClassId],
+  );
+  const selectedRows = rows.filter((u) => selection.selectedIds.includes(u.id));
 
   const addLabel: Record<CompositionTab, string> = {
     students: 'Добавить учеников',
@@ -114,6 +155,29 @@ export function AdminClassesPage() {
           </div>
 
           {selected && (
+            /* Аналитика — сворачиваемый блок НАД составом, а не вкладка
+               внутри него: это ответ на вопрос «как класс выглядит», а состав
+               ниже — рабочий инструмент. Свёрнут по умолчанию, и потому же
+               запрос уходит только при первом раскрытии: он считает средние
+               по всей школе за период, а профиль смотрят изредка. */
+            <Collapsible
+              title={`Аналитика класса ${classLabel(selected)}`}
+              hint="Средний профиль против школы и зоны роста"
+              open={analyticsOpen}
+              onToggle={() => setAnalyticsOpen((value) => !value)}
+            >
+              <GroupAnalytics
+                label={classLabel(selected)}
+                averageLabel="Средний балл класса"
+                groupNoun="класс"
+                load={loadClassAnalytics}
+                loadDynamics={loadClassDynamics}
+                emptyText="По этому классу ещё не было завершённой диагностики — аналитика появится после закрытия кампании."
+              />
+            </Collapsible>
+          )}
+
+          {selected && (
             <Panel title={`Состав класса ${classLabel(selected)}`}>
               <div className="class-tabs">
                 <div className="filter-chips">
@@ -134,12 +198,38 @@ export function AdminClassesPage() {
                 </Button>
               </div>
 
+              {tab !== 'homeroom' && (
+                <SelectionBar
+                  selection={selection}
+                  itemLabel={tab === 'students' ? studentsCountLabel : teachersCountLabel}
+                >
+                  {tab === 'students' && (
+                    <Button variant="secondary" onClick={() => setTransferring(selectedRows)}>
+                      Перевести в другой класс
+                    </Button>
+                  )}
+                  <Button
+                    variant="danger"
+                    onClick={() =>
+                      setDetaching({
+                        kind: tab === 'students' ? 'student' : 'teacher',
+                        users: selectedRows,
+                        schoolClass: selected,
+                      })
+                    }
+                  >
+                    Открепить от класса
+                  </Button>
+                </SelectionBar>
+              )}
+
               {tab === 'students' ? (
                 <StudentsTable
                   schoolClass={selected}
-                  onTransfer={setTransferStudent}
+                  selection={selection}
+                  onTransfer={(student) => setTransferring([student])}
                   onDetach={(student) =>
-                    setDetaching({ kind: 'student', user: student, schoolClass: selected })
+                    setDetaching({ kind: 'student', users: [student], schoolClass: selected })
                   }
                 />
               ) : (
@@ -147,6 +237,8 @@ export function AdminClassesPage() {
                   schoolClass={selected}
                   rows={tab === 'homeroom' ? homeroomTeachers(selected) : selected.teachers}
                   showHomeroomColumn={tab === 'teachers'}
+                  // На «Классном руководстве» выделения нет — см. комментарий у rows.
+                  selection={tab === 'teachers' ? selection : undefined}
                   onEditSubject={setEditSubjectFor}
                   onToggleHomeroom={async (link) => {
                     await updateTeacherInClass(selected.id, link.teacher.id, {
@@ -155,12 +247,13 @@ export function AdminClassesPage() {
                     classes.reload();
                   }}
                   onDetach={(link) =>
-                    setDetaching({ kind: 'teacher', user: link.teacher, schoolClass: selected })
+                    setDetaching({ kind: 'teacher', users: [link.teacher], schoolClass: selected })
                   }
                 />
               )}
             </Panel>
           )}
+
         </>
       )}
 
@@ -203,14 +296,15 @@ export function AdminClassesPage() {
         />
       )}
 
-      {transferStudent && selected && (
+      {transferring && selected && (
         <TransferModal
-          student={transferStudent}
+          students={transferring}
           from={selected}
           allClasses={sorted}
-          onClose={() => setTransferStudent(null)}
+          onClose={() => setTransferring(null)}
           onTransferred={() => {
-            setTransferStudent(null);
+            setTransferring(null);
+            selection.clear();
             classes.reload();
           }}
         />
@@ -222,6 +316,7 @@ export function AdminClassesPage() {
           onClose={() => setDetaching(null)}
           onDetached={() => {
             setDetaching(null);
+            selection.clear();
             classes.reload();
           }}
         />
@@ -232,7 +327,8 @@ export function AdminClassesPage() {
 
 interface DetachTarget {
   kind: 'student' | 'teacher';
-  user: User;
+  /** Один человек из дропдауна строки или пачка из выделения — путь общий. */
+  users: User[];
   schoolClass: SchoolClass;
 }
 
@@ -265,10 +361,12 @@ function commonUserActions(user: User, navigate: ReturnType<typeof useNavigate>)
 
 function StudentsTable({
   schoolClass,
+  selection,
   onTransfer,
   onDetach,
 }: {
   schoolClass: SchoolClass;
+  selection: RowSelection;
   onTransfer: (student: User) => void;
   onDetach: (student: User) => void;
 }) {
@@ -282,6 +380,9 @@ function StudentsTable({
     <table className="admin-table">
       <thead>
         <tr>
+          <th className="admin-table__select-col">
+            <SelectAllCheckbox selection={selection} />
+          </th>
           <th>Ученик</th>
           <th>Email</th>
           <th>Статус</th>
@@ -291,6 +392,14 @@ function StudentsTable({
       <tbody>
         {schoolClass.students.map((s) => (
           <tr key={s.id}>
+            <td className="admin-table__select-col">
+              <input
+                type="checkbox"
+                aria-label={`Выбрать: ${s.full_name}`}
+                checked={selection.has(s.id)}
+                onChange={() => selection.toggle(s.id)}
+              />
+            </td>
             <td>{s.full_name}</td>
             <td>{s.email}</td>
             <td>
@@ -327,6 +436,7 @@ function TeachersTable({
   schoolClass,
   rows,
   showHomeroomColumn,
+  selection,
   onEditSubject,
   onToggleHomeroom,
   onDetach,
@@ -334,6 +444,8 @@ function TeachersTable({
   schoolClass: SchoolClass;
   rows: TeacherInClass[];
   showHomeroomColumn: boolean;
+  /** Не передан — таблица без чекбоксов (вкладка «Классное руководство»). */
+  selection?: RowSelection;
   onEditSubject: (link: TeacherInClass) => void;
   onToggleHomeroom: (link: TeacherInClass) => Promise<void>;
   onDetach: (link: TeacherInClass) => void;
@@ -366,6 +478,11 @@ function TeachersTable({
       <table className="admin-table">
         <thead>
           <tr>
+            {selection && (
+              <th className="admin-table__select-col">
+                <SelectAllCheckbox selection={selection} />
+              </th>
+            )}
             <th>Учитель</th>
             <th>Email</th>
             <th>Предмет</th>
@@ -376,6 +493,16 @@ function TeachersTable({
         <tbody>
           {rows.map((link) => (
             <tr key={link.teacher.id}>
+              {selection && (
+                <td className="admin-table__select-col">
+                  <input
+                    type="checkbox"
+                    aria-label={`Выбрать: ${link.teacher.full_name}`}
+                    checked={selection.has(link.teacher.id)}
+                    onChange={() => selection.toggle(link.teacher.id)}
+                  />
+                </td>
+              )}
               <td>{link.teacher.full_name}</td>
               <td>{link.teacher.email}</td>
               <td>{link.subject ?? <span className="roster-cell--empty">не указан</span>}</td>
@@ -412,6 +539,10 @@ function TeachersTable({
       </table>
     </>
   );
+}
+
+function countLabelFor(kind: 'student' | 'teacher', n: number): string {
+  return kind === 'student' ? studentsCountLabel(n) : teachersCountLabel(n);
 }
 
 function studentsCountLabel(n: number): string {
@@ -888,13 +1019,14 @@ function SubjectModal({
  * у ученика один, поэтому привязка к новому просто перезаписывает старый.
  */
 function TransferModal({
-  student,
+  students,
   from,
   allClasses,
   onClose,
   onTransferred,
 }: {
-  student: User;
+  /** Один ученик из дропдауна строки или пачка из выделения — путь общий. */
+  students: User[];
   from: SchoolClass;
   allClasses: SchoolClass[];
   onClose: () => void;
@@ -910,17 +1042,30 @@ function TransferModal({
     setError(null);
     setSubmitting(true);
     try {
-      await assignStudents(targetId, [student.id]);
+      // Отдельного «перевода» на бэкенде нет и не нужно: класс у ученика
+      // один, и bulk-привязка к новому перезаписывает старый — одним запросом
+      // на всю пачку.
+      await assignStudents(
+        targetId,
+        students.map((s) => s.id),
+      );
       onTransferred();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Не удалось перевести ученика');
+      setError(err instanceof ApiError ? err.message : 'Не удалось перевести учеников');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Modal title={`Перевод · ${student.full_name}`} onClose={onClose}>
+    <Modal
+      title={
+        students.length === 1
+          ? `Перевод · ${students[0].full_name}`
+          : `Перевод · ${studentsCountLabel(students.length)}`
+      }
+      onClose={onClose}
+    >
       {targets.length === 0 ? (
         <div className="admin-empty">Других классов пока нет — переводить некуда</div>
       ) : (
@@ -938,6 +1083,13 @@ function TransferModal({
             ))}
           </select>
         </label>
+      )}
+      {students.length > 1 && (
+        <ul className="detach-list">
+          {students.map((s) => (
+            <li key={s.id}>{s.full_name}</li>
+          ))}
+        </ul>
       )}
       <p className="roster-hint">
         Уже собранные результаты останутся за прежним классом: анкеты хранят класс на момент
@@ -975,10 +1127,13 @@ function DetachModal({
     setError(null);
     setSubmitting(true);
     try {
+      // Всегда bulk, даже на одного человека: одиночные ручки на бэкенде
+      // остались, но два пути на фронте только разъехались бы.
+      const ids = target.users.map((u) => u.id);
       if (target.kind === 'student') {
-        await removeStudentFromClass(target.schoolClass.id, target.user.id);
+        await removeStudentsFromClass(target.schoolClass.id, ids);
       } else {
-        await removeTeacherFromClass(target.schoolClass.id, target.user.id);
+        await removeTeachersFromClass(target.schoolClass.id, ids);
       }
       onDetached();
     } catch (err) {
@@ -991,11 +1146,22 @@ function DetachModal({
   return (
     <Modal title="Открепить от класса" onClose={onClose}>
       <p className="roster-hint">
-        {target.user.full_name} будет откреплён от класса {classLabel(target.schoolClass)}.
-        Пользователь останется в системе со всей историей — при необходимости его можно привязать
-        обратно.
+        {target.users.length === 1
+          ? `${target.users[0].full_name} будет откреплён от класса ${classLabel(target.schoolClass)}.`
+          : `${countLabelFor(target.kind, target.users.length)} будут откреплены от класса ${classLabel(target.schoolClass)}.`}{' '}
+        Люди останутся в системе со всей историей — при необходимости их можно привязать обратно.
         {target.kind === 'teacher' && ' Классное руководство, если оно было, тоже снимется.'}
       </p>
+
+      {/* Поимённо, а не одним счётчиком: выделение собиралось галочками, и
+          последняя возможность заметить лишнего — здесь. */}
+      {target.users.length > 1 && (
+        <ul className="detach-list">
+          {target.users.map((u) => (
+            <li key={u.id}>{u.full_name}</li>
+          ))}
+        </ul>
+      )}
 
       {error && <div className="form-error">{error}</div>}
 
@@ -1003,10 +1169,13 @@ function DetachModal({
         <Button type="button" variant="secondary" onClick={onClose}>
           Отмена
         </Button>
-        <Button onClick={handleSubmit} disabled={submitting}>
+        <Button variant="danger" onClick={handleSubmit} disabled={submitting}>
           {submitting ? 'Открепляем…' : 'Открепить'}
         </Button>
       </div>
     </Modal>
   );
 }
+
+
+

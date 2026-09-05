@@ -10,6 +10,7 @@ from vektor.core.config import settings
 from vektor.core.database import get_db
 from vektor.modules.auth.dependencies import get_current_user, require_role
 from vektor.modules.auth.schemas import UserOut
+from vektor.modules.cases.models import Case
 from vektor.modules.classes.models import SchoolClass
 from vektor.modules.users import service
 from vektor.modules.users.models import User
@@ -23,6 +24,7 @@ from vektor.modules.users.schemas import (
     SetUserActiveIn,
 )
 from vektor.shared.academic_year import academic_year_label
+from vektor.shared.class_label import class_label
 from vektor.shared.enums import UserRole
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -32,8 +34,8 @@ router = APIRouter(prefix="/users", tags=["users"])
     "/me",
     response_model=MeOut,
     summary="Текущий пользователь",
-    description="Профиль пользователя по токену авторизации, плюс класс и "
-    "учебный год для шапки дашборда.",
+    description="Профиль пользователя по токену авторизации, плюс класс, кейс "
+    "и учебный год для шапки дашборда.",
 )
 async def read_me(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
@@ -44,13 +46,18 @@ async def read_me(
     school_class = None
     if user.school_class_id is not None:
         school_class = await db.get(SchoolClass, user.school_class_id)
+    # Кейс — тем же приёмом и по той же причине, что класс выше.
+    kase = None
+    if user.case_id is not None:
+        kase = await db.get(Case, user.case_id)
     return MeOut(
         id=user.id,
         email=user.email,
         full_name=user.full_name,
         role=user.role,
         is_active=user.is_active,
-        class_label=f"{school_class.grade}-{school_class.section}" if school_class else None,
+        class_label=class_label(school_class.grade, school_class.section) if school_class else None,
+        case_name=kase.name if kase else None,
         academic_year=academic_year_label(date.today()),
     )
 
@@ -60,12 +67,17 @@ async def read_me(
     response_model=list[UserOut],
     summary="Список пользователей",
     description="Пользователи школы с опциональными фильтрами по роли, "
-    "подстроке в имени/email и классу (только для учеников). Только админ.",
+    "подстроке в имени/email, классу (только для учеников) и кейсу. "
+    "`without_case=true` отбирает тех, кто не состоит ни в одном кейсе, — "
+    "именно они могут быть кандидатами на привязку (членство в кейсе одно). "
+    "Только админ.",
 )
 async def get_all_users(
     role: UserRole | None = Query(None),
     search: str | None = Query(None, min_length=1),
     class_id: int | None = Query(None),
+    case_id: int | None = Query(None),
+    without_case: bool = Query(False),
     _admin_user: User = Depends(require_role(UserRole.ADMIN)),
     db: AsyncSession = Depends(get_db),
 ):
@@ -80,6 +92,13 @@ async def get_all_users(
         )
     if class_id is not None:
         query = query.where(User.school_class_id == class_id)
+    if case_id is not None:
+        query = query.where(User.case_id == case_id)
+    # Отдельный флаг, а не case_id=null: «не фильтровать по кейсу» и «взять
+    # только бескейсовых» — разные запросы, а через один параметр их не
+    # различить (отсутствие query-параметра и null неотличимы в HTTP).
+    if without_case:
+        query = query.where(User.case_id.is_(None))
     all_users = (await db.execute(query)).scalars().all()
     return all_users
 
@@ -127,7 +146,8 @@ async def reset_user_password(
     status_code=status.HTTP_201_CREATED,
     summary="Массовая загрузка пользователей",
     description="Завести пачку пользователей одним вызовом; опциональный "
-    "`class_id` разом привязывает всех `role=student` к классу. Атомарно — "
+    "`class_id` разом привязывает всех `role=student` к классу, `case_id` — "
+    "всех учеников и учителей к кейсу. Атомарно — "
     "любая ошибка (дубль внутри пачки, занятый email, нет класса) откатывает "
     "всю пачку. ВРЕМЕННО: всем ставится общий пароль из настроек, он же "
     "возвращается в ответе. Только админ.",
@@ -137,11 +157,12 @@ async def bulk_create_users(
     db: AsyncSession = Depends(get_db),
     _admin_user: User = Depends(require_role(UserRole.ADMIN)),
 ) -> BulkCreateOut:
-    created = await service.bulk_create_users(db, data.users, data.class_id)
+    created = await service.bulk_create_users(db, data.users, data.class_id, data.case_id)
 
     return BulkCreateOut(
         created=created,
         class_id=data.class_id,
+        case_id=data.case_id,
         default_password=settings.bulk_default_password,
     )
 

@@ -8,60 +8,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from vektor.core.config import settings
-from vektor.core.errors import DomainError
 from vektor.core.security import generate_temporary_password, hash_password
+from vektor.modules.cases.errors import CaseNotFound
+from vektor.modules.cases.models import Case
+from vektor.modules.classes.errors import ClassNotFound
+
+# CaseNotFound переиспользуем из cases, а не заводим свой: код ошибки
+# ("case_not_found") должен быть один на всё API, иначе фронт будет ловить два
+# разных на одну и ту же ситуацию.
 from vektor.modules.classes.models import SchoolClass
+from vektor.modules.users.errors import (
+    CannotModifySelf,
+    DuplicateEmailsInBatch,
+    EmailsAlreadyTaken,
+    UserNotFound,
+    WrongRole,
+)
 from vektor.modules.users.models import User
 from vektor.modules.users.schemas import BulkUserIn
 from vektor.shared.enums import UserRole
-
-
-class UserNotFound(DomainError):
-    """Один или несколько пользователей с такими id не найдены."""
-
-    status_code = 404
-    code = "user_not_found"
-    message = "Пользователь не найден"
-
-
-class WrongRole(DomainError):
-    """Роль пользователя не подходит для операции."""
-
-    status_code = 409
-    code = "wrong_role"
-    message = "Роль пользователя не подходит для операции"
-
-
-class DuplicateEmailsInBatch(DomainError):
-    """В самом присланном списке есть повторяющиеся email (до всякой БД)."""
-
-    status_code = 422
-    code = "duplicate_emails_in_batch"
-    message = "В списке есть повторяющиеся email"
-
-
-class EmailsAlreadyTaken(DomainError):
-    """Один или несколько email уже заняты пользователями в БД."""
-
-    status_code = 409
-    code = "emails_already_taken"
-    message = "Некоторые email уже заняты"
-
-
-class ClassNotFound(DomainError):
-    """Указан class_id, но класса с таким id нет."""
-
-    status_code = 404
-    code = "class_not_found"
-    message = "Класс не найден"
-
-
-class CannotModifySelf(DomainError):
-    """Админ пытается деактивировать сам себя."""
-
-    status_code = 409
-    code = "cannot_modify_self"
-    message = "Нельзя изменить статус собственной учётной записи"
 
 
 async def get_parent_with_children(db: AsyncSession, parent_id: int) -> User:
@@ -148,7 +113,10 @@ async def reset_password(db: AsyncSession, user_id: int) -> str:
 
 
 async def bulk_create_users(
-    db: AsyncSession, users: list[BulkUserIn], class_id: int | None
+    db: AsyncSession,
+    users: list[BulkUserIn],
+    class_id: int | None,
+    case_id: int | None = None,
 ) -> list[User]:
     """Атомарно завести пачку пользователей. Всё или ничего: любая невалидная
     строка → исключение ДО commit, в БД не пишется ничего (стиль submit_answers).
@@ -156,6 +124,11 @@ async def bulk_create_users(
     Всем на время тестов ставим один общий пароль settings.bulk_default_password
     (хешируем его). Если задан class_id — строки role=student привязываем к
     этому классу тем же вызовом; остальные роли к классу не трогаем.
+
+    case_id работает так же, но привязывает И учеников, И учителей: членство
+    в кейсе одно на обе роли (FK users.case_id). Проверки «человек уже в
+    другом кейсе» здесь нет за ненадобностью — пользователи создаются прямо
+    сейчас и ни в каком кейсе состоять не могут.
 
     Возвращает список созданных User (роутер добьёт схему ответа).
     """
@@ -174,6 +147,11 @@ async def bulk_create_users(
         if school_class is None:
             raise ClassNotFound(f"Класс {class_id} не найден")
 
+    if case_id is not None:
+        kase = await db.get(Case, case_id)
+        if kase is None:
+            raise CaseNotFound(f"Кейс {case_id} не найден")
+
     # 4. Все получают один общий тестовый пароль — хешируем его ОДИН раз, а не
     #    на каждого (bcrypt дорогой, а хеш общего пароля всё равно одинаков).
     hashed = hash_password(settings.bulk_default_password)
@@ -185,6 +163,8 @@ async def bulk_create_users(
             hashed_password=hashed,
             # school_class_id только ученикам; прочим ролям класс не навязываем.
             school_class_id=class_id if u.role == UserRole.STUDENT else None,
+            # А кейс — и ученикам, и учителям: в кружке есть и те, и другие.
+            case_id=case_id if u.role in (UserRole.STUDENT, UserRole.TEACHER) else None,
         )
         for u in users
     ]

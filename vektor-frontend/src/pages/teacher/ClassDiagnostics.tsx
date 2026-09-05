@@ -2,12 +2,15 @@ import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Panel } from '../../components/ui/Panel';
 import { Button } from '../../components/ui/Button';
-import { ClassCompetencyProfile } from '../../components/teacher/ClassCompetencyProfile';
-import { RadarChart } from '../../components/teacher/RadarChart';
+import {
+  GroupDynamicsSection,
+  GroupProfileChart,
+  SchoolGapList,
+  SelfGapList,
+} from '../../components/dashboard/GroupProfile';
 import { useApi } from '../../hooks/useApi';
-import { fetchClassResults, fetchClassRoster } from '../../api/results';
+import { fetchClassResults, fetchClassRoster, fetchGroupDynamics } from '../../api/results';
 import { fetchMyAssessments } from '../../api/assessments';
-import { shortCompetencyName } from '../../data/competencyShortNames';
 import type { ClassRosterRow } from '../../types/results';
 import type { AssessmentListItem } from '../../types/assessment';
 
@@ -49,6 +52,7 @@ export function ClassDiagnostics({ classId }: ClassDiagnosticsProps) {
   // useApi требует стабильную ссылку — иначе effect уходит в цикл запросов.
   const loadRoster = useCallback(() => fetchClassRoster(classId), [classId]);
   const loadResults = useCallback(() => fetchClassResults(classId), [classId]);
+  const loadDynamics = useCallback(() => fetchGroupDynamics('class', classId), [classId]);
   const roster = useApi(loadRoster);
   const results = useApi(loadResults);
   // Свои анкеты нужны, чтобы кнопка «Оценить» вела в конкретную анкету.
@@ -90,18 +94,6 @@ export function ClassDiagnostics({ classId }: ClassDiagnosticsProps) {
     }),
     [students],
   );
-
-  const radar = useMemo(() => {
-    const competencies = results.data?.competencies ?? [];
-    // Оси только там, где есть хоть одно значение: критерий, закрытый по
-    // возрасту (профпробы до 9 класса), дал бы пустой луч и перекосил фигуру.
-    const scored = competencies.filter((c) => c.class_avg !== null || c.school_avg !== null);
-    return {
-      axes: scored.map((c) => shortCompetencyName(c.code, c.name)),
-      classValues: scored.map((c) => c.class_avg),
-      schoolValues: scored.map((c) => c.school_avg),
-    };
-  }, [results.data]);
 
   if (roster.loading) {
     return (
@@ -253,38 +245,40 @@ export function ClassDiagnostics({ classId }: ClassDiagnosticsProps) {
         ) : results.data ? (
           <>
             <div className="app-main__sub">{results.data.class_label} против школы</div>
-            {radar.axes.length >= 3 && (
-              <RadarChart
-                axes={radar.axes}
-                series={[
-                  { label: results.data.class_label, values: radar.classValues, color: '#3c8fed' },
-                  { label: 'Школа', values: radar.schoolValues, color: '#a6a2a3', dashed: true },
-                ]}
-              />
-            )}
-            <ClassCompetencyProfile competencies={results.data.competencies} />
+            <GroupProfileChart
+              label={results.data.class_label}
+              axes={results.data.competencies.map((c) => ({
+                competency_id: c.competency_id,
+                code: c.code,
+                name: c.name,
+                value: c.class_avg,
+                school: c.school_avg,
+              }))}
+            />
           </>
         ) : (
           <div className="app-main__sub">Профиль пока не посчитан</div>
         )}
       </Panel>
 
-      {results.data && results.data.growth_zones.length > 0 && (
-        <Panel title="Зоны роста класса">
-          {/* Ранжирование по ОХВАТУ, а не по худшему среднему: это темы для
-              классных часов, а не список слабых учеников. */}
-          <div className="app-main__sub">
-            У скольких учеников критерий попал в личные зоны роста
-          </div>
-          {results.data.growth_zones.map((zone) => (
-            <div className="growth-zone" key={zone.competency_id}>
-              <div className="growth-zone__score">
-                {zone.class_avg === null ? '—' : zone.class_avg.toFixed(1)}
-              </div>
-              <div className="growth-zone__name">{zone.name}</div>
-              <div className="growth-zone__count">{zone.students_affected} учеников</div>
-            </div>
-          ))}
+      {results.data && (
+        <Panel title="На что смотреть в классе">
+          <div className="group-analytics__zones-title">Где класс отстаёт от школы</div>
+          <SchoolGapList
+            rows={results.data.school_gaps.map((gap) => ({
+              competency_id: gap.competency_id,
+              name: gap.name,
+              delta: gap.delta,
+              value: gap.class_avg,
+              school: gap.school_avg,
+            }))}
+            label={results.data.class_label}
+          />
+
+          <div className="group-analytics__zones-title">Где себя видят иначе, чем окружающие</div>
+          <SelfGapList rows={results.data.self_gaps} />
+
+          <GroupDynamicsSection load={loadDynamics} groupNoun="класс" />
         </Panel>
       )}
     </>

@@ -1,0 +1,25 @@
+.selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--blue);
+  border-radius: var(--r-sm);
+  background: var(--blue-tint);
+  font-family: var(--font-b);
+  font-size: 13.5px;
+}
+
+.selection-bar__count {
+  font-weight: 600;
+  color: var(--blue-ink);
+}
+
+/* Действия прижаты к правому краю, «Снять выделение» — за ними: оно общее для
+   любой таблицы и не должно попадать под руку вместо открепления. */
+.selection-bar__actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}

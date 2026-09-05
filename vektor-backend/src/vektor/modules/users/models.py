@@ -5,6 +5,15 @@ from sqlalchemy import Column, Enum, ForeignKey, Integer, String, Table, false, 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vektor.core.database import Base
+
+# Case импортируется НА РАНТАЙМЕ, а не под TYPE_CHECKING, в отличие от
+# SchoolClass ниже. Причина — коллизия имён: аннотацию Mapped["Case | None"]
+# SQLAlchemy разрешает строкой, и без настоящего Case в пространстве имён
+# модуля она находит sqlalchemy.sql.elements.Case (конструкция SQL CASE),
+# после чего конфигурация мапперов падает с «Class
+# 'sqlalchemy.sql.elements.Case' is not mapped». Цикла импортов это не
+# создаёт: cases/models.py тянет users только лениво, внутри функции.
+from vektor.modules.cases.models import Case
 from vektor.shared.enums import UserRole
 
 if TYPE_CHECKING:
@@ -54,10 +63,10 @@ class User(Base):
         back_populates="students", foreign_keys=[school_class_id]
     )
 
-    # «Чтобы попасть ОТ меня К моим детям — найди строки parent_children, где
-    # parent_id == мой id (primaryjoin), затем возьми user.id из их child_id
-    # (secondaryjoin)». lambda откладывает вычисление User.id: на момент этой
-    # строки класс User ещё не определён до конца — мы внутри его тела.
+    # Кейс (профильная группа) — ОДИН и у ученика, и у учителя
+    case_id: Mapped[int | None] = mapped_column(ForeignKey("cases.id"))
+    case: Mapped["Case | None"] = relationship(back_populates="members")
+
     children: Mapped[list["User"]] = relationship(
         secondary=parent_children,
         primaryjoin=lambda: User.id == parent_children.c.parent_id,

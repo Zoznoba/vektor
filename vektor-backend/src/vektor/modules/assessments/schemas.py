@@ -3,7 +3,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from vektor.modules.auth.schemas import UserOut
 from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole
@@ -54,7 +54,15 @@ class CampaignDeleteResult(BaseModel):
 
 
 class GenerateIn(BaseModel):
-    class_ids: list[int] = Field(min_length=1)
+    """Из чего собирается кампания: классы и/или кейсы.
+
+    `class_ids` больше не обязателен: кампанию можно собрать по одним кейсам
+    (диагностика кружка) — но и пустым целиком запрос быть не может, иначе
+    генерация молча не создаст ни одной анкеты и отчитается «создано 0», что
+    для админа неотличимо от «всё уже было сгенерировано».
+    """
+
+    class_ids: list[int] = Field(default_factory=list)
     # Оценивают ли одноклассники друг друга. По умолчанию нет — только
     # самооценка + учителя + родители. True добавляет пиров (student→classmate).
     include_peers: bool = False
@@ -64,6 +72,18 @@ class GenerateIn(BaseModel):
     # (прежнее поведение, на нём стоят старые кампании и тесты); класс есть с
     # пустым списком → учительских анкет по нему не будет вовсе.
     teacher_ids_by_class: dict[int, list[int]] | None = None
+    # Кейсы (профильные группы) — второе основание для выдачи анкет наравне с
+    # классами. В кружке ученика оценивают его руководители, а не предметники
+    # класса, поэтому свой список учителей: {case_id: [teacher_id, ...]},
+    # семантика ключей та же, что у teacher_ids_by_class.
+    case_ids: list[int] = Field(default_factory=list)
+    teacher_ids_by_case: dict[int, list[int]] | None = None
+
+    @model_validator(mode="after")
+    def _at_least_one_source(self) -> "GenerateIn":
+        if not self.class_ids and not self.case_ids:
+            raise ValueError("Укажите хотя бы один класс или кейс")
+        return self
 
 
 class GenerateResult(BaseModel):

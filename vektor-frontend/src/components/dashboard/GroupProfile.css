@@ -1,0 +1,95 @@
+/* Стили профиля группы. Живут рядом с компонентом, а не в CSS страницы:
+   его используют три разных экрана (учитель, админ, кейсы). */
+
+.growth-zone {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 0.5px solid var(--border);
+}
+
+.growth-zone__score {
+  font-family: var(--font-d);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sage-ink);
+  width: 34px;
+}
+
+.growth-zone__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+}
+
+.growth-zone__count {
+  font-size: 11px;
+  color: var(--sage-ink);
+}
+
+/* Плитки над радаром. Свои, а не .teacher-metric с экранов учителя: те —
+   стили ЕГО страницы, и тянуть их в общий компонент значило бы связать
+   через CSS четыре разных экрана. */
+.group-analytics__tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.group-analytics__tile {
+  background: var(--soft);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 15px 17px;
+}
+
+.group-analytics__value {
+  font-family: var(--font-d);
+  font-size: 25px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.group-analytics__value--blue {
+  color: var(--blue-ink);
+}
+
+.group-analytics__label {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 3px;
+}
+
+.group-analytics__zones-title {
+  margin-top: 18px;
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+@media (max-width: 900px) {
+  .group-analytics__tiles {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Дельта отставания — тем же приглушённым тоном, что и «ниже нормы» в
+   подписях разрыва самооценки на профиле ученика. */
+.growth-zone__score--behind {
+  color: var(--amber-ink);
+}
+
+.growth-zone__score--above {
+  color: var(--sage-ink);
+}
+
+/* Приписка «себя выше» / «себя ниже» рядом с названием критерия: знак
+   разрыва словами, потому что «+1.2» само по себе не говорит, кто кого выше. */
+.growth-zone__note {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--ink-faint);
+}

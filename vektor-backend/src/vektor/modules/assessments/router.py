@@ -62,11 +62,12 @@ async def list_campaigns(
     response_model=GenerateResult,
     summary="Сгенерировать анкеты",
     description="Построить матрицу «кто кого оценивает» по указанным классам "
-    "и идемпотентно создать недостающие анкеты. Самооценка и родители — "
-    "всегда; учителя — все учителя класса либо только выбранные, если класс "
-    "указан в `teacher_ids_by_class` (в школе ученика оценивают 2–4 учителя, "
-    "а не весь педсостав); одноклассники — при `include_peers`. "
-    "Переводит кампанию в `active`. Только админ.",
+    "и кейсам и идемпотентно создать недостающие анкеты. Самооценка и "
+    "родители — всегда; учителя — все учителя класса (кейса) либо только "
+    "выбранные, если он указан в `teacher_ids_by_class` "
+    "(`teacher_ids_by_case`): в школе ученика оценивают 2–4 учителя, а не "
+    "весь педсостав; одноклассники — при `include_peers`. Нужен хотя бы один "
+    "класс или кейс. Переводит кампанию в `active`. Только админ.",
 )
 async def generate_assessments(
     campaign_id: int,
@@ -75,7 +76,13 @@ async def generate_assessments(
     _admin=Depends(require_role(UserRole.ADMIN)),
 ) -> GenerateResult:
     assessments = await service.generate_assessments(
-        db, campaign_id, data.class_ids, data.include_peers, data.teacher_ids_by_class
+        db,
+        campaign_id,
+        data.class_ids,
+        data.include_peers,
+        data.teacher_ids_by_class,
+        data.case_ids,
+        data.teacher_ids_by_case,
     )
 
     campaign, created = assessments

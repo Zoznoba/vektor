@@ -5,6 +5,9 @@ export interface FetchUsersParams {
   role?: UserRole;
   search?: string;
   classId?: number;
+  caseId?: number;
+  /** Только те, кто не состоит НИ В ОДНОМ кейсе — кандидаты на привязку. */
+  withoutCase?: boolean;
 }
 
 export function fetchUsers(params: FetchUsersParams = {}): Promise<User[]> {
@@ -12,6 +15,8 @@ export function fetchUsers(params: FetchUsersParams = {}): Promise<User[]> {
   if (params.role) query.set('role', params.role);
   if (params.search) query.set('search', params.search);
   if (params.classId !== undefined) query.set('class_id', String(params.classId));
+  if (params.caseId !== undefined) query.set('case_id', String(params.caseId));
+  if (params.withoutCase) query.set('without_case', 'true');
   const qs = query.toString();
   return apiRequest<User[]>(`/users${qs ? `?${qs}` : ''}`);
 }
@@ -41,6 +46,7 @@ export interface BulkUserIn {
 export interface BulkCreateResult {
   created: User[];
   class_id: number | null;
+  case_id: number | null;
   /**
    * ВРЕМЕННО: общий пароль, которым заведены все юзеры пачки (эхом с бэка).
    * Показываем админу один раз, чтобы было чем залогиниться на тестах —
@@ -51,15 +57,17 @@ export interface BulkCreateResult {
 
 /**
  * Массовое создание пользователей одним атомарным вызовом (Этап 3.7).
- * Если передан classId — строки с role=student разом привязываются к классу.
+ * classId привязывает к классу строки с role=student; caseId кладёт в кейс
+ * И учеников, И учителей — членство в кейсе одно на обе роли.
  */
 export function bulkCreateUsers(
   users: BulkUserIn[],
   classId?: number | null,
+  caseId?: number | null,
 ): Promise<BulkCreateResult> {
   return apiRequest<BulkCreateResult>('/users/bulk', {
     method: 'POST',
-    body: { class_id: classId ?? null, users },
+    body: { class_id: classId ?? null, case_id: caseId ?? null, users },
   });
 }
 

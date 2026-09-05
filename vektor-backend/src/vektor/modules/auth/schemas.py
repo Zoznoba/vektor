@@ -36,6 +36,12 @@ class UserOut(BaseModel):
     full_name: str
     role: UserRole
     is_active: bool
+    # Кейс отдаём ИДЕНТИФИКАТОРОМ, а не названием: это обычная колонка, её
+    # видно без дозагрузки связи, тогда как name потребовал бы selectinload в
+    # каждом месте, где UserOut собирается из ORM-объекта (а таких мест
+    # десяток) — и первое же забытое дало бы MissingGreenlet. Название кейса
+    # экраны и так знают из /cases; человеку в шапке его отдаёт /users/me.
+    case_id: int | None = None
 
 
 class LoginIn(BaseModel):

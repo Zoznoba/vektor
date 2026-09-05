@@ -6,9 +6,11 @@ from vektor.modules.auth.dependencies import get_current_user, require_role
 from vektor.modules.results import service
 from vektor.modules.results.schemas import (
     CampaignCoverageOut,
+    CaseResultsOut,
     ClassResultsOut,
     ClassRosterOut,
     DynamicsOut,
+    GroupDynamicsOut,
     ResultsOut,
     SubjectCampaignOut,
 )
@@ -51,6 +53,80 @@ async def get_class_results(
 
 
 @router.get(
+    "/case/{case_id}",
+    response_model=CaseResultsOut,
+    summary="Профиль кейса",
+    description="Средний профиль профильной группы по критериям (среднее по "
+    "ученикам, не по ответам), сравнение со школой за тот же период и зоны "
+    "роста группы по охвату. Без campaign_id берётся последняя ЗАВЕРШЁННАЯ "
+    "кампания кейса. Доступно админу и руководителю этого кейса.",
+)
+async def get_case_results(
+    case_id: int,
+    campaign_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> CaseResultsOut:
+    if campaign_id is None:
+        campaign_id = await service.latest_campaign_id_for_case(db, case_id)
+        if campaign_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="У кейса пока нет результатов",
+            )
+    return await service.get_case_results(db, case_id, campaign_id, user)
+
+
+@router.get(
+    "/class/{class_id}/dynamics",
+    response_model=GroupDynamicsOut,
+    summary="Динамика класса по критериям",
+    description="Средний профиль класса в текущем периоде против предыдущего, "
+    "по критериям. Сравниваются одни и те же ученики (те, у кого есть оба "
+    "периода), дельты — только по общему ядру критериев. Отсутствие "
+    "предыдущего периода — не ошибка: `previous_campaign_id=null` и текущие "
+    "баллы без дельт. Доступно админу и учителю этого класса.",
+)
+async def get_class_dynamics(
+    class_id: int,
+    campaign_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> GroupDynamicsOut:
+    if campaign_id is None:
+        campaign_id = await service.latest_campaign_id_for_class(db, class_id)
+        if campaign_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="У класса пока нет результатов",
+            )
+    return await service.get_class_dynamics(db, class_id, campaign_id, user)
+
+
+@router.get(
+    "/case/{case_id}/dynamics",
+    response_model=GroupDynamicsOut,
+    summary="Динамика кейса по критериям",
+    description="То же, что динамика класса, но по профильной группе. "
+    "Доступно админу и руководителю этого кейса.",
+)
+async def get_case_dynamics(
+    case_id: int,
+    campaign_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> GroupDynamicsOut:
+    if campaign_id is None:
+        campaign_id = await service.latest_campaign_id_for_case(db, case_id)
+        if campaign_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="У кейса пока нет результатов",
+            )
+    return await service.get_case_dynamics(db, case_id, campaign_id, user)
+
+
+@router.get(
     "/class/{class_id}/roster",
     response_model=ClassRosterOut,
     summary="Состав класса с прогрессом диагностики",
@@ -84,10 +160,12 @@ async def get_class_roster(
     "/campaigns/{campaign_id}/coverage",
     response_model=CampaignCoverageOut,
     summary="Покрытие кампании",
-    description="«X из Y анкет» заполнено по каждому классу кампании "
-    "(снапшот subject_class_id на момент генерации анкет), плюс детализация "
-    "по ученикам внутри класса: статус самооценки и сколько анкет заполнено "
-    "родителями и учителями. Только админ.",
+    description="«X из Y анкет» заполнено по каждому классу И кейсу кампании. "
+    "Группировка — по основанию выдачи (снапшоты subject_case_id / "
+    "subject_class_id на момент генерации): анкета попадает ровно в одну "
+    "строку, поэтому сумма строк равна общему числу анкет. Плюс детализация "
+    "по ученикам: статус самооценки, счётчики по родителям и учителям и "
+    "поимённый состав каждого слоя со статусом анкеты. Только админ.",
 )
 async def get_campaign_coverage(
     campaign_id: int,

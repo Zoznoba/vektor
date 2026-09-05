@@ -1148,3 +1148,156 @@ async def test_delete_campaign_requires_admin(client: AsyncClient, scenario, reg
     response = await client.delete(f"/campaigns/{cid}", headers=student_headers)
 
     assert response.status_code == 403
+
+
+# --- Кампания собирается из классов И кейсов (Этап 8) ---
+
+
+@pytest.fixture
+async def case_scenario(client: AsyncClient, admin_headers: dict[str, str]) -> dict:
+    """Кейс «Робототехника»: ученик c1 (вне классов кампании) + учитель ct1.
+
+    Отдельно от `scenario`: смысл кейса ровно в том, что его состав не совпадает
+    с классом — ученики приходят из разных классов, а оценивают их руководители
+    кружка, а не предметники.
+    """
+    c1 = await _register(client, "c1@vektor.ru", "student")
+    ct1 = await _register(client, "ct1@vektor.ru", "teacher")
+
+    kase = (
+        await client.post("/cases", json={"name": "Робототехника"}, headers=admin_headers)
+    ).json()
+    await client.post(
+        f"/cases/{kase['id']}/students", json={"user_ids": [c1]}, headers=admin_headers
+    )
+    await client.post(
+        f"/cases/{kase['id']}/teachers", json={"user_ids": [ct1]}, headers=admin_headers
+    )
+
+    return {"case_id": kase["id"], "headers": admin_headers, "ids": {"c1": c1, "ct1": ct1}}
+
+
+async def test_generate_by_case_only(client: AsyncClient, case_scenario) -> None:
+    """Кампанию можно собрать по одним кейсам — класс не обязателен."""
+    cid = await _create_campaign(client, case_scenario["headers"])
+
+    response = await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"case_ids": [case_scenario["case_id"]]},
+        headers=case_scenario["headers"],
+    )
+
+    assert response.status_code == 200
+    # self(c1) + teacher(ct1→c1) = 2. Родителей у c1 нет.
+    assert response.json()["created"] == 2
+
+
+async def test_generate_requires_class_or_case(client: AsyncClient, admin_headers) -> None:
+    """Пустой запрос — 422, а не «создано 0»: для админа это неотличимо от
+    «всё уже сгенерировано», и он не поймёт, что выбрал не то."""
+    cid = await _create_campaign(client, admin_headers)
+
+    response = await client.post(
+        f"/campaigns/{cid}/generate", json={"class_ids": []}, headers=admin_headers
+    )
+
+    assert response.status_code == 422
+
+
+async def test_generate_by_case_uses_only_chosen_teachers(
+    client: AsyncClient, case_scenario
+) -> None:
+    """teacher_ids_by_case работает так же, как teacher_ids_by_class."""
+    headers = case_scenario["headers"]
+    ct2 = await _register(client, "ct2@vektor.ru", "teacher")
+    await client.post(
+        f"/cases/{case_scenario['case_id']}/teachers", json={"user_ids": [ct2]}, headers=headers
+    )
+    cid = await _create_campaign(client, headers)
+
+    response = await client.post(
+        f"/campaigns/{cid}/generate",
+        json={
+            "case_ids": [case_scenario["case_id"]],
+            "teacher_ids_by_case": {str(case_scenario["case_id"]): [case_scenario["ids"]["ct1"]]},
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    # self(1) + ct1(1) = 2; ct2 в кейсе числится, но не выбран — иначе было бы 3.
+    assert response.json()["created"] == 2
+
+
+async def test_generate_stores_case_snapshot(
+    client: AsyncClient, case_scenario, db_session
+) -> None:
+    """Кейс субъекта фиксируется на анкете — как класс и роль оценивающего.
+
+    Без снапшота переход ученика в другой кружок перенёс бы туда прошлую
+    диагностику, а старый кейс остался бы без покрытия.
+    """
+    cid = await _create_campaign(client, case_scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"case_ids": [case_scenario["case_id"]]},
+        headers=case_scenario["headers"],
+    )
+
+    rows = await db_session.execute(
+        select(Assessment.subject_case_id).where(Assessment.campaign_id == cid)
+    )
+    assert set(rows.scalars()) == {case_scenario["case_id"]}
+
+
+async def test_generate_by_class_leaves_case_snapshot_empty(
+    client: AsyncClient, scenario, db_session
+) -> None:
+    """Анкета, выданная по классу, к кейсу отношения не имеет — даже если
+    ученик в каком-то кружке состоит. Основание выдачи важнее факта членства."""
+    cid = await _create_campaign(client, scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]]},
+        headers=scenario["headers"],
+    )
+
+    rows = await db_session.execute(
+        select(Assessment.subject_case_id).where(Assessment.campaign_id == cid)
+    )
+    assert set(rows.scalars()) == {None}
+
+
+async def test_generate_by_class_and_case_merges_without_duplicates(
+    client: AsyncClient, scenario, case_scenario, db_session
+) -> None:
+    """Ученик, попавший в кампанию по обоим основаниям, получает ОДНУ анкету
+    на каждого оценивающего: пары сливаются через merge_pairs."""
+    headers = scenario["headers"]
+    s1 = scenario["ids"]["s1"]
+    # Ученика класса дополнительно кладём в кейс.
+    await client.post(
+        f"/cases/{case_scenario['case_id']}/students", json={"user_ids": [s1]}, headers=headers
+    )
+    cid = await _create_campaign(client, headers)
+
+    response = await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]], "case_ids": [case_scenario["case_id"]]},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    # По классу: self(s1,s2)=2 + parent(p1→s1)=1 + t1 на двоих=2 → 5.
+    # По кейсу добавляется: self(c1) + ct1→c1 = 2, и ct1→s1 = 1. Самооценка s1
+    # уже была — дубля нет.
+    assert response.json()["created"] == 8
+
+    snapshots = await db_session.execute(
+        select(Assessment.subject_class_id, Assessment.subject_case_id).where(
+            (Assessment.campaign_id == cid) & (Assessment.subject_id == s1)
+        )
+    )
+    # На анкетах про s1 стоят ОБА снапшота: он в кампании и как ученик класса,
+    # и как участник кружка.
+    assert set(snapshots.all()) == {(scenario["class_id"], case_scenario["case_id"])}

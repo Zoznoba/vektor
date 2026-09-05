@@ -38,7 +38,9 @@ class SchoolClassOut(BaseModel):
 
 class SchoolClassCreate(BaseModel):
     grade: int = Field(ge=1, le=11)
-    section: str = Field(min_length=1, max_length=10)
+    # min_length=0: у 10 и 11 классов параллели нет — секция пустая, и фронтовый
+    # classLabel подписывает такой класс просто «10». Импорт заводит их так же.
+    section: str = Field(min_length=0, max_length=10)
 
 
 class AssignStudentsIn(BaseModel):
@@ -51,6 +53,17 @@ class AssignTeachersIn(BaseModel):
     # руководителя. Точечная правка — PATCH по одному учителю.
     subject: str | None = Field(default=None, max_length=100)
     is_homeroom: bool = False
+
+
+class RemoveStudentsIn(BaseModel):
+    """Bulk-открепление учеников. Тело, а не список в пути, и POST, а не
+    DELETE: тело у DELETE режут прокси и плохо поддерживают клиенты."""
+
+    student_ids: list[int]
+
+
+class RemoveTeachersIn(BaseModel):
+    teacher_ids: list[int]
 
 
 class UpdateTeacherInClassIn(BaseModel):

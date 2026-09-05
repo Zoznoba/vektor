@@ -175,12 +175,106 @@
   opacity: 0.65;
 }
 
-.coverage-row__label {
-  width: 60px;
+/* Слой раскрывается поимённо при наведении. Пунктир — единственный намёк на
+   то, что здесь есть что смотреть: превращать плотную таблицу в набор кнопок
+   ради этого незачем. */
+.cover-mark--hoverable {
+  cursor: help;
+  border-bottom: 1px dashed currentColor;
+}
+
+/* Подсказка со списком раторов. fixed от координат курсора: она обязана уметь
+   вылезать за пределы прокручиваемой таблицы. pointer-events: none — курсор
+   проходит насквозь, поэтому подсказка не перехватывает клик по строке и не
+   мигает, оказавшись под курсором. */
+.rater-tip {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+  padding: 9px 11px;
+}
+
+.rater-tip__title {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  margin-bottom: 6px;
+}
+
+.rater-tip__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rater-tip__item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 0;
+  font-size: 12.5px;
+}
+
+.rater-tip__icon--done {
+  color: var(--lime-ink);
   flex-shrink: 0;
+}
+
+.rater-tip__icon--wait {
+  color: var(--amber-ink);
+  flex-shrink: 0;
+}
+
+.rater-tip__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coverage-row__label {
+  /* Не фиксированная ширина: рядом с «8-1» теперь стоят названия кейсов
+     («Робототехника»), которым 60px мало. */
+  min-width: 60px;
+  max-width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-d);
   font-size: 13px;
   font-weight: 600;
+}
+
+/* Строка кейса отличается цветной полосой у левого края, а не подписью
+   «кейс» в самой строке: приписка к каждому кружку — шум в списке, который
+   читают глазами сверху вниз, а полоса различает строки, не занимая места.
+   Классы и кейсы уже идут отдельными блоками (сортировка на бэкенде), так
+   что полоса читается как граница блока, а не как загадочный значок. */
+.coverage-group--case {
+  border-left: 3px solid var(--blue);
+  border-radius: var(--r-md);
+  background: var(--blue-tint);
+
+  /* Плашка «вылезает» в отступы панели (у неё padding 20px) — по 12px в
+     каждую сторону, чтобы фон доходил почти до края контейнера, а не
+     обрывался сразу за колонкой процентов.
+
+     Отрицательные поля обязательно компенсируются паддингами ровно на ту же
+     величину (слева 3px рамки + 9px, справа 12px): иначе внутренняя строка
+     остаётся прежней ширины, вылезает за плашку вправо, и «0%» оказывается
+     на белом фоне за её краем. */
+  margin: 3px -12px 0;
+  padding-left: 9px;
+  padding-right: 12px;
 }
 
 .coverage-row__bar {

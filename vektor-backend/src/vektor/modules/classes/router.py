@@ -7,6 +7,8 @@ from vektor.modules.classes import service
 from vektor.modules.classes.schemas import (
     AssignStudentsIn,
     AssignTeachersIn,
+    RemoveStudentsIn,
+    RemoveTeachersIn,
     SchoolClassCreate,
     SchoolClassOut,
     UpdateTeacherInClassIn,
@@ -97,6 +99,44 @@ async def update_teacher_in_class(
     return await service.update_teacher_in_class(
         db, class_id, teacher_id, data.model_dump(exclude_unset=True)
     )
+
+
+@router.post(
+    "/{class_id}/teachers/detach",
+    response_model=SchoolClassOut,
+    summary="Открепить учителей от класса (bulk)",
+    description="Открепить сразу нескольких учителей одним вызовом — зеркально "
+    "bulk-привязке. Атомарно: если хоть кого-то из списка в классе нет, не "
+    "открепляется никто (409). Классное руководство снимается вместе со "
+    "связью. POST, а не DELETE, потому что тело у DELETE режут прокси. "
+    "Только админ.",
+)
+async def remove_teachers_from_class(
+    class_id: int,
+    data: RemoveTeachersIn,
+    db: AsyncSession = Depends(get_db),
+    _admin_role=Depends(require_role(UserRole.ADMIN)),
+) -> SchoolClassOut:
+    return await service.remove_teachers_from_class(db, class_id, data.teacher_ids)
+
+
+@router.post(
+    "/{class_id}/students/detach",
+    response_model=SchoolClassOut,
+    summary="Открепить учеников от класса (bulk)",
+    description="Открепить сразу нескольких учеников одним вызовом. Атомарно: "
+    "если хоть кто-то из списка в классе не числится, не открепляется никто "
+    "(409). Ученики остаются в системе, снапшоты класса в анкетах не меняются. "
+    "Для массового перевода используйте привязку к новому классу — она "
+    "перезаписывает старый. Только админ.",
+)
+async def remove_students_from_class(
+    class_id: int,
+    data: RemoveStudentsIn,
+    db: AsyncSession = Depends(get_db),
+    _admin_role=Depends(require_role(UserRole.ADMIN)),
+) -> SchoolClassOut:
+    return await service.remove_students_from_class(db, class_id, data.student_ids)
 
 
 @router.delete(

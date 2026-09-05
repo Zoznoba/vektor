@@ -1,0 +1,87 @@
+.collapsible {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+.collapsible__head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 18px;
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.collapsible__head:hover {
+  background: var(--soft);
+}
+
+.collapsible__title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.collapsible__hint {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+
+.collapsible__chevron {
+  flex-shrink: 0;
+  color: var(--ink-soft);
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.collapsible--open .collapsible__chevron {
+  transform: rotate(180deg);
+}
+
+/* Высота через grid-fr: переход считает реальную высоту содержимого сам,
+   в отличие от max-height с числом «на глаз». */
+.collapsible__body {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  /* Помедленнее и с «выездом»: cubic-bezier(0.22, 1, 0.36, 1) — быстрый
+     старт и долгая мягкая остановка, за счёт неё раскрытие читается как
+     движение, а не как подмена высоты. */
+  transition:
+    grid-template-rows 460ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 300ms ease;
+}
+
+.collapsible--open .collapsible__body {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+/* Оба обязательны: без min-height: 0 грид не даёт строке схлопнуться. */
+.collapsible__inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.collapsible__content {
+  padding: 0 18px 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collapsible__body,
+  .collapsible__chevron {
+    transition: none;
+  }
+}

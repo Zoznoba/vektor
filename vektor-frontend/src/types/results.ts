@@ -65,13 +65,25 @@ export interface CompetencyClassScore {
   school_avg: number | null;
 }
 
-export interface ClassGrowthZone {
+/** Критерий, по которому группа отстаёт от школы за тот же период.
+ *  `delta` всегда отрицательная — в список попадают только отстающие. */
+export interface GroupSchoolGap {
   competency_id: number;
   code: string;
   name: string;
-  /** У скольких учеников критерий попал в ЛИЧНЫЕ зоны роста. */
-  students_affected: number;
-  class_avg: number | null;
+  delta: number;
+  school_avg: number | null;
+}
+
+/** Критерий с наибольшим расхождением «самооценка − окружающие» по группе.
+ *  Знак значим: «себя выше» и «себя ниже» — разные разговоры с классом. */
+export interface GroupSelfGap {
+  competency_id: number;
+  code: string;
+  name: string;
+  gap: number;
+  self_avg: number | null;
+  others_avg: number | null;
 }
 
 export interface ClassResults {
@@ -85,7 +97,35 @@ export interface ClassResults {
   class_average: number | null;
   school_average: number | null;
   competencies: CompetencyClassScore[];
-  growth_zones: ClassGrowthZone[];
+  /** У класса поле балла группы называется class_avg. */
+  school_gaps: (GroupSchoolGap & { class_avg: number | null })[];
+  self_gaps: GroupSelfGap[];
+}
+
+/** Профиль кейса: GET /results/case/{id}. Поля названы `case_avg`, а не
+ *  `class_avg` — по ним же видно, чей это профиль. */
+export interface CompetencyCaseScore {
+  competency_id: number;
+  code: string;
+  name: string;
+  case_avg: number | null;
+  /** Среднее по школе за тот же ПЕРИОД — та же оговорка, что у класса. */
+  school_avg: number | null;
+}
+
+export interface CaseResults {
+  case_id: number;
+  case_name: string;
+  campaign_id: number;
+  campaign_title: string;
+  campaign_period_year: number;
+  campaign_period_month: number;
+  students_with_results: number;
+  case_average: number | null;
+  school_average: number | null;
+  competencies: CompetencyCaseScore[];
+  school_gaps: (GroupSchoolGap & { case_avg: number | null })[];
+  self_gaps: GroupSelfGap[];
 }
 
 /** Динамика по годам критерия: GET /results/{id}/dynamics. */
@@ -151,4 +191,40 @@ export interface ClassRoster {
   class_average: number | null;
   average_delta: number | null;
   students: ClassRosterRow[];
+}
+
+/** Динамика группы (класса или кейса) по критериям: GET /results/class|case/{id}/dynamics.
+ *
+ * Сравниваются ОДНИ И ТЕ ЖЕ ученики — те, у кого есть оба периода, — поэтому
+ * students_compared может быть меньше students_total: новичок этого года
+ * сдвигал бы «текущее», и разница читалась бы как рост коллектива.
+ */
+export interface GroupDynamics {
+  class_id: number | null;
+  class_label: string | null;
+  case_id: number | null;
+  case_name: string | null;
+
+  campaign_id: number;
+  campaign_title: string;
+  campaign_period_year: number;
+  campaign_period_month: number;
+
+  /** null — предыдущего периода нет. Штатное состояние, а не ошибка. */
+  previous_campaign_id: number | null;
+  previous_campaign_period_year: number | null;
+  previous_campaign_period_month: number | null;
+
+  students_compared: number;
+  students_total: number;
+
+  versions_differ: boolean;
+  version_note: string | null;
+
+  core_competencies_count: number;
+  core_average: number | null;
+  previous_core_average: number | null;
+  core_average_delta: number | null;
+
+  competencies: CompetencyDynamics[];
 }

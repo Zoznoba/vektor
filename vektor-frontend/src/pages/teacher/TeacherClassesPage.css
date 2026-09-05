@@ -194,32 +194,6 @@
   color: var(--blue-ink);
 }
 
-.growth-zone {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0;
-  border-top: 0.5px solid var(--border);
-}
-
-.growth-zone__score {
-  font-family: var(--font-d);
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--sage-ink);
-  width: 34px;
-}
-
-.growth-zone__name {
-  flex: 1;
-  min-width: 0;
-  font-size: 12.5px;
-}
-
-.growth-zone__count {
-  font-size: 11px;
-  color: var(--sage-ink);
-}
 
 @media (max-width: 900px) {
   .teacher-metrics {
