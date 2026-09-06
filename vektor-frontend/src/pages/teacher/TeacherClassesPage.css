@@ -18,6 +18,7 @@
 
 .teacher-chips {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-left: 6px;
 }
@@ -25,7 +26,10 @@
 .teacher-chip {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
+  /* Без nowrap flex сжимал чипы, и «5-1» ломалось на две строки: у
+     предметника здесь дюжина классов, ряд всё равно не помещался. */
+  white-space: nowrap;
   font-family: var(--font-d);
   font-size: 13px;
   font-weight: 600;
@@ -43,11 +47,17 @@
   color: var(--blue-ink);
 }
 
-.teacher-chip__tag {
-  font-family: var(--font-b);
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--ink-faint);
+/* Классное руководство — точка, а не слово: у учителя такой класс один-два,
+   а подпись на каждом чипе раздувала ряд ради повторяющегося текста.
+   Расшифровка значка — строкой под чипами, и только когда он есть. */
+.teacher-chip__homeroom {
+  font-size: 15px;
+  line-height: 0;
+  color: var(--lime-ink);
+}
+
+.teacher-chip--active .teacher-chip__homeroom {
+  color: var(--blue-ink);
 }
 
 .teacher-metrics {
@@ -170,8 +180,49 @@
   color: var(--lime-ink);
 }
 
+/* Строка целиком ведёт в профиль — как в админских «Пользователях». Ячейка
+   действий гасит всплытие, иначе «Оценить» уводила бы на профиль. */
+.roster__row {
+  cursor: pointer;
+}
+
+.roster__row:hover td {
+  background: var(--soft);
+}
+
 .roster__action {
   text-align: right;
+  white-space: nowrap;
+}
+
+.roster__action > * + * {
+  margin-left: 8px;
+}
+
+/* Стрелка «в профиль»: тихая по умолчанию, проявляется на строке под
+   курсором — двенадцать одинаковых кнопок в столбик были главным шумом
+   таблицы. */
+.roster__open {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-faint);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.roster__row:hover .roster__open {
+  color: var(--ink);
+}
+
+.roster__open:hover,
+.roster__open:focus-visible {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--ink);
 }
 
 .roster__status {

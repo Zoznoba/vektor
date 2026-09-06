@@ -69,7 +69,14 @@ export const PARENT_ROUTES: Record<string, string> = {
  * своих экранов у них нет (импорт живёт дампом seed/demo_data.sql, см.
  * CLAUDE.md, Этап 6), а пункт, который ничего не делает по клику, читается
  * как поломка — та же причина, по которой у ученика убраны «Результаты» и
- * «Профиль». Теперь у КАЖДОГО пункта каждой роли есть свой маршрут.
+ * «Профиль». У КАЖДОГО пункта каждой роли есть свой маршрут.
+ *
+ * «Результаты» тоже убраны, но по другой причине: экран был не пустым, а
+ * лишним. Его список-поиск дублировал «Пользователей» и состав класса третьим
+ * списком тех же учеников, а до самих результатов ведут действия над
+ * пользователем из «Пользователей», «Классов», «Кейсов» и «Диагностики»
+ * (`/admin/users/:id/results`). Заодно ушла путаница с «Сводкой»: теперь
+ * аналитика по школе живёт там, а по человеку — в его карточке.
  */
 export const ADMIN_NAV_ITEMS: NavItem[] = [
   { key: 'dashboard', label: 'Сводка', icon: 'dashboard' },
@@ -77,7 +84,6 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
   { key: 'classes', label: 'Классы', icon: 'school' },
   { key: 'cases', label: 'Кейсы', icon: 'briefcase' },
   { key: 'tests', label: 'Диагностика', icon: 'radar' },
-  { key: 'results', label: 'Результаты', icon: 'chart' },
 ];
 
 /** Маршруты разделов админки. */
@@ -87,5 +93,4 @@ export const ADMIN_ROUTES: Record<string, string> = {
   classes: '/admin/classes',
   cases: '/admin/cases',
   tests: '/admin/campaigns',
-  results: '/admin/results',
 };

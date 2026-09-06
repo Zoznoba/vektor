@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RoleShell } from '../../components/layout/RoleShell';
 import { Panel } from '../../components/ui/Panel';
-import { Button } from '../../components/ui/Button';
+import { Icon } from '../../components/icons/Icon';
 import { useApi } from '../../hooks/useApi';
 import { useAuth } from '../../auth/AuthContext';
 import { fetchCases } from '../../api/cases';
@@ -128,8 +128,12 @@ function CaseOverview({ kase, currentUserId }: { kase: Case; currentUserId: numb
 function StudentRow({ student }: { student: User }) {
   const navigate = useNavigate();
 
+  // Тот же экран профиля ученика, что и у учителя класса, — панель
+  // результатов одна на все роли.
+  const openProfile = () => navigate(`/teacher/students/${student.id}`);
+
   return (
-    <tr>
+    <tr className="roster__row" onClick={openProfile}>
       <td className="roster__name">{student.full_name}</td>
       <td className="roster__muted">{student.email}</td>
       <td>
@@ -139,12 +143,18 @@ function StudentRow({ student }: { student: User }) {
           {student.is_active ? 'Активен' : 'Неактивен'}
         </span>
       </td>
-      <td className="roster__action">
-        {/* Тот же экран профиля ученика, что и у учителя класса, — панель
-            результатов одна на все роли. */}
-        <Button variant="secondary" onClick={() => navigate(`/teacher/students/${student.id}`)}>
-          Результаты
-        </Button>
+      <td className="roster__action" onClick={(e) => e.stopPropagation()}>
+        {/* Строка целиком ведёт в профиль, как в составе класса; кнопка со
+            стрелкой оставлена ради клавиатуры — клик по строке ей недоступен. */}
+        <button
+          type="button"
+          className="roster__open"
+          aria-label={`Результаты: ${student.full_name}`}
+          title="Результаты ученика"
+          onClick={openProfile}
+        >
+          <Icon name="arrowRight" size={16} />
+        </button>
       </td>
     </tr>
   );

@@ -30,6 +30,8 @@ import { classLabel, homeroomTeachers } from '../../types/school';
 import type { SchoolClass, TeacherInClass } from '../../types/school';
 import type { User } from '../../types/auth';
 import { fetchClassResults, fetchGroupDynamics } from '../../api/results';
+import { parseRoster, rosterErrorCount } from './roster';
+import { RosterInput } from './RosterInput';
 import './admin.css';
 
 /** Вкладки состава класса. Определяют и таблицу, и контекстную кнопку
@@ -344,7 +346,7 @@ function commonUserActions(user: User, navigate: ReturnType<typeof useNavigate>)
     {
       key: 'profile',
       label: 'Открыть профиль',
-      onSelect: () => navigate('/admin/users', { state: { userId: user.id } }),
+      onSelect: () => navigate(`/admin/users/${user.id}`),
     },
   ];
   // Результаты есть только у ученика: субъект диагностики — он, учитель
@@ -353,7 +355,7 @@ function commonUserActions(user: User, navigate: ReturnType<typeof useNavigate>)
     items.push({
       key: 'results',
       label: 'Посмотреть результаты',
-      onSelect: () => navigate(`/admin/results/${user.id}`),
+      onSelect: () => navigate(`/admin/users/${user.id}/results`),
     });
   }
   return items;
@@ -560,46 +562,6 @@ function teachersCountLabel(n: number): string {
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${n} учителя`;
   return `${n} учителей`;
 }
-/** Одна распарсенная строка ростера. error !== null → строку нельзя отправлять. */
-interface RosterRow {
-  fullName: string;
-  email: string;
-  error: string | null;
-}
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/**
- * Парсинг вставленного списка «ФИО<tab>email» (по строке на ученика).
- * Разделитель — таб (вставка из Excel) либо запятая/точка с запятой при
- * ручном вводе. Валидируем каждую строку: пустое ФИО, кривой/пустой email,
- * дубль внутри пачки, уже занятый в школе email — всё помечается, чтобы
- * админ починил ДО отправки (бэковый /users/bulk атомарен — либо всё, либо
- * ничего, так что частичной загрузки не будет).
- */
-function parseRoster(raw: string, existingEmails: Set<string>): RosterRow[] {
-  const rows: RosterRow[] = [];
-  const seen = new Set<string>();
-  for (const rawLine of raw.split('\n')) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    const [namePart = '', emailPart = ''] = line.split(/[\t,;]/);
-    const fullName = namePart.trim();
-    const email = emailPart.trim();
-    const emailKey = email.toLowerCase();
-
-    let error: string | null = null;
-    if (!fullName) error = 'пустое ФИО';
-    else if (!email) error = 'нет email';
-    else if (!EMAIL_RE.test(email)) error = 'некорректный email';
-    else if (existingEmails.has(emailKey)) error = 'email уже занят в школе';
-    else if (seen.has(emailKey)) error = 'дубль в списке';
-
-    if (email && !error) seen.add(emailKey);
-    rows.push({ fullName, email, error });
-  }
-  return rows;
-}
 
 /**
  * Мастер «Новый класс» в два шага:
@@ -635,7 +597,7 @@ function CreateClassModal({
   );
 
   const rows = useMemo(() => parseRoster(roster, existingEmails), [roster, existingEmails]);
-  const errorCount = rows.filter((r) => r.error).length;
+  const errorCount = rosterErrorCount(rows);
   const canSubmit = rows.length > 0 && errorCount === 0;
 
   const handleCreate = async () => {
@@ -735,58 +697,13 @@ function CreateClassModal({
         </div>
       ) : (
         <div>
-          <p className="roster-hint">
-            Вставьте список учеников — по одному на строку в формате{' '}
-            <strong>ФИО&nbsp;⇥&nbsp;email</strong> (можно скопировать два столбца прямо из
-            Excel).
-          </p>
-          <textarea
-            className="roster-input"
+          <RosterInput
             value={roster}
-            onChange={(e) => setRoster(e.target.value)}
-            rows={7}
-            placeholder={'Иванов Иван\tivanov.i@vektor.ru\nПетрова Анна\tpetrova.a@vektor.ru'}
+            onChange={setRoster}
+            rows={rows}
+            errorCount={errorCount}
             autoFocus
           />
-
-          {rows.length > 0 && (
-            <>
-              <div className="roster-summary">
-                Распознано: {rows.length}{' '}
-                {errorCount === 0 ? (
-                  <span className="roster-summary__ok">· ошибок нет ✓</span>
-                ) : (
-                  <span className="roster-summary__err">· с ошибками: {errorCount}</span>
-                )}
-              </div>
-              <div className="roster-preview">
-                <table className="admin-table">
-                  <thead>
-                    <tr>
-                      <th>ФИО</th>
-                      <th>Email</th>
-                      <th>Статус</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r, i) => (
-                      <tr key={i} className={r.error ? 'roster-row--error' : ''}>
-                        <td>{r.fullName || <span className="roster-cell--empty">—</span>}</td>
-                        <td>{r.email || <span className="roster-cell--empty">—</span>}</td>
-                        <td>
-                          {r.error ? (
-                            <span className="roster-status roster-status--err">{r.error}</span>
-                          ) : (
-                            <span className="roster-status roster-status--ok">✓</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
 
           {error && <div className="form-error">{error}</div>}
 

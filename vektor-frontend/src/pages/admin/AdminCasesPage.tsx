@@ -407,7 +407,7 @@ function commonUserActions(user: User, navigate: ReturnType<typeof useNavigate>)
     {
       key: 'profile',
       label: 'Открыть профиль',
-      onSelect: () => navigate('/admin/users', { state: { userId: user.id } }),
+      onSelect: () => navigate(`/admin/users/${user.id}`),
     },
   ];
   // Результаты есть только у ученика: субъект диагностики — он, учитель
@@ -416,7 +416,7 @@ function commonUserActions(user: User, navigate: ReturnType<typeof useNavigate>)
     items.push({
       key: 'results',
       label: 'Посмотреть результаты',
-      onSelect: () => navigate(`/admin/results/${user.id}`),
+      onSelect: () => navigate(`/admin/users/${user.id}/results`),
     });
   }
   return items;

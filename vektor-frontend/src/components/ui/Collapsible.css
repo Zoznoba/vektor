@@ -1,7 +1,11 @@
 .collapsible {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--r-lg);
+  /* --r-md, как у Panel: сворачиваемый блок стоит В ОДНОМ ПОТОКЕ с обычными
+     панелями (диагностика в карточке пользователя, аналитика в «Классах» и
+     «Кейсах»), и более крупный радиус читался бы как другой тип поверхности.
+     --r-lg в проекте остался за тем, что лежит НАД страницей, — модалка. */
+  border-radius: var(--r-md);
   margin-bottom: 14px;
   overflow: hidden;
 }

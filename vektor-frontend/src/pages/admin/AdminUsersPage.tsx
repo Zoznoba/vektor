@@ -1,41 +1,43 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
-import { Avatar } from '../../components/ui/Avatar';
 import { Modal } from '../../components/ui/Modal';
 import { Icon } from '../../components/icons/Icon';
+import { ActionMenu } from '../../components/ui/ActionMenu';
+import type { ActionMenuItem } from '../../components/ui/ActionMenu';
+import { SelectAllCheckbox, SelectionBar } from '../../components/ui/SelectionBar';
 import { useApi } from '../../hooks/useApi';
+import { useRowSelection } from '../../hooks/useRowSelection';
 import {
   fetchUsers,
   createUser,
-  fetchChildren,
+  bulkCreateUsers,
   assignChildren,
   setUserActive,
   resetPassword,
 } from '../../api/users';
+import type { BulkUserIn } from '../../api/users';
 import { fetchClasses } from '../../api/classes';
-import { fetchCases } from '../../api/cases';
+import { fetchCases, assignCaseStudents, assignCaseTeachers } from '../../api/cases';
 import { ApiError } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
-import { ROLE_LABELS } from '../../types/auth';
+import { ROLE_BADGE, ROLE_LABELS } from '../../types/auth';
 import type { User, UserRole } from '../../types/auth';
 import { classLabel } from '../../types/school';
 import type { SchoolClass } from '../../types/school';
 import type { Case } from '../../types/case';
+import { parseRoster, rosterErrorCount } from './roster';
+import { RosterInput } from './RosterInput';
 import './admin.css';
 
 type RoleFilter = UserRole | 'all';
 
-const ROLE_BADGE: Record<UserRole, 'sage' | 'blue' | 'gray'> = {
-  student: 'sage',
-  teacher: 'blue',
-  parent: 'gray',
-  admin: 'gray',
-};
+/** Массовое действие над выделенными строками. */
+type BulkAction = 'case' | 'parent' | 'deactivate';
 
 /** id пользователя → метка класса(ов): ученику — его класс, учителю — список. */
 function buildClassIndex(classes: SchoolClass[] | null): Map<number, string> {
@@ -63,6 +65,28 @@ function buildCaseIndex(cases: Case[] | null): Map<number, string> {
   return index;
 }
 
+function peopleCountLabel(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${n} человека`;
+  return `${n} человек`;
+}
+
+/**
+ * «Пользователи» — единый список людей школы.
+ *
+ * Устроен как состав класса в AdminClassesPage: таблица, чекбоксы,
+ * `SelectionBar` с массовыми действиями и дропдаун контекстных действий в
+ * конце строки. Раскрывающейся панели «Действия» над таблицей больше нет:
+ * она сдвигала таблицу вниз (выбранная строка могла уехать за экран) и мешала
+ * в себе три разные вещи — карточку человека, пульт действий и список детей.
+ * Всё это переехало на страницу пользователя (`/admin/users/:id`), а клик по
+ * строке ведёт туда.
+ *
+ * Верх экрана НЕ копирует сетку карточек классов/кейсов сознательно: там
+ * карточка — сущность со своим составом, здесь роль — всего лишь фильтр,
+ * и чипсы описывают её честнее.
+ */
 export function AdminUsersPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -72,40 +96,81 @@ export function AdminUsersPage() {
   const cases = useApi(fetchCases);
 
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
+  const [classFilter, setClassFilter] = useState<number | null>(null);
   const [search, setSearch] = useState('');
-  // «Открыть профиль» из состава класса (AdminClassesPage) кладёт id в state —
-  // карточка раскрывается сразу, тем же приёмом, что переход «Классы» отсюда.
-  const [selectedId, setSelectedId] = useState<number | null>(
-    () => (location.state as { userId?: number } | null)?.userId ?? null,
-  );
   const [showCreate, setShowCreate] = useState(false);
+  const [showBulkCreate, setShowBulkCreate] = useState(false);
+  const [bulkAction, setBulkAction] = useState<BulkAction | null>(null);
+  const [resetPasswordFor, setResetPasswordFor] = useState<User | null>(null);
+  // Деактивация одного из дропдауна строки и пачки из выделения — путь общий,
+  // как у открепления в «Классах»: одна модалка, на входе список.
+  const [deactivating, setDeactivating] = useState<User[] | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const classIndex = useMemo(() => buildClassIndex(classes.data), [classes.data]);
   const caseIndex = useMemo(() => buildCaseIndex(cases.data), [cases.data]);
 
   const allUsers = useMemo(() => users.data ?? [], [users.data]);
+
+  // Возврат со страницы пользователя по прямой ссылке подсвечивает строку, с
+  // которой всё началось (state кладут «Классы», «Кейсы» и сам профиль).
+  const highlightedId = (location.state as { userId?: number } | null)?.userId ?? null;
+
+  // Фильтр по классу считаем по составу класса (ученики + учителя), а не по
+  // колонке-подписи: подпись у учителя склеена из нескольких классов и на
+  // подстроку не проверяется.
+  const scoped = useMemo(() => {
+    if (classFilter === null) return allUsers;
+    const cls = (classes.data ?? []).find((c) => c.id === classFilter);
+    if (!cls) return allUsers;
+    const members = new Set<number>([
+      ...cls.students.map((s) => s.id),
+      ...cls.teachers.map((t) => t.teacher.id),
+    ]);
+    return allUsers.filter((u) => members.has(u.id));
+  }, [allUsers, classes.data, classFilter]);
+
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return allUsers.filter((u) => {
+    return scoped.filter((u) => {
       if (roleFilter !== 'all' && u.role !== roleFilter) return false;
       if (!query) return true;
       return u.full_name.toLowerCase().includes(query) || u.email.toLowerCase().includes(query);
     });
-  }, [allUsers, roleFilter, search]);
+  }, [scoped, roleFilter, search]);
 
+  // Счётчики на чипсах — в пределах выбранного класса, а не по всей школе:
+  // иначе «Ученики · 136» рядом с таблицей из тринадцати читается как ошибка.
   const countByRole = useMemo(() => {
     const counts: Record<RoleFilter, number> = {
-      all: allUsers.length,
+      all: scoped.length,
       student: 0,
       teacher: 0,
       parent: 0,
       admin: 0,
     };
-    for (const u of allUsers) counts[u.role] += 1;
+    for (const u of scoped) counts[u.role] += 1;
     return counts;
-  }, [allUsers]);
+  }, [scoped]);
 
-  const selected = allUsers.find((u) => u.id === selectedId) ?? null;
+  const rowIds = useMemo(() => filtered.map((u) => u.id), [filtered]);
+  // resetKey — все фильтры разом: выделение не должно переживать смену
+  // выборки, иначе массовое действие уедет на людей, которых на экране нет.
+  const selection = useRowSelection(
+    rowIds,
+    `${roleFilter}:${classFilter ?? 'all'}:${search.trim().toLowerCase()}`,
+  );
+  const selectedUsers = useMemo(
+    () => filtered.filter((u) => selection.selectedIds.includes(u.id)),
+    [filtered, selection.selectedIds],
+  );
+
+  // Что можно делать с выделением, зависит от его состава — кнопки не
+  // прячем, а гасим с подсказкой: исчезающая кнопка читается как поломка.
+  const caseEligible = selectedUsers.every((u) => u.role === 'student' || u.role === 'teacher');
+  const parentEligible =
+    selectedUsers.length > 0 && selectedUsers.every((u) => u.role === 'student');
+  const selectionHasSelf = selectedUsers.some((u) => u.id === currentUser?.id);
 
   const filters: { key: RoleFilter; label: string }[] = [
     { key: 'all', label: 'Все' },
@@ -114,6 +179,58 @@ export function AdminUsersPage() {
     { key: 'parent', label: 'Родители' },
     { key: 'admin', label: 'Админ' },
   ];
+
+  const handleActivate = async (user: User) => {
+    setActionError(null);
+    try {
+      await setUserActive(user.id, true);
+      users.reload();
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError ? err.message : 'Не удалось активировать пользователя',
+      );
+    }
+  };
+
+  const rowActions = (user: User): ActionMenuItem[] => {
+    const items: ActionMenuItem[] = [
+      {
+        key: 'profile',
+        label: 'Открыть профиль',
+        onSelect: () => navigate(`/admin/users/${user.id}`),
+      },
+    ];
+    // Диагностика есть только у ученика: субъект оценки — он, остальные роли
+    // выступают оценивающими и собственного профиля результатов не имеют.
+    if (user.role === 'student') {
+      items.push({
+        key: 'results',
+        label: 'Диагностика',
+        onSelect: () => navigate(`/admin/users/${user.id}/results`),
+      });
+    }
+    items.push({
+      key: 'password',
+      label: 'Сбросить пароль',
+      onSelect: () => setResetPasswordFor(user),
+    });
+    if (user.is_active) {
+      items.push({
+        key: 'deactivate',
+        label: 'Деактивировать',
+        danger: true,
+        disabled: user.id === currentUser?.id,
+        onSelect: () => setDeactivating([user]),
+      });
+    } else {
+      items.push({
+        key: 'activate',
+        label: 'Активировать',
+        onSelect: () => void handleActivate(user),
+      });
+    }
+    return items;
+  };
 
   return (
     <AdminShell activeNavKey="users">
@@ -131,40 +248,93 @@ export function AdminUsersPage() {
           ))}
         </div>
         <div className="admin-toolbar__spacer" />
-        <div className="search-box">
-          <Icon name="search" size={16} />
-          <input
-            type="search"
-            placeholder="Поиск по имени или email"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+        <select
+          className="admin-select"
+          value={classFilter ?? ''}
+          onChange={(e) => setClassFilter(e.target.value ? Number(e.target.value) : null)}
+        >
+          <option value="">Все классы</option>
+          {(classes.data ?? []).map((cls) => (
+            <option key={cls.id} value={cls.id}>
+              {classLabel(cls)}
+            </option>
+          ))}
+        </select>
+        {/* Поиск и «+» — одна неразрывная группа: тулбар переносится по
+            словам, и в одиночку кнопка уехала бы на новую строку к левому
+            краю, а меню (оно раскрывается влево от правого края кнопки) —
+            за границу экрана. Рядом с поиском слева от неё всегда есть
+            место под меню. */}
+        <div className="admin-toolbar__group">
+          <div className="search-box">
+            <Icon name="search" size={16} />
+            <input
+              type="search"
+              placeholder="Поиск по имени или email"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          {/* Одна кнопка с выбором вместо двух рядом: «Добавить» и «Пачкой»
+              стояли как равные, хотя это один и тот же поступок в двух
+              масштабах — и вдвоём переносили тулбар на вторую строку.
+              Только «+», без подписи: с ней ряд снова уезжал на вторую
+              строку, а меню — за левую границу экрана. Пункты по одному
+              слову и без глагола — они читаются как продолжение подсказки
+              кнопки («Добавить…»), а «ФИО ⇥ email, можно скопировать из
+              Excel» и так стоит первой строкой внутри самой модалки. */}
+          <ActionMenu
+            triggerClassName="btn btn-primary btn-icon"
+            triggerLabel="Добавить пользователей"
+            trigger={<Icon name="plus" size={16} />}
+            items={[
+              {
+                key: 'one',
+                label: 'Одного',
+                onSelect: () => setShowCreate(true),
+              },
+              {
+                key: 'many',
+                label: 'Списком',
+                onSelect: () => setShowBulkCreate(true),
+              },
+            ]}
           />
         </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Icon name="plus" size={15} />
-          Добавить
-        </Button>
       </div>
 
       {users.error && <div className="form-error">{users.error}</div>}
-
-      {selected && (
-        <Panel title="Действия">
-          <UserActionsPanel
-            key={selected.id}
-            user={selected}
-            allUsers={allUsers}
-            classes={classes.data ?? []}
-            cases={cases.data ?? []}
-            isSelf={selected.id === currentUser?.id}
-            onOpenDiagnostics={() => navigate(`/admin/results/${selected.id}`)}
-            onChanged={() => users.reload()}
-          />
-        </Panel>
-      )}
+      {actionError && <div className="form-error">{actionError}</div>}
 
       <Panel className="admin-table-panel">
-        {users.loading ? (
+        <SelectionBar selection={selection} itemLabel={peopleCountLabel}>
+          <Button
+            variant="secondary"
+            disabled={!caseEligible}
+            title={caseEligible ? undefined : 'В кейс можно добавить только учеников и учителей'}
+            onClick={() => setBulkAction('case')}
+          >
+            Добавить в кейс
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={!parentEligible}
+            title={parentEligible ? undefined : 'Привязать к родителю можно только учеников'}
+            onClick={() => setBulkAction('parent')}
+          >
+            Привязать к родителю
+          </Button>
+          <Button
+            variant="danger"
+            disabled={selectionHasSelf}
+            title={selectionHasSelf ? 'В выделении ваша собственная учётная запись' : undefined}
+            onClick={() => setDeactivating(selectedUsers)}
+          >
+            Деактивировать
+          </Button>
+        </SelectionBar>
+
+        {users.loading && !users.data ? (
           <div className="admin-empty">Загрузка…</div>
         ) : filtered.length === 0 ? (
           <div className="admin-empty">Никого не нашлось</div>
@@ -172,21 +342,36 @@ export function AdminUsersPage() {
           <table className="admin-table">
             <thead>
               <tr>
+                <th className="admin-table__select-col">
+                  <SelectAllCheckbox selection={selection} />
+                </th>
                 <th>Имя</th>
                 <th>Email</th>
                 <th>Роль</th>
                 <th>Класс</th>
                 <th>Кейс</th>
                 <th>Статус</th>
+                <th className="admin-table__actions-col" />
               </tr>
             </thead>
             <tbody>
               {filtered.map((u) => (
                 <tr
                   key={u.id}
-                  className={u.id === selectedId ? 'admin-table__row--selected' : ''}
-                  onClick={() => setSelectedId(u.id === selectedId ? null : u.id)}
+                  className={u.id === highlightedId ? 'admin-table__row--selected' : ''}
+                  onClick={() => navigate(`/admin/users/${u.id}`)}
                 >
+                  <td
+                    className="admin-table__select-col"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      aria-label={`Выбрать: ${u.full_name}`}
+                      checked={selection.has(u.id)}
+                      onChange={() => selection.toggle(u.id)}
+                    />
+                  </td>
                   <td>{u.full_name}</td>
                   <td>{u.email}</td>
                   <td>
@@ -195,10 +380,14 @@ export function AdminUsersPage() {
                   <td>{classIndex.get(u.id) ?? '—'}</td>
                   <td>{caseIndex.get(u.id) ?? '—'}</td>
                   <td>
-                    <span
-                      className={`status-dot ${u.is_active ? 'status-dot--on' : ''}`.trim()}
-                    />
+                    <span className={`status-dot ${u.is_active ? 'status-dot--on' : ''}`.trim()} />
                     {u.is_active ? 'Активен' : 'Неактивен'}
+                  </td>
+                  <td className="admin-table__actions-col">
+                    <ActionMenu
+                      trigger={<Icon name="chevronDown" size={15} />}
+                      items={rowActions(u)}
+                    />
                   </td>
                 </tr>
               ))}
@@ -214,6 +403,66 @@ export function AdminUsersPage() {
             setShowCreate(false);
             users.reload();
           }}
+        />
+      )}
+
+      {showBulkCreate && (
+        <BulkCreateUsersModal
+          allUsers={allUsers}
+          classes={classes.data ?? []}
+          cases={cases.data ?? []}
+          onClose={() => setShowBulkCreate(false)}
+          onCreated={() => {
+            setShowBulkCreate(false);
+            users.reload();
+            classes.reload();
+            cases.reload();
+          }}
+        />
+      )}
+
+      {bulkAction === 'case' && (
+        <AssignToCaseModal
+          users={selectedUsers}
+          cases={cases.data ?? []}
+          onClose={() => setBulkAction(null)}
+          onAssigned={() => {
+            setBulkAction(null);
+            selection.clear();
+            users.reload();
+            cases.reload();
+          }}
+        />
+      )}
+
+      {bulkAction === 'parent' && (
+        <AssignToParentModal
+          students={selectedUsers}
+          parents={allUsers.filter((u) => u.role === 'parent' && u.is_active)}
+          onClose={() => setBulkAction(null)}
+          onAssigned={() => {
+            setBulkAction(null);
+            selection.clear();
+          }}
+        />
+      )}
+
+      {deactivating && (
+        <DeactivateModal
+          users={deactivating}
+          onClose={() => setDeactivating(null)}
+          onDone={() => {
+            setDeactivating(null);
+            selection.clear();
+            users.reload();
+          }}
+        />
+      )}
+
+      {resetPasswordFor && (
+        <ResetPasswordModal
+          user={resetPasswordFor}
+          onClose={() => setResetPasswordFor(null)}
         />
       )}
     </AdminShell>
@@ -305,169 +554,412 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
   );
 }
 
-function UserActionsPanel({
-  user,
+/**
+ * Массовое заведение людей из вставленного списка. Тот же `/users/bulk`, что
+ * в мастере «Новый класс», но без самого класса: роль общая на пачку, а
+ * привязка к классу/кейсу — необязательная и делается тем же вызовом.
+ *
+ * Класс предлагаем только для учеников (бэкенд привязывает по class_id именно
+ * их), кейс — ученикам и учителям: членство в кейсе одно на обе роли.
+ */
+function BulkCreateUsersModal({
   allUsers,
   classes,
   cases,
-  isSelf,
-  onOpenDiagnostics,
-  onChanged,
+  onClose,
+  onCreated,
 }: {
-  user: User;
   allUsers: User[];
   classes: SchoolClass[];
   cases: Case[];
-  isSelf: boolean;
-  onOpenDiagnostics: () => void;
-  onChanged: () => void;
-}) {
-  const navigate = useNavigate();
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
-  const [showResetPassword, setShowResetPassword] = useState(false);
-
-  const teacherClasses = useMemo(
-    () => classes.filter((c) => c.teachers.some((t) => t.teacher.id === user.id)),
-    [classes, user.id],
-  );
-
-  // Кейс один на человека — поэтому не список кнопок, как у классов учителя,
-  // а одна. Ищем по составу, а не по user.case_id: в кейсе ученик и учитель
-  // лежат в разных списках, но колонка одна.
-  const userCase = useMemo(
-    () =>
-      cases.find((c) => [...c.students, ...c.teachers].some((m) => m.id === user.id)) ?? null,
-    [cases, user.id],
-  );
-
-  const handleReactivate = async () => {
-    setError(null);
-    setSubmitting(true);
-    try {
-      await setUserActive(user.id, true);
-      onChanged();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Не удалось активировать пользователя');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <>
-      <div className="user-card">
-        <Avatar fullName={user.full_name} className="user-card__avatar" />
-        <div className="user-card__main">
-          <div className="user-card__name">{user.full_name}</div>
-          <Badge variant={ROLE_BADGE[user.role]}>{ROLE_LABELS[user.role]}</Badge>
-        </div>
-      </div>
-
-      {error && <div className="form-error">{error}</div>}
-
-      <div className="user-actions">
-        {user.role === 'student' && (
-          <Button variant="secondary" onClick={onOpenDiagnostics}>
-            Диагностика
-          </Button>
-        )}
-        {userCase && (
-          <Button
-            variant="secondary"
-            onClick={() => navigate('/admin/cases', { state: { caseId: userCase.id } })}
-          >
-            Кейс «{userCase.name}»
-          </Button>
-        )}
-        {user.role === 'teacher' &&
-          teacherClasses.map((cls) => (
-            <Button
-              key={cls.id}
-              variant="secondary"
-              onClick={() => navigate('/admin/classes', { state: { classId: cls.id } })}
-            >
-              Класс {classLabel(cls)}
-            </Button>
-          ))}
-        <Button variant="secondary" onClick={() => setShowResetPassword(true)}>
-          Сбросить пароль
-        </Button>
-        {user.is_active ? (
-          <Button
-            variant="danger"
-            onClick={() => setShowDeactivateConfirm(true)}
-            disabled={isSelf}
-            title={isSelf ? 'Нельзя деактивировать собственную учётную запись' : undefined}
-          >
-            Деактивировать
-          </Button>
-        ) : (
-          <Button variant="secondary" onClick={handleReactivate} disabled={submitting}>
-            {submitting ? 'Активируем…' : 'Активировать'}
-          </Button>
-        )}
-      </div>
-
-      {user.role === 'parent' && <ParentChildrenSection parent={user} allUsers={allUsers} />}
-
-      {showDeactivateConfirm && (
-        <DeactivateConfirmModal
-          user={user}
-          onClose={() => setShowDeactivateConfirm(false)}
-          onConfirmed={() => {
-            setShowDeactivateConfirm(false);
-            onChanged();
-          }}
-        />
-      )}
-
-      {showResetPassword && (
-        <ResetPasswordModal user={user} onClose={() => setShowResetPassword(false)} />
-      )}
-    </>
-  );
-}
-
-function DeactivateConfirmModal({
-  user,
-  onClose,
-  onConfirmed,
-}: {
-  user: User;
   onClose: () => void;
-  onConfirmed: () => void;
+  onCreated: () => void;
 }) {
+  const [role, setRole] = useState<UserRole>('student');
+  const [classId, setClassId] = useState<number | null>(null);
+  const [caseId, setCaseId] = useState<number | null>(null);
+  const [roster, setRoster] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const handleConfirm = async () => {
+  const existingEmails = useMemo(
+    () => new Set(allUsers.map((u) => u.email.toLowerCase())),
+    [allUsers],
+  );
+  const rows = useMemo(() => parseRoster(roster, existingEmails), [roster, existingEmails]);
+  const errorCount = rosterErrorCount(rows);
+  const canSubmit = rows.length > 0 && errorCount === 0;
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
     setError(null);
     setSubmitting(true);
     try {
-      await setUserActive(user.id, false);
-      onConfirmed();
+      const users: BulkUserIn[] = rows.map((r) => ({
+        email: r.email,
+        full_name: r.fullName,
+        role,
+      }));
+      await bulkCreateUsers(
+        users,
+        role === 'student' ? classId : null,
+        role === 'student' || role === 'teacher' ? caseId : null,
+      );
+      onCreated();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Не удалось деактивировать пользователя');
+      if (err instanceof ApiError && err.status === 409) {
+        setError('Некоторые email уже заняты — поправьте список и попробуйте снова');
+      } else if (err instanceof ApiError && err.status === 422) {
+        // Бэк (Pydantic EmailStr) строже нашего превью: режет зарезервированные
+        // домены (.test, example.com), которые формально «похожи» на email.
+        setError(
+          'Бэкенд отклонил один из адресов как недопустимый email — обычно это ' +
+            'зарезервированный домен вроде «@test.test» или «@example.com». ' +
+            'Используйте реальный домен и попробуйте снова.',
+        );
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Не удалось завести пользователей');
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Modal title="Деактивировать пользователя" onClose={onClose}>
-      <p>
-        {user.full_name} потеряет доступ к системе: вход будет заблокирован. История (ответы
-        анкет, привязки к классу или детям) сохранится, действие можно отменить в любой момент
-        кнопкой «Активировать».
-      </p>
+    <Modal title="Добавить пачкой" onClose={onClose}>
+      <label className="form-field">
+        <span>Роль (общая на всю пачку)</span>
+        <select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
+          <option value="student">Ученики</option>
+          <option value="teacher">Учителя</option>
+          <option value="parent">Родители</option>
+        </select>
+      </label>
+
+      {role === 'student' && (
+        <label className="form-field">
+          <span>Сразу в класс (необязательно)</span>
+          <select
+            value={classId ?? ''}
+            onChange={(e) => setClassId(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">— не привязывать —</option>
+            {classes.map((cls) => (
+              <option key={cls.id} value={cls.id}>
+                {classLabel(cls)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      {(role === 'student' || role === 'teacher') && (
+        <label className="form-field">
+          <span>Сразу в кейс (необязательно)</span>
+          <select
+            value={caseId ?? ''}
+            onChange={(e) => setCaseId(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">— не привязывать —</option>
+            {cases.map((kase) => (
+              <option key={kase.id} value={kase.id}>
+                {kase.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      <RosterInput value={roster} onChange={setRoster} rows={rows} errorCount={errorCount} />
 
       {error && <div className="form-error">{error}</div>}
 
       <div className="modal__actions">
         <Button type="button" variant="secondary" onClick={onClose}>
           Отмена
+        </Button>
+        <Button onClick={handleSubmit} disabled={submitting || !canSubmit}>
+          {submitting ? 'Создаём…' : `Создать ${rows.length}`}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Массовое добавление в кейс. Ученики и учителя уходят разными ручками
+ * (у бэкенда их две), но одним действием админа.
+ *
+ * Уже состоящих в каком-либо кейсе отфильтровываем ЗДЕСЬ: членство одно, и
+ * бэкенд отвечает на чужого участника 409 — на всю пачку. Перевод между
+ * кейсами делается явно, через открепление в «Кейсах».
+ */
+function AssignToCaseModal({
+  users,
+  cases,
+  onClose,
+  onAssigned,
+}: {
+  users: User[];
+  cases: Case[];
+  onClose: () => void;
+  onAssigned: () => void;
+}) {
+  const [caseId, setCaseId] = useState<number | null>(cases[0]?.id ?? null);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const inSomeCase = useMemo(() => {
+    const ids = new Set<number>();
+    for (const kase of cases) {
+      for (const m of [...kase.students, ...kase.teachers]) ids.add(m.id);
+    }
+    return ids;
+  }, [cases]);
+
+  const free = users.filter((u) => !inSomeCase.has(u.id));
+  const skipped = users.length - free.length;
+  const students = free.filter((u) => u.role === 'student').map((u) => u.id);
+  const teachers = free.filter((u) => u.role === 'teacher').map((u) => u.id);
+
+  const handleSubmit = async () => {
+    if (caseId === null || free.length === 0) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      if (students.length > 0) await assignCaseStudents(caseId, students);
+      if (teachers.length > 0) await assignCaseTeachers(caseId, teachers);
+      onAssigned();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось добавить в кейс');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal title="Добавить в кейс" onClose={onClose}>
+      {cases.length === 0 ? (
+        <div className="admin-empty">Кейсов пока нет — создайте кейс в разделе «Кейсы»</div>
+      ) : (
+        <>
+          <label className="form-field">
+            <span>Кейс</span>
+            <select
+              value={caseId ?? ''}
+              onChange={(e) => setCaseId(e.target.value ? Number(e.target.value) : null)}
+            >
+              {cases.map((kase) => (
+                <option key={kase.id} value={kase.id}>
+                  {kase.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <p>
+            Будут добавлены: {students.length > 0 && `учеников — ${students.length}`}
+            {students.length > 0 && teachers.length > 0 && ', '}
+            {teachers.length > 0 && `учителей — ${teachers.length}`}
+            {free.length === 0 && 'никто'}.
+          </p>
+          {skipped > 0 && (
+            <p className="roster-hint">
+              Пропущено: {skipped} — эти люди уже состоят в другом кейсе. Членство в кейсе одно,
+              перевод делается через открепление в разделе «Кейсы».
+            </p>
+          )}
+
+          <div className="detach-list">
+            <ul>
+              {free.map((u) => (
+                <li key={u.id}>
+                  {u.full_name} — {ROLE_LABELS[u.role]}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      )}
+
+      {error && <div className="form-error">{error}</div>}
+
+      <div className="modal__actions">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Отмена
+        </Button>
+        <Button onClick={handleSubmit} disabled={submitting || caseId === null || free.length === 0}>
+          {submitting ? 'Добавляем…' : `Добавить (${free.length})`}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Массовая привязка выделенных учеников к одному родителю. Один вызов
+ * `assignChildren` на всю пачку, повторная привязка на бэкенде идемпотентна —
+ * поэтому уже привязанных детей отдельно не отсеиваем.
+ */
+function AssignToParentModal({
+  students,
+  parents,
+  onClose,
+  onAssigned,
+}: {
+  students: User[];
+  parents: User[];
+  onClose: () => void;
+  onAssigned: () => void;
+}) {
+  const [parentId, setParentId] = useState<number | null>(parents[0]?.id ?? null);
+  const [search, setSearch] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const visible = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return parents;
+    return parents.filter(
+      (p) => p.full_name.toLowerCase().includes(query) || p.email.toLowerCase().includes(query),
+    );
+  }, [parents, search]);
+
+  const handleSubmit = async () => {
+    if (parentId === null) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await assignChildren(
+        parentId,
+        students.map((s) => s.id),
+      );
+      onAssigned();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось привязать детей');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal title="Привязать к родителю" onClose={onClose}>
+      <p>
+        Выбранные ученики ({students.length}) станут детьми одного родителя:{' '}
+        {students.map((s) => s.full_name).join(', ')}.
+      </p>
+
+      {parents.length === 0 ? (
+        <div className="admin-empty">Активных родителей в школе пока нет</div>
+      ) : (
+        <>
+          <div className="search-box search-box--block">
+            <Icon name="search" size={16} />
+            <input
+              type="search"
+              placeholder="Поиск родителя"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="assign-list">
+            {visible.map((p) => (
+              <label key={p.id} className="assign-item">
+                <input
+                  type="radio"
+                  name="parent"
+                  checked={parentId === p.id}
+                  onChange={() => setParentId(p.id)}
+                />
+                <span className="assign-item__name">{p.full_name}</span>
+                <span className="assign-item__email">{p.email}</span>
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+
+      {error && <div className="form-error">{error}</div>}
+
+      <div className="modal__actions">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Отмена
+        </Button>
+        <Button onClick={handleSubmit} disabled={submitting || parentId === null}>
+          {submitting ? 'Привязываем…' : 'Привязать'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Деактивация одного или сразу нескольких.
+ *
+ * Массового эндпоинта у бэкенда нет, поэтому шлём по одному запросу на
+ * человека и честно показываем, кто не прошёл: молчаливый «успех» после
+ * половины упавших запросов хуже, чем список ошибок.
+ */
+export function DeactivateModal({
+  users,
+  onClose,
+  onDone,
+}: {
+  users: User[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [failed, setFailed] = useState<string[] | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleConfirm = async () => {
+    setFailed(null);
+    setSubmitting(true);
+    const errors: string[] = [];
+    for (const user of users) {
+      try {
+        await setUserActive(user.id, false);
+      } catch (err) {
+        errors.push(
+          `${user.full_name}: ${err instanceof ApiError ? err.message : 'неизвестная ошибка'}`,
+        );
+      }
+    }
+    setSubmitting(false);
+    if (errors.length === 0) onDone();
+    else setFailed(errors);
+  };
+
+  return (
+    <Modal
+      title={users.length === 1 ? 'Деактивировать пользователя' : 'Деактивировать пользователей'}
+      onClose={onClose}
+    >
+      <p>
+        {users.length === 1 ? users[0].full_name : `Выбранные (${users.length})`} потеряют доступ
+        к системе: вход будет заблокирован. История (ответы анкет, привязки к классу или детям)
+        сохранится, действие можно отменить в любой момент кнопкой «Активировать».
+      </p>
+
+      {users.length > 1 && (
+        <div className="detach-list">
+          <ul>
+            {users.map((u) => (
+              <li key={u.id}>{u.full_name}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {failed && (
+        <div className="form-error">
+          Не удалось деактивировать: {failed.join('; ')}. Остальные деактивированы.
+        </div>
+      )}
+
+      <div className="modal__actions">
+        <Button type="button" variant="secondary" onClick={failed ? onDone : onClose}>
+          {failed ? 'Закрыть' : 'Отмена'}
         </Button>
         <Button variant="danger" onClick={handleConfirm} disabled={submitting}>
           {submitting ? 'Деактивируем…' : 'Деактивировать'}
@@ -477,7 +969,7 @@ function DeactivateConfirmModal({
   );
 }
 
-function ResetPasswordModal({ user, onClose }: { user: User; onClose: () => void }) {
+export function ResetPasswordModal({ user, onClose }: { user: User; onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [newPassword, setNewPassword] = useState<string | null>(null);
@@ -525,136 +1017,6 @@ function ResetPasswordModal({ user, onClose }: { user: User; onClose: () => void
         </Button>
         <Button variant="danger" onClick={handleConfirm} disabled={submitting}>
           {submitting ? 'Сбрасываем…' : 'Сбросить пароль'}
-        </Button>
-      </div>
-    </Modal>
-  );
-}
-
-function ParentChildrenSection({ parent, allUsers }: { parent: User; allUsers: User[] }) {
-  const [children, setChildren] = useState<User[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [showAssign, setShowAssign] = useState(false);
-  const [version, setVersion] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchChildren(parent.id)
-      .then((list) => !cancelled && setChildren(list))
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : 'Не удалось загрузить детей');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [parent.id, version]);
-
-  const linkedIds = new Set((children ?? []).map((c) => c.id));
-  const candidates = allUsers.filter((u) => u.role === 'student' && !linkedIds.has(u.id));
-
-  return (
-    <div className="children-section">
-      <div className="children-section__head">
-        <span>Дети</span>
-        <Button variant="secondary" onClick={() => setShowAssign(true)}>
-          Привязать детей
-        </Button>
-      </div>
-
-      {error && <div className="form-error">{error}</div>}
-
-      {children === null ? (
-        <div className="admin-empty">Загрузка…</div>
-      ) : children.length === 0 ? (
-        <div className="admin-empty">Дети пока не привязаны</div>
-      ) : (
-        <div className="profile-rows">
-          {children.map((c) => (
-            <div key={c.id} className="profile-row">
-              <span>{c.full_name}</span>
-              <span>{c.email}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {showAssign && (
-        <AssignChildrenModal
-          parent={parent}
-          candidates={candidates}
-          onClose={() => setShowAssign(false)}
-          onAssigned={() => {
-            setShowAssign(false);
-            setVersion((v) => v + 1);
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function AssignChildrenModal({
-  parent,
-  candidates,
-  onClose,
-  onAssigned,
-}: {
-  parent: User;
-  candidates: User[];
-  onClose: () => void;
-  onAssigned: () => void;
-}) {
-  const [checked, setChecked] = useState<Set<number>>(new Set());
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  const toggle = (id: number) => {
-    setChecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const handleSubmit = async () => {
-    setError(null);
-    setSubmitting(true);
-    try {
-      await assignChildren(parent.id, [...checked]);
-      onAssigned();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Не удалось привязать детей');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Modal title={`Дети — ${parent.full_name}`} onClose={onClose}>
-      {candidates.length === 0 ? (
-        <div className="admin-empty">Все ученики уже привязаны к этому родителю</div>
-      ) : (
-        <div className="assign-list">
-          {candidates.map((u) => (
-            <label key={u.id} className="assign-item">
-              <input type="checkbox" checked={checked.has(u.id)} onChange={() => toggle(u.id)} />
-              <span className="assign-item__name">{u.full_name}</span>
-              <span className="assign-item__email">{u.email}</span>
-            </label>
-          ))}
-        </div>
-      )}
-
-      {error && <div className="form-error">{error}</div>}
-
-      <div className="modal__actions">
-        <Button type="button" variant="secondary" onClick={onClose}>
-          Отмена
-        </Button>
-        <Button onClick={handleSubmit} disabled={submitting || checked.size === 0}>
-          {submitting ? 'Сохраняем…' : `Привязать (${checked.size})`}
         </Button>
       </div>
     </Modal>

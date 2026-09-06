@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Panel } from '../../components/ui/Panel';
 import { Button } from '../../components/ui/Button';
+import { Icon } from '../../components/icons/Icon';
 import {
   GroupDynamicsSection,
   GroupProfileChart,
@@ -34,6 +35,13 @@ type FilterKey = 'all' | 'not_started' | 'growth';
 
 interface ClassDiagnosticsProps {
   classId: number;
+  /**
+   * Чем смотрящий занят в этом классе («архитектура», «кл. руководитель»).
+   * Раньше это висело тегом на КАЖДОМ чипе класса и у предметника с
+   * дюжиной классов повторялось дюжину раз — здесь оно нужно один раз, про
+   * тот класс, который открыт. Необязательная: у админа роли в классе нет.
+   */
+  roleNote?: string | null;
 }
 
 /**
@@ -45,7 +53,7 @@ interface ClassDiagnosticsProps {
  * переживала успешную загрузку, из-за чего экран писал «диагностики нет»
  * поверх нормальных данных.
  */
-export function ClassDiagnostics({ classId }: ClassDiagnosticsProps) {
+export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<FilterKey>('all');
 
@@ -158,7 +166,11 @@ export function ClassDiagnostics({ classId }: ClassDiagnosticsProps) {
         </div>
       </div>
 
-      <Panel title={`Состав ${metrics.class_label} · ${metrics.campaign_title}`}>
+      <Panel
+        title={[`Состав ${metrics.class_label}`, roleNote, metrics.campaign_title]
+          .filter(Boolean)
+          .join(' · ')}
+      >
         <div className="roster-filters">
           {filters.map((item) => (
             <button
@@ -190,7 +202,11 @@ export function ClassDiagnostics({ classId }: ClassDiagnosticsProps) {
               {filtered.map((row) => {
                 const myAssessment = assessmentBySubject.get(row.subject.id);
                 return (
-                  <tr key={row.subject.id}>
+                  <tr
+                    key={row.subject.id}
+                    className="roster__row"
+                    onClick={() => navigate(`/teacher/students/${row.subject.id}`)}
+                  >
                     <td className="roster__name">{row.subject.full_name}</td>
                     <td>
                       <span
@@ -212,20 +228,34 @@ export function ClassDiagnostics({ classId }: ClassDiagnosticsProps) {
                     >
                       {formatDelta(row.delta)}
                     </td>
-                    <td className="roster__action">
+                    <td className="roster__action" onClick={(e) => e.stopPropagation()}>
                       {/* «Оценить» только там, где анкета этого учителя про
-                          ученика реально существует и не завершена. */}
+                          ученика реально существует и не завершена. Кнопкой
+                          со словом, а не значком, она осталась намеренно:
+                          строка с ней — это «здесь ещё есть работа», и по
+                          этому признаку таблицу просматривают глазами.
+                          «Профиль» же был одинаков во ВСЕХ строках и читался
+                          дюжиной белых коробок — он ушёл в клик по строке,
+                          от него остался значок-стрелка. */}
                       {myAssessment && myAssessment.status !== 'completed' && (
-                        <Button onClick={() => navigate(`/assessments/${myAssessment.id}`)}>
+                        <Button
+                          className="btn-sm"
+                          onClick={() => navigate(`/assessments/${myAssessment.id}`)}
+                        >
                           {myAssessment.status === 'not_started' ? 'Оценить' : 'Продолжить'}
                         </Button>
                       )}
-                      <Button
-                        variant="secondary"
+                      {/* Настоящая кнопка, а не декоративная иконка: клик по
+                          строке мышью удобен, но с клавиатуры недоступен. */}
+                      <button
+                        type="button"
+                        className="roster__open"
+                        aria-label={`Профиль: ${row.subject.full_name}`}
+                        title="Профиль ученика"
                         onClick={() => navigate(`/teacher/students/${row.subject.id}`)}
                       >
-                        Профиль
-                      </Button>
+                        <Icon name="arrowRight" size={16} />
+                      </button>
                     </td>
                   </tr>
                 );

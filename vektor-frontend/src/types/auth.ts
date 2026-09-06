@@ -42,3 +42,12 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   parent: 'Родитель',
   admin: 'Администратор',
 };
+
+/** Цвет бейджа роли. Лежит рядом с подписями: список пользователей и карточка
+ *  пользователя обязаны красить одну и ту же роль одинаково. */
+export const ROLE_BADGE: Record<UserRole, 'sage' | 'blue' | 'gray'> = {
+  student: 'sage',
+  teacher: 'blue',
+  parent: 'gray',
+  admin: 'gray',
+};

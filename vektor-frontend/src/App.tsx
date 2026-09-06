@@ -14,7 +14,7 @@ import { AdminClassesPage } from './pages/admin/AdminClassesPage';
 import { AdminCasesPage } from './pages/admin/AdminCasesPage';
 import { AdminCampaignsPage } from './pages/admin/AdminCampaignsPage';
 import { AdminQuestionnairePage } from './pages/admin/AdminQuestionnairePage';
-import { AdminResultsPage } from './pages/admin/AdminResultsPage';
+import { AdminUserProfilePage } from './pages/admin/AdminUserProfilePage';
 import { ParentResultsPage } from './pages/parent/ParentResultsPage';
 
 /** Уже залогиненного пользователя с /login уводим в его кабинет. */
@@ -146,19 +146,23 @@ function App() {
                 </RequireAdmin>
               }
             />
+            {/* Карточка пользователя — одна страница. `/results` оставлен
+                синонимом: по нему ведут действия «Диагностика» из «Классов»,
+                «Кейсов» и покрытия кампании. Блок диагностики раскрыт в
+                обоих случаях, поэтому поведение адресов не различается. */}
             <Route
-              path="/admin/results"
+              path="/admin/users/:id"
               element={
                 <RequireAdmin>
-                  <AdminResultsPage />
+                  <AdminUserProfilePage />
                 </RequireAdmin>
               }
             />
             <Route
-              path="/admin/results/:id"
+              path="/admin/users/:id/results"
               element={
                 <RequireAdmin>
-                  <AdminResultsPage />
+                  <AdminUserProfilePage />
                 </RequireAdmin>
               }
             />

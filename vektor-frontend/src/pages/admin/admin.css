@@ -16,6 +16,14 @@
   flex: 1;
 }
 
+/* Элементы, которые не должны разъезжаться при переносе тулбара
+   (поиск и кнопка «+» рядом с ним). */
+.admin-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 /* --- фильтры-чипы --- */
 .filter-chips {
   display: flex;
@@ -168,7 +176,7 @@
 /* --- карточка пользователя --- */
 .user-card {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 14px;
   margin-bottom: 6px;
 }
@@ -191,7 +199,7 @@
   padding: 12px 14px;
   background: var(--soft);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 15px;
   letter-spacing: 0.5px;
@@ -498,4 +506,37 @@
 
 .detach-list li {
   padding: 1px 0;
+}
+
+/* Шапка карточки пользователя (/admin/users/:id): роль, почта и статус в
+   одну строку под именем — тот же набор, что и в колонках списка, чтобы
+   переход из таблицы не терял контекст. Отдельного блока «Обзор» под этим
+   нет намеренно: он повторял бы те же три поля строками. */
+.user-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Связи человека прямо в шапке карточки: класс(ы) и кейс ссылками. Отдельным
+   блоком они не живут — это одна ссылка на связь, а не список. */
+.user-card__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+/* Действия прижаты к правому краю карточки: имя и связи читают слева
+   направо, а «сбросить пароль»/«деактивировать» — это то, за чем пришли. */
+.user-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+  align-self: flex-start;
 }

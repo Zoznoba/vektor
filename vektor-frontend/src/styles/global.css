@@ -46,3 +46,17 @@ button {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* Кнопка, выглядящая ссылкой («← назад», «Открыть класс →»). Жила в
+   TeacherStudentPage.css и работала в админке только потому, что весь CSS
+   бандла применяется глобально — та же случайная связанность, что и у
+   .results-* из StudentHome.css (см. CLAUDE.md, 7g). */
+.link-button {
+  font-family: var(--font-b);
+  font-size: inherit;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--blue-ink);
+  cursor: pointer;
+}

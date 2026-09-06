@@ -26,7 +26,11 @@ export function TeacherClassesPage() {
     [classes.data, user?.id],
   );
 
-  const activeClassId = selectedId ?? myClasses[0]?.id ?? null;
+  const activeClass = myClasses.find((c) => c.id === selectedId) ?? myClasses[0] ?? null;
+  const activeClassId = activeClass?.id ?? null;
+  // Легенду показываем, только если у учителя ЕСТЬ классное руководство:
+  // у предметника без него строка объясняла бы значок, которого нет.
+  const hasHomeroom = myClasses.some((c) => isHomeroom(c, user?.id));
 
   return (
     <RoleShell activeNavKey="classes">
@@ -40,17 +44,29 @@ export function TeacherClassesPage() {
               className={`teacher-chip ${
                 cls.id === activeClassId ? 'teacher-chip--active' : ''
               }`.trim()}
+              // Значок «•» рисуется, а не пишется словами, поэтому полную
+              // подпись даём кнопке целиком — иначе скринридер прочтёт «5-1».
+              aria-label={
+                isHomeroom(cls, user?.id)
+                  ? `Класс ${classLabel(cls)}, вы классный руководитель`
+                  : `Класс ${classLabel(cls)}`
+              }
               onClick={() => setSelectedId(cls.id)}
             >
               {classLabel(cls)}
-              <span className="teacher-chip__tag">
-                {myRoleTag(cls, user?.id)}
-              </span>
+              {isHomeroom(cls, user?.id) && (
+                <span className="teacher-chip__homeroom" aria-hidden="true">
+                  •
+                </span>
+              )}
             </button>
           ))}
         </div>
         {myClasses.length > 0 && (
-          <div className="teacher-head__note">Состав класса меняет администратор</div>
+          <div className="teacher-head__note">
+            {hasHomeroom && <span>• — классное руководство · </span>}
+            Состав класса меняет администратор
+          </div>
         )}
       </div>
 
@@ -63,18 +79,30 @@ export function TeacherClassesPage() {
       ) : (
         // key — чтобы смена класса пересоздавала блок, а не подмешивала
         // данные прошлого класса в новый рендер.
-        activeClassId !== null && <ClassDiagnostics key={activeClassId} classId={activeClassId} />
+        activeClassId !== null && (
+          <ClassDiagnostics
+            key={activeClassId}
+            classId={activeClassId}
+            roleNote={activeClass ? myRoleNote(activeClass, user?.id) : null}
+          />
+        )
       )}
     </RoleShell>
   );
 }
 
+function isHomeroom(cls: SchoolClass, userId: number | undefined): boolean {
+  return cls.teachers.some((t) => t.teacher.id === userId && t.is_homeroom);
+}
+
 /**
- * Подпись роли на чипе класса: кл. руководство важнее предмета, а предмет
- * («литература») информативнее слова «предмет» — но у старых связей его нет.
+ * Чем учитель занят в ОТКРЫТОМ классе — подпись для заголовка состава.
+ * Кл. руководство важнее предмета. `null`, когда предмет не заполнен: раньше
+ * на его месте писалось слово «предмет», и у предметника оно повторялось на
+ * каждом из дюжины чипов, ничего не сообщая.
  */
-function myRoleTag(cls: SchoolClass, userId: number | undefined): string {
+function myRoleNote(cls: SchoolClass, userId: number | undefined): string | null {
   const link = cls.teachers.find((t) => t.teacher.id === userId);
-  if (link?.is_homeroom) return 'кл. рук.';
-  return link?.subject ?? 'предмет';
+  if (link?.is_homeroom) return 'вы классный руководитель';
+  return link?.subject ?? null;
 }

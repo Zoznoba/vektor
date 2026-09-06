@@ -23,12 +23,3 @@
   color: var(--blue-ink);
 }
 
-.link-button {
-  font-family: var(--font-b);
-  font-size: inherit;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--blue-ink);
-  cursor: pointer;
-}

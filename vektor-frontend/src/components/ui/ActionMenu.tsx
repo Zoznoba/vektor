@@ -19,7 +19,26 @@ export interface ActionMenuItem {
  * абсолютом относительно ячейки достаточно — портал понадобился бы только
  * ради overflow:hidden у контейнера, которого здесь нет.
  */
-export function ActionMenu({ items, trigger }: { items: ActionMenuItem[]; trigger: ReactNode }) {
+export function ActionMenu({
+  items,
+  trigger,
+  triggerClassName,
+  triggerLabel,
+}: {
+  items: ActionMenuItem[];
+  trigger: ReactNode;
+  /**
+   * Класс кнопки-триггера ЦЕЛИКОМ заменяет умолчание, а не дополняет его:
+   * штатный `.action-menu__trigger` сам задаёт фон, рамку и отступы, и рядом
+   * с `.btn` они спорили бы за одинаковую специфичность — кто победит,
+   * зависело бы от порядка файлов в бандле. Нужен для меню, которое выглядит
+   * обычной кнопкой («+ Добавить» в тулбаре), а не иконкой в строке таблицы.
+   */
+  triggerClassName?: string;
+  /** Подпись для триггера без текста (иконка «+»): уходит и в aria-label, и
+   *  в title — иначе кнопка нема и для скринридера, и для наведения. */
+  triggerLabel?: string;
+}) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const menuId = useId();
@@ -46,7 +65,9 @@ export function ActionMenu({ items, trigger }: { items: ActionMenuItem[]; trigge
     <div className="action-menu" ref={rootRef}>
       <button
         type="button"
-        className="action-menu__trigger"
+        className={triggerClassName ?? 'action-menu__trigger'}
+        aria-label={triggerLabel}
+        title={triggerLabel}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
