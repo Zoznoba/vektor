@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
 import { useApi } from '../../hooks/useApi';
@@ -32,13 +33,18 @@ export function AdminDashboard() {
     };
   }, [users.data, classes.data, cases.data]);
 
-  const metric = (value: number | string, label: string) => (
-    <div className="metric">
+  const metric = (
+    value: number | string,
+    label: string,
+    to: string,
+    state?: Record<string, unknown>,
+  ) => (
+    <Link className="metric" to={to} state={state}>
       <div className="metric__value">
         {users.loading || classes.loading || cases.loading ? '…' : value}
       </div>
       <div className="metric__label">{label}</div>
-    </div>
+    </Link>
   );
 
   return (
@@ -53,11 +59,11 @@ export function AdminDashboard() {
       )}
 
       <div className="metric-grid">
-        {metric(counts.students, 'Учеников')}
-        {metric(counts.teachers, 'Учителей')}
-        {metric(counts.parents, 'Родителей')}
-        {metric(counts.classes, 'Классов')}
-        {metric(counts.cases, 'Кейсов')}
+        {metric(counts.students, 'Учеников', '/admin/users', { roleFilter: 'student' })}
+        {metric(counts.teachers, 'Учителей', '/admin/users', { roleFilter: 'teacher' })}
+        {metric(counts.parents, 'Родителей', '/admin/users', { roleFilter: 'parent' })}
+        {metric(counts.classes, 'Классов', '/admin/classes')}
+        {metric(counts.cases, 'Кейсов', '/admin/cases')}
       </div>
 
       <Panel title="Активные кампании 360°">

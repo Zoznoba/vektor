@@ -95,7 +95,10 @@ export function AdminUsersPage() {
   const classes = useApi(fetchClasses);
   const cases = useApi(fetchCases);
 
-  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
+  // Приход со «Сводки» по клику на тайл — сразу с нужным фильтром роли.
+  const initialRoleFilter =
+    (location.state as { roleFilter?: RoleFilter } | null)?.roleFilter ?? 'all';
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>(initialRoleFilter);
   const [classFilter, setClassFilter] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
