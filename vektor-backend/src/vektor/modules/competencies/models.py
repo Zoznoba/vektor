@@ -135,6 +135,11 @@ class Question(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     competency_id: Mapped[int] = mapped_column(ForeignKey("competencies.id"))
     text: Mapped[str] = mapped_column(String(500))
+    # Альтернативная формулировка для самооценки (respondent_id == subject_id).
+    # None → всем один text. Родитель/учитель оценивают ученика общей
+    # формулировкой, а у ученика про себя «я …» звучит иначе. Заполняется
+    # точечно; при клонировании черновика едет вместе с text.
+    self_text: Mapped[str | None] = mapped_column(String(500))
     # Позиция внутри критерия: 0, 1 или 2.
     order: Mapped[int]
     competency: Mapped["Competency"] = relationship(back_populates="questions")

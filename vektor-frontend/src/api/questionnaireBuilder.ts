@@ -107,15 +107,23 @@ export function addQuestion(
   versionId: number,
   competencyId: number,
   text: string,
+  selfText: string | null = null,
 ): Promise<BuilderQuestion> {
   return apiRequest(`/questionnaire-versions/${versionId}/competencies/${competencyId}/questions`, {
     method: 'POST',
-    body: { text },
+    body: { text, self_text: selfText },
   });
 }
 
-export function updateQuestion(questionId: number, text: string): Promise<BuilderQuestion> {
-  return apiRequest(`/questions/${questionId}`, { method: 'PATCH', body: { text } });
+export function updateQuestion(
+  questionId: number,
+  text: string,
+  selfText: string | null = null,
+): Promise<BuilderQuestion> {
+  return apiRequest(`/questions/${questionId}`, {
+    method: 'PATCH',
+    body: { text, self_text: selfText },
+  });
 }
 
 export function deleteQuestion(questionId: number): Promise<void> {

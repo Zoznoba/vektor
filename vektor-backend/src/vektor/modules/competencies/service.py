@@ -114,6 +114,7 @@ async def create_draft_version(db: AsyncSession) -> QuestionnaireVersion:
             Question(
                 competency_id=q.competency_id,
                 text=q.text,
+                self_text=q.self_text,
                 order=q.order,
                 version_id=draft.id,
             )
@@ -365,7 +366,11 @@ async def move_competency(db: AsyncSession, competency_id: int, direction: str) 
 
 
 async def add_question(
-    db: AsyncSession, version_id: int, competency_id: int, text: str
+    db: AsyncSession,
+    version_id: int,
+    competency_id: int,
+    text: str,
+    self_text: str | None = None,
 ) -> Question:
     await _require_draft(db, version_id)
     competency = await db.get(Competency, competency_id)
@@ -380,6 +385,7 @@ async def add_question(
     question = Question(
         competency_id=competency_id,
         text=text,
+        self_text=self_text,
         order=(max_order + 1) if max_order is not None else 0,
         version_id=version_id,
     )
@@ -389,12 +395,16 @@ async def add_question(
     return question
 
 
-async def update_question(db: AsyncSession, question_id: int, text: str) -> Question:
+async def update_question(
+    db: AsyncSession, question_id: int, text: str, self_text: str | None = None
+) -> Question:
     question = await db.get(Question, question_id)
     if question is None:
         raise QuestionNotFound()
     await _require_draft(db, question.version_id)
     question.text = text
+    # Конструктор всегда шлёт оба поля: пустое → None, вариант самооценки убран.
+    question.self_text = self_text
     await db.commit()
     await db.refresh(question)
     return question

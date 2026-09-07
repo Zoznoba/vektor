@@ -297,7 +297,7 @@ async def add_question(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_role(UserRole.ADMIN)),
 ) -> BuilderQuestionOut:
-    return await service.add_question(db, version_id, competency_id, data.text)
+    return await service.add_question(db, version_id, competency_id, data.text, data.self_text)
 
 
 @items_router.patch(
@@ -312,7 +312,7 @@ async def update_question(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_role(UserRole.ADMIN)),
 ) -> BuilderQuestionOut:
-    return await service.update_question(db, question_id, data.text)
+    return await service.update_question(db, question_id, data.text, data.self_text)
 
 
 @items_router.delete(

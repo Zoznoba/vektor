@@ -37,11 +37,16 @@ async def _add_competency(
 
 
 async def _add_question(
-    client: AsyncClient, headers: dict[str, str], version_id: int, competency_id: int, text: str
+    client: AsyncClient,
+    headers: dict[str, str],
+    version_id: int,
+    competency_id: int,
+    text: str,
+    self_text: str | None = None,
 ) -> dict:
     response = await client.post(
         f"/questionnaire-versions/{version_id}/competencies/{competency_id}/questions",
-        json={"text": text},
+        json={"text": text, "self_text": self_text},
         headers=headers,
     )
     assert response.status_code == 201, response.text
@@ -237,3 +242,56 @@ async def test_new_draft_skips_questions_of_archived_competency(
     ]
     assert "вопрос живого критерия" in texts
     assert "вопрос архивного" not in texts
+
+
+async def test_self_text_round_trips_and_survives_clone(
+    client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """Формулировка для самооценки сохраняется, редактируется (в т.ч.
+    стирается пустым значением) и переезжает в клон следующей редакции."""
+    draft = await _create_draft(client, admin_headers)
+    area = await _add_area(client, admin_headers, draft["id"], "Глава")
+    comp = await _add_competency(client, admin_headers, draft["id"], area["id"], "Критерий")
+    q = await _add_question(
+        client, admin_headers, draft["id"], comp["id"], "ставит цели", self_text="я ставлю цели"
+    )
+    assert q["self_text"] == "я ставлю цели"
+
+    # Правка: меняем и основной текст, и вариант.
+    edited = await client.patch(
+        f"/questions/{q['id']}",
+        json={"text": "ставит цели", "self_text": "я умею ставить цели"},
+        headers=admin_headers,
+    )
+    assert edited.json()["self_text"] == "я умею ставить цели"
+
+    # Пустой self_text стирает вариант.
+    cleared = await client.patch(
+        f"/questions/{q['id']}",
+        json={"text": "ставит цели", "self_text": None},
+        headers=admin_headers,
+    )
+    assert cleared.json()["self_text"] is None
+
+    # Вернём вариант и опубликуем — клон следующего черновика обязан его сохранить.
+    await client.patch(
+        f"/questions/{q['id']}",
+        json={"text": "ставит цели", "self_text": "я ставлю цели"},
+        headers=admin_headers,
+    )
+    assert (
+        await client.post(f"/questionnaire-versions/{draft['id']}/publish", headers=admin_headers)
+    ).status_code == 200
+
+    next_draft = await _create_draft(client, admin_headers)
+    tree = (
+        await client.get(f"/questionnaire-versions/{next_draft['id']}/tree", headers=admin_headers)
+    ).json()
+    cloned = [
+        cq
+        for a in tree["outcome_areas"]
+        for c in a["competencies"]
+        for cq in c["questions"]
+        if cq["text"] == "ставит цели"
+    ]
+    assert cloned and cloned[0]["self_text"] == "я ставлю цели"
