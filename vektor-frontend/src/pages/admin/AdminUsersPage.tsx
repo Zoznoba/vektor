@@ -36,6 +36,12 @@ import './admin.css';
 
 type RoleFilter = UserRole | 'all';
 
+/** Колонка сортировки таблицы пользователей. */
+type SortKey = 'name' | 'email' | 'role' | 'class' | 'case' | 'status';
+type SortDir = 'asc' | 'desc';
+
+const ROLE_ORDER: Record<UserRole, number> = { admin: 0, teacher: 1, parent: 2, student: 3 };
+
 /** Массовое действие над выделенными строками. */
 type BulkAction = 'case' | 'parent' | 'deactivate';
 
@@ -101,6 +107,8 @@ export function AdminUsersPage() {
   const [roleFilter, setRoleFilter] = useState<RoleFilter>(initialRoleFilter);
   const [classFilter, setClassFilter] = useState<number | null>(null);
   const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [showCreate, setShowCreate] = useState(false);
   const [showBulkCreate, setShowBulkCreate] = useState(false);
   const [bulkAction, setBulkAction] = useState<BulkAction | null>(null);
@@ -156,7 +164,43 @@ export function AdminUsersPage() {
     return counts;
   }, [scoped]);
 
-  const rowIds = useMemo(() => filtered.map((u) => u.id), [filtered]);
+  // Сортировка — поверх фильтра, целиком на клиенте: список уже весь в памяти.
+  const sorted = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const value = (u: User): string | number => {
+      switch (sortKey) {
+        case 'name':
+          return u.full_name.toLowerCase();
+        case 'email':
+          return u.email.toLowerCase();
+        case 'role':
+          return ROLE_ORDER[u.role];
+        case 'class':
+          return classIndex.get(u.id) ?? '￿';
+        case 'case':
+          return caseIndex.get(u.id) ?? '￿';
+        case 'status':
+          return u.is_active ? 0 : 1;
+      }
+    };
+    return [...filtered].sort((a, b) => {
+      const av = value(a);
+      const bv = value(b);
+      if (av < bv) return -dir;
+      if (av > bv) return dir;
+      return a.full_name.toLowerCase().localeCompare(b.full_name.toLowerCase(), 'ru');
+    });
+  }, [filtered, sortKey, sortDir, classIndex, caseIndex]);
+
+  const toggleSort = (key: SortKey) => {
+    if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
+  const rowIds = useMemo(() => sorted.map((u) => u.id), [sorted]);
   // resetKey — все фильтры разом: выделение не должно переживать смену
   // выборки, иначе массовое действие уедет на людей, которых на экране нет.
   const selection = useRowSelection(
@@ -164,8 +208,8 @@ export function AdminUsersPage() {
     `${roleFilter}:${classFilter ?? 'all'}:${search.trim().toLowerCase()}`,
   );
   const selectedUsers = useMemo(
-    () => filtered.filter((u) => selection.selectedIds.includes(u.id)),
-    [filtered, selection.selectedIds],
+    () => sorted.filter((u) => selection.selectedIds.includes(u.id)),
+    [sorted, selection.selectedIds],
   );
 
   // Что можно делать с выделением, зависит от его состава — кнопки не
@@ -339,7 +383,7 @@ export function AdminUsersPage() {
 
         {users.loading && !users.data ? (
           <div className="admin-empty">Загрузка…</div>
-        ) : filtered.length === 0 ? (
+        ) : sorted.length === 0 ? (
           <div className="admin-empty">Никого не нашлось</div>
         ) : (
           <table className="admin-table">
@@ -348,17 +392,17 @@ export function AdminUsersPage() {
                 <th className="admin-table__select-col">
                   <SelectAllCheckbox selection={selection} />
                 </th>
-                <th>Имя</th>
-                <th>Email</th>
-                <th>Роль</th>
-                <th>Класс</th>
-                <th>Кейс</th>
-                <th>Статус</th>
+                <SortableTh label="Имя" col="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortableTh label="Email" col="email" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortableTh label="Роль" col="role" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortableTh label="Класс" col="class" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortableTh label="Кейс" col="case" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortableTh label="Статус" col="status" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <th className="admin-table__actions-col" />
               </tr>
             </thead>
             <tbody>
-              {filtered.map((u) => (
+              {sorted.map((u) => (
                 <tr
                   key={u.id}
                   className={u.id === highlightedId ? 'admin-table__row--selected' : ''}
@@ -469,6 +513,32 @@ export function AdminUsersPage() {
         />
       )}
     </AdminShell>
+  );
+}
+
+function SortableTh({
+  label,
+  col,
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  col: SortKey;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (key: SortKey) => void;
+}) {
+  const active = sortKey === col;
+  return (
+    <th
+      className={`admin-table__sortable ${active ? 'admin-table__sortable--active' : ''}`.trim()}
+      aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      onClick={() => onSort(col)}
+    >
+      {label}
+      <span className="admin-table__sort-caret">{active ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span>
+    </th>
   );
 }
 

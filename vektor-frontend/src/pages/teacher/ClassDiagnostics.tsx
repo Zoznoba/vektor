@@ -33,6 +33,44 @@ function formatDelta(delta: number | null): string {
 
 type FilterKey = 'all' | 'not_started' | 'growth';
 
+type SortKey = 'name' | 'self' | 'collected' | 'score' | 'delta';
+type SortDir = 'asc' | 'desc';
+
+const SELF_STATUS_ORDER: Record<string, number> = {
+  none: 0,
+  not_started: 1,
+  in_progress: 2,
+  completed: 3,
+};
+
+function RosterTh({
+  label,
+  col,
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  col: SortKey;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (key: SortKey) => void;
+}) {
+  const active = sortKey === col;
+  return (
+    <th
+      className={`roster__th-sort ${active ? 'roster__th-sort--active' : ''}`.trim()}
+      aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      onClick={() => onSort(col)}
+    >
+      {label}
+      <span className="roster__sort-caret">
+        {active ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+      </span>
+    </th>
+  );
+}
+
 interface ClassDiagnosticsProps {
   classId: number;
   /**
@@ -56,6 +94,8 @@ interface ClassDiagnosticsProps {
 export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<FilterKey>('all');
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
 
   // useApi требует стабильную ссылку — иначе effect уходит в цикл запросов.
   const loadRoster = useCallback(() => fetchClassRoster(classId), [classId]);
@@ -92,6 +132,43 @@ export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
     if (filter === 'growth') return students.filter((s) => s.growth_zone_count > 0);
     return students;
   }, [students, filter]);
+
+  // Сортировка поверх фильтра. Пустые баллы/динамика всегда в конце, в обе
+  // стороны: у половины класса ещё нет прошлого периода, и гонять их наверх
+  // при развороте бессмысленно.
+  const sorted = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const rows = [...filtered];
+    rows.sort((a, b) => {
+      const byName = a.subject.full_name.localeCompare(b.subject.full_name, 'ru');
+      if (sortKey === 'name') return dir * byName;
+      if (sortKey === 'self') {
+        const av = SELF_STATUS_ORDER[a.self_status ?? 'none'];
+        const bv = SELF_STATUS_ORDER[b.self_status ?? 'none'];
+        return av === bv ? byName : dir * (av - bv);
+      }
+      if (sortKey === 'collected') {
+        const av = a.assessments_total ? a.assessments_completed / a.assessments_total : 0;
+        const bv = b.assessments_total ? b.assessments_completed / b.assessments_total : 0;
+        return av === bv ? byName : dir * (av - bv);
+      }
+      const av = sortKey === 'score' ? a.overall_avg : a.delta;
+      const bv = sortKey === 'score' ? b.overall_avg : b.delta;
+      if (av === null && bv === null) return byName;
+      if (av === null) return 1;
+      if (bv === null) return -1;
+      return av === bv ? byName : dir * (av - bv);
+    });
+    return rows;
+  }, [filtered, sortKey, sortDir]);
+
+  const toggleSort = (key: SortKey) => {
+    if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortKey(key);
+      setSortDir(key === 'name' ? 'asc' : 'desc');
+    }
+  };
 
   const counts = useMemo(
     () => ({
@@ -190,16 +267,16 @@ export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
           <table className="roster">
             <thead>
               <tr>
-                <th>Ученик</th>
-                <th>Самооценка</th>
-                <th>Собрано</th>
-                <th>Балл</th>
-                <th>Дин.</th>
+                <RosterTh label="Ученик" col="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <RosterTh label="Самооценка" col="self" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <RosterTh label="Собрано" col="collected" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <RosterTh label="Балл" col="score" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <RosterTh label="Дин." col="delta" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                 <th />
               </tr>
             </thead>
             <tbody>
-              {filtered.map((row) => {
+              {sorted.map((row) => {
                 const myAssessment = assessmentBySubject.get(row.subject.id);
                 return (
                   <tr

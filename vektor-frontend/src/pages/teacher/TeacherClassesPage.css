@@ -146,6 +146,26 @@
   letter-spacing: 0.05em;
 }
 
+.roster__th-sort {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.roster__th-sort:hover {
+  color: var(--ink-soft);
+}
+
+.roster__th-sort--active {
+  color: var(--ink);
+}
+
+.roster__sort-caret {
+  margin-left: 4px;
+  font-size: 8px;
+  opacity: 0.6;
+}
+
 .roster td {
   padding: 11px 12px;
   border-bottom: 0.5px solid var(--border);

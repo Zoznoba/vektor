@@ -123,6 +123,26 @@
   border-bottom: 1px solid var(--border);
 }
 
+.admin-table__sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.admin-table__sortable:hover {
+  color: var(--ink-soft);
+}
+
+.admin-table__sortable--active {
+  color: var(--ink);
+}
+
+.admin-table__sort-caret {
+  margin-left: 4px;
+  font-size: 9px;
+  opacity: 0.6;
+}
+
 .admin-table td {
   padding: 11px 10px;
   border-bottom: 1px solid var(--border);
