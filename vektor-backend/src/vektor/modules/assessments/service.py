@@ -513,11 +513,16 @@ async def get_assessment_detail(db: AsyncSession, assessment_id: int, current_us
     visible_questions = await get_visible_questions_for_assessment(db, assessment)
     already_answered = {answer.question_id: answer.value for answer in assessment.answers}
 
+    # Самооценка — та же анкета, но с формулировками «я …», если они заданы у
+    # вопроса. Родитель/учитель получают общий text. Подмена только здесь:
+    # список анкет (list_my_assessments) текст вопросов не отдаёт.
+    is_self = assessment.respondent_id == assessment.subject_id
+
     questions = [
         {
             "id": q.id,
             "competency_id": q.competency_id,
-            "text": q.text,
+            "text": (q.self_text or q.text) if is_self else q.text,
             "order": q.order,
             # Контракт наружу не меняем: фронту по-прежнему нужен признак
             # «вопрос показывается не всем», просто источник теперь критерий.

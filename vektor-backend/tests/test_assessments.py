@@ -381,7 +381,7 @@ async def test_generate_requires_admin(client: AsyncClient, scenario, register_u
 
 
 # --- 4c-1: чтение анкеты (GET /assessments/{id}) ---
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import select, update  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 
 from vektor.modules.assessments.models import Answer, Assessment, Campaign  # noqa: E402
@@ -676,6 +676,39 @@ async def test_other_questionnaire_version_does_not_leak_into_campaign(
     # Ровно 2 вопроса действующей редакции, архивного среди них нет.
     assert len(body["questions"]) == 2
     assert all(q["text"] != "архивный" for q in body["questions"])
+
+
+async def test_self_assessment_uses_self_text_variant(
+    client: AsyncClient, scenario, db_session
+) -> None:
+    """Самооценка получает формулировку self_text там, где она задана, и
+    падает обратно на общий text там, где её нет. Родитель — всегда общий
+    text: он оценивает ученика, а не себя."""
+    await _seed_two_questions(db_session)
+    # Вариант для самооценки — только у «базового» вопроса.
+    await db_session.execute(
+        update(Question).where(Question.text == "базовый").values(self_text="я про себя")
+    )
+    await db_session.commit()
+
+    cid = await _create_campaign(client, scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]]},
+        headers=scenario["headers"],
+    )
+
+    async def _texts(aid: int, headers: dict) -> set[str]:
+        body = (await client.get(f"/assessments/{aid}", headers=headers)).json()
+        return {q["text"] for q in body["questions"]}
+
+    s1_headers = await _login(client, "s1@vektor.ru")
+    self_aid = await _self_assessment_id(db_session, scenario["ids"]["s1"])
+    assert await _texts(self_aid, s1_headers) == {"я про себя", "условный"}
+
+    p1_headers = await _login(client, "p1@vektor.ru")
+    parent_aid = await _assessment_id_for(db_session, scenario["ids"]["p1"], scenario["ids"]["s1"])
+    assert await _texts(parent_aid, p1_headers) == {"базовый", "условный"}
 
 
 async def test_conditional_questions_survive_class_transfer(

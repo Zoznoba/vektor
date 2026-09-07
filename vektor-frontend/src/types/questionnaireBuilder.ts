@@ -18,6 +18,8 @@ export interface QuestionnaireVersion {
 export interface BuilderQuestion {
   id: number;
   text: string;
+  /** Формулировка для самооценки; null — тот же text и для себя, и про другого. */
+  self_text: string | null;
   order: number;
 }
 

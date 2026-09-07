@@ -61,6 +61,9 @@ class BuilderQuestionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     text: str
+    # Формулировка для самооценки; None — тот же text. Только в конструкторе:
+    # на прохождении подстановка уже сделана (assessments.get_assessment_detail).
+    self_text: str | None
     order: int
 
 
@@ -106,6 +109,9 @@ class CompetencyIn(BaseModel):
 
 class QuestionIn(BaseModel):
     text: str = Field(min_length=1, max_length=500)
+    # Необязательная формулировка для самооценки. None / пусто — вопрос
+    # звучит одинаково и для себя, и про другого.
+    self_text: str | None = Field(default=None, max_length=500)
 
 
 class ArchiveIn(BaseModel):
