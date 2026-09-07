@@ -1,10 +1,13 @@
 .details-table-scroll {
   overflow-x: auto;
+  /* Общий тайминг «проявления»: и заливка ячеек, и печать названий стартуют
+     вместе и длятся столько же → финиш у всех строк в один момент. */
+  --reveal-dur: 850ms;
 }
 
 .details-table {
   width: 100%;
-  min-width: 480px;
+  min-width: 420px;
   border-collapse: separate;
   border-spacing: 2px;
   font-size: 12.5px;
@@ -24,10 +27,50 @@
   text-align: center;
 }
 
+.details-table__th-sort {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.details-table__th-sort:hover {
+  color: var(--ink-soft);
+}
+
+.details-table__th-sort--active {
+  color: var(--ink);
+}
+
+.details-table__sort-caret {
+  margin-left: 4px;
+  font-size: 8px;
+  opacity: 0.6;
+}
+
 .details-table__name {
   padding: 8px;
   color: var(--ink);
   white-space: nowrap;
+}
+
+.details-table__name-text {
+  display: inline-block;
+}
+
+/* Название «печатается» слева направо только при пересортировке: шторка
+   clip-path едет пошагово (steps → эффект посимвольного набора). При первой
+   отрисовке класса --printing нет → анимации нет. */
+.details-table--printing .details-table__name-text {
+  animation: details-table-print var(--reveal-dur) steps(22, end);
+}
+
+@keyframes details-table-print {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
 }
 
 .details-table__cell {
@@ -37,6 +80,21 @@
   font-variant-numeric: tabular-nums;
   font-weight: 500;
   background: var(--soft);
+  color: var(--ink);
+  /* Строки keyed по позиции — узел ячейки живёт, меняется лишь inline-цвет,
+     поэтому браузер перетекает из прежнего цвета в новый, без сброса. */
+  transition:
+    background-color var(--reveal-dur) ease,
+    color var(--reveal-dur) ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .details-table__cell {
+    transition: none;
+  }
+  .details-table--printing .details-table__name-text {
+    animation: none;
+  }
 }
 
 .details-table__dash {
