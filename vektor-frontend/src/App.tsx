@@ -83,14 +83,6 @@ function App() {
               }
             />
             <Route
-              path="/teacher/students"
-              element={
-                <RequireTeacher>
-                  <TeacherStudentPage />
-                </RequireTeacher>
-              }
-            />
-            <Route
               path="/teacher/students/:id"
               element={
                 <RequireTeacher>

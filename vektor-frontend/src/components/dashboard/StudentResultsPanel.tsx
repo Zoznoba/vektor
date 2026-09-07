@@ -1,8 +1,8 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Panel } from '../ui/Panel';
 import { Avatar } from '../ui/Avatar';
 import { CompetencyDetailsTable } from './CompetencyDetailsTable';
-import { RadarChart } from '../charts/RadarChart';
+import { RadarChart, type RadarSeries } from '../charts/RadarChart';
 import { DynamicsChart } from './DynamicsChart';
 import { useApi } from '../../hooks/useApi';
 import { useAuth } from '../../auth/AuthContext';
@@ -10,6 +10,7 @@ import { fetchSubjectResults, fetchSubjectDynamics } from '../../api/results';
 import './StudentResultsPanel.css';
 import { formatPeriod } from '../../data/period';
 import { shortCompetencyName } from '../../data/competencyShortNames';
+import type { CompetencyScore } from '../../types/results';
 
 interface StudentResultsPanelProps {
   subjectId: number;
@@ -30,6 +31,42 @@ function averageGap(gaps: (number | null)[]): number | null {
 }
 
 /**
+ * Контуры радара под выбранный режим.
+ *
+ * `combined` — самооценка против «окружающих» одним усреднённым контуром.
+ * `split` — окружающие разложены на учителей и родителей; слой одноклассников
+ * добавляется, ТОЛЬКО если он хоть где-то раскрыт (порог анонимности): контур
+ * из сплошных null лёг бы по минимуму шкалы и читался как «всех оценили на 1».
+ */
+function buildSeries(
+  scored: CompetencyScore[],
+  layers: 'combined' | 'split',
+): RadarSeries[] {
+  const self: RadarSeries = {
+    label: 'самооценка',
+    values: scored.map((c) => c.self_avg),
+    color: 'var(--blue)',
+  };
+  if (layers === 'combined') {
+    return [
+      self,
+      { label: 'окружающие', values: scored.map((c) => c.others_avg), color: 'var(--sage)' },
+    ];
+  }
+
+  const series: RadarSeries[] = [
+    self,
+    { label: 'учителя', values: scored.map((c) => c.teacher_avg), color: 'var(--sage)' },
+    { label: 'родители', values: scored.map((c) => c.parent_avg), color: 'var(--amber)' },
+  ];
+  const peerValues = scored.map((c) => (c.peer_scores_disclosed ? c.peer_avg : null));
+  if (peerValues.some((v) => v !== null)) {
+    series.push({ label: 'одноклассники', values: peerValues, color: 'var(--plum)' });
+  }
+  return series;
+}
+
+/**
  * Панель «Мои результаты».
  *
  * Отдельный компонент, а не кусок StudentHome: так хук загрузки вызывается
@@ -41,6 +78,11 @@ export function StudentResultsPanel({
   title = 'Мои результаты',
 }: StudentResultsPanelProps) {
   const { user } = useAuth();
+  // «окружающие» одним контуром или разложить на слои (учителя / родители /
+  // одноклассники) — переключатель прямо над радаром. По умолчанию свёрнуто:
+  // единая форма профиля читается быстрее, разбивка — когда интересно, кто
+  // именно так оценил.
+  const [layers, setLayers] = useState<'combined' | 'split'>('combined');
   // useApi требует стабильную ссылку — иначе effect уходит в цикл запросов.
   const loadResults = useCallback(() => fetchSubjectResults(subjectId), [subjectId]);
   const loadDynamics = useCallback(() => fetchSubjectDynamics(subjectId), [subjectId]);
@@ -118,22 +160,29 @@ export function StudentResultsPanel({
                единая форма профиля, а расхождение самооценки и окружающих
                видно тем же зазором между контурами. Меньше трёх осей радар
                не образует — там остаётся таблица «Детали по компетенциям». */
-            <RadarChart
-              axes={scored.map((c) => shortCompetencyName(c.code, c.name))}
-              axisTitles={scored.map((c) => c.name)}
-              series={[
-                {
-                  label: 'самооценка',
-                  values: scored.map((c) => c.self_avg),
-                  color: 'var(--blue)',
-                },
-                {
-                  label: 'окружающие',
-                  values: scored.map((c) => c.others_avg),
-                  color: 'var(--sage)',
-                },
-              ]}
-            />
+            <>
+              <div className="results-layer-toggle">
+                <button
+                  type="button"
+                  className={layers === 'combined' ? 'results-layer-toggle__btn--active' : ''}
+                  onClick={() => setLayers('combined')}
+                >
+                  Окружающие вместе
+                </button>
+                <button
+                  type="button"
+                  className={layers === 'split' ? 'results-layer-toggle__btn--active' : ''}
+                  onClick={() => setLayers('split')}
+                >
+                  По ролям
+                </button>
+              </div>
+              <RadarChart
+                axes={scored.map((c) => shortCompetencyName(c.code, c.name))}
+                axisTitles={scored.map((c) => c.name)}
+                series={buildSeries(scored, layers)}
+              />
+            </>
           )}
 
           {results.data.growth_zones.length > 0 && (

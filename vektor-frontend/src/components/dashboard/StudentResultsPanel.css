@@ -106,3 +106,32 @@
   padding-top: 14px;
   border-top: 0.5px solid var(--border);
 }
+
+/* Переключатель «окружающие вместе / по ролям» над радаром — та же таблетка,
+   что режимы прохождения анкеты (.assessment-fill__mode). */
+.results-layer-toggle {
+  display: inline-flex;
+  gap: 3px;
+  margin: 16px 0 4px;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+}
+
+.results-layer-toggle button {
+  border: none;
+  background: none;
+  font-family: var(--font-b);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  padding: 6px 13px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+
+.results-layer-toggle__btn--active {
+  background: var(--ink) !important;
+  color: #fff !important;
+}
