@@ -53,6 +53,7 @@ export function AdminClassesPage() {
   const classes = useApi(fetchClasses);
   const users = useApi(fetchUsers);
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Переход «Классы» из карточки учителя (AdminUsersPage) кладёт id класса
   // в state — так сразу открывается нужный класс, а не первый по сортировке.
@@ -119,9 +120,8 @@ export function AdminClassesPage() {
       <div className="admin-toolbar">
         <h2>Классы</h2>
         <div className="admin-toolbar__spacer" />
-        <Button onClick={() => setShowCreate(true)}>
-          <Icon name="plus" size={15} />
-          Добавить класс
+        <Button variant="secondary" onClick={() => navigate('/admin/classes/promotion')}>
+          <Icon name="arrowUp" size={15} /> Перевод на новый год
         </Button>
       </div>
 
@@ -133,12 +133,6 @@ export function AdminClassesPage() {
       {classes.loading && !classes.data ? (
         <Panel>
           <div className="admin-empty">Загрузка…</div>
-        </Panel>
-      ) : sorted.length === 0 ? (
-        <Panel>
-          <div className="admin-empty">
-            Классов пока нет — создайте первый кнопкой «Добавить класс»
-          </div>
         </Panel>
       ) : (
         <>
@@ -154,7 +148,22 @@ export function AdminClassesPage() {
                 <div className="class-card__teachers">{teachersCountLabel(cls.teachers.length)}</div>
               </button>
             ))}
+            <button
+              className="class-card class-card--add"
+              onClick={() => setShowCreate(true)}
+            >
+              <Icon name="plus" size={18} />
+              Добавить класс
+            </button>
           </div>
+
+          {sorted.length === 0 && (
+            <Panel>
+              <div className="admin-empty">
+                Классов пока нет — создайте первый плиткой «Добавить класс»
+              </div>
+            </Panel>
+          )}
 
           {selected && (
             /* Аналитика — сворачиваемый блок НАД составом, а не вкладка

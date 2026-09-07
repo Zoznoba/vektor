@@ -319,6 +319,30 @@
   background: var(--blue-tint);
 }
 
+/* Последний тайл в сетке — «добавить класс». Отличается цветом (lime),
+   пунктирной рамкой и центровкой, чтобы читался как действие, а не как класс. */
+.class-card--add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-style: dashed;
+  border-color: var(--lime);
+  background: var(--lime-tint);
+  color: var(--ink);
+  font-family: var(--font-d);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  min-height: 84px;
+}
+
+.class-card--add:hover {
+  background: var(--lime);
+  border-style: solid;
+}
+
 .class-card__name {
   font-family: var(--font-d);
   font-size: 19px;
