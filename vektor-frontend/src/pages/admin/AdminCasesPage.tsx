@@ -121,11 +121,6 @@ export function AdminCasesPage() {
     <AdminShell activeNavKey="cases">
       <div className="admin-toolbar">
         <h2>Кейсы</h2>
-        <div className="admin-toolbar__spacer" />
-        <Button onClick={() => setShowCreate(true)}>
-          <Icon name="plus" size={15} />
-          Создать кейс
-        </Button>
       </div>
 
       {cases.error && <div className="form-error">{cases.error}</div>}
@@ -136,12 +131,6 @@ export function AdminCasesPage() {
       {cases.loading && !cases.data ? (
         <Panel>
           <div className="admin-empty">Загрузка…</div>
-        </Panel>
-      ) : sorted.length === 0 ? (
-        <Panel>
-          <div className="admin-empty">
-            Кейсов пока нет — создайте первый кнопкой «Создать кейс»
-          </div>
         </Panel>
       ) : (
         <>
@@ -160,7 +149,19 @@ export function AdminCasesPage() {
                 </div>
               </button>
             ))}
+            <button className="class-card class-card--add" onClick={() => setShowCreate(true)}>
+              <Icon name="plus" size={18} />
+              Создать кейс
+            </button>
           </div>
+
+          {sorted.length === 0 && (
+            <Panel>
+              <div className="admin-empty">
+                Кейсов пока нет — создайте первый плиткой «Создать кейс»
+              </div>
+            </Panel>
+          )}
 
           {selected && (
             /* Аналитика кейса — тем же блоком и на том же месте, что у
