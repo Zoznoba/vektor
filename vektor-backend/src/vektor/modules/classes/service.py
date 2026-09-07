@@ -1,22 +1,43 @@
 # Бизнес-логика classes. Права назначает только админ — эта проверка уже
 # сделана на уровне роутера (require_role(ADMIN)), здесь её дублировать не надо.
 
+from datetime import date
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from vektor.modules.assessments.models import Campaign
 from vektor.modules.classes.errors import (
     ClassAlreadyExists,
     ClassNotFound,
+    PromotionAlreadyRun,
+    PromotionAlreadyUndone,
+    PromotionConfirmMismatch,
+    PromotionRunNotFound,
+    PromotionUndoBlocked,
     StudentNotInClass,
     TeacherAlreadyAssigned,
     TeacherNotInClass,
 )
-from vektor.modules.classes.models import SchoolClass, TeacherClass
+from vektor.modules.classes.models import PromotionRun, SchoolClass, TeacherClass
+from vektor.modules.classes.promotion import (
+    PromotionPlan,
+    SchoolClassView,
+    StudentView,
+    plan_promotion,
+)
+from vektor.modules.classes.schemas import (
+    GraduatingOut,
+    PromotionPlanOut,
+    PromotionRunOut,
+    TransitionOut,
+)
 from vektor.modules.users.errors import UserNotFound, WrongRole
 from vektor.modules.users.models import User
+from vektor.shared.academic_year import academic_year_label
+from vektor.shared.class_label import class_label
 from vektor.shared.enums import UserRole
 
 # Состав класса всегда возвращаем целиком: список учителей теперь идёт с
@@ -235,3 +256,214 @@ def _find_link(school_class: SchoolClass, teacher_id: int) -> TeacherClass:
         if link.teacher_id == teacher_id:
             return link
     raise TeacherNotInClass(f"Учитель {teacher_id} не привязан к классу {school_class.id}")
+
+
+# ── Ежегодный перевод классов ────────────────────────────────────────────
+#
+# Доменное правило — в classes/promotion.py (чистая plan_promotion, без БД).
+# Здесь: загрузка состава для неё, применение плана одной транзакцией,
+# маркер-и-откат через PromotionRun. Смена User.school_class_id не трогает
+# снапшоты Assessment — прошлая диагностика остаётся на месте.
+
+
+async def _load_school_views(db: AsyncSession) -> list[SchoolClassView]:
+    result = await db.execute(select(SchoolClass).options(selectinload(SchoolClass.students)))
+    return [
+        SchoolClassView(
+            id=c.id,
+            grade=c.grade,
+            section=c.section,
+            students=tuple(StudentView(id=s.id, is_active=s.is_active) for s in c.students),
+        )
+        for c in result.scalars()
+    ]
+
+
+async def _active_run(db: AsyncSession, academic_year: str) -> PromotionRun | None:
+    result = await db.execute(
+        select(PromotionRun).where(
+            PromotionRun.academic_year == academic_year,
+            PromotionRun.undone_at.is_(None),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _has_campaign_since(db: AsyncSession, since) -> bool:
+    result = await db.execute(select(Campaign.id).where(Campaign.created_at > since).limit(1))
+    return result.first() is not None
+
+
+def _plan_to_out(
+    plan: PromotionPlan, academic_year: str, already_ran: bool, labels: dict[int, str]
+) -> PromotionPlanOut:
+    return PromotionPlanOut(
+        academic_year=academic_year,
+        already_ran=already_ran,
+        transitions=[
+            TransitionOut(
+                target_grade=t.target_grade,
+                target_section=t.target_section,
+                target_label=class_label(t.target_grade, t.target_section),
+                target_class_id=t.target_class_id,
+                source_class_ids=list(t.source_class_ids),
+                source_labels=[labels.get(cid, str(cid)) for cid in t.source_class_ids],
+                moving_count=len(t.moving_student_ids),
+                already_in_target_count=len(t.already_in_target_ids),
+                merge=t.merge,
+            )
+            for t in plan.transitions
+        ],
+        graduating=[
+            GraduatingOut(
+                class_id=g.class_id,
+                class_label=labels.get(g.class_id, str(g.class_id)),
+                student_count=len(g.student_ids),
+            )
+            for g in plan.graduating
+        ],
+        warnings=list(plan.warnings),
+        total_moving=plan.total_moving,
+        total_graduating=plan.total_graduating,
+        classes_to_create=plan.classes_to_create,
+    )
+
+
+async def preview_promotion(
+    db: AsyncSession, section_overrides: dict[int, str]
+) -> PromotionPlanOut:
+    year = academic_year_label(date.today())
+    views = await _load_school_views(db)
+    plan = plan_promotion(views, section_overrides)
+    labels = {v.id: class_label(v.grade, v.section) for v in views}
+    already = await _active_run(db, year) is not None
+    return _plan_to_out(plan, year, already, labels)
+
+
+async def apply_promotion(
+    db: AsyncSession,
+    section_overrides: dict[int, str],
+    carry_teachers_for: list[int],
+    confirm_academic_year: str,
+    current_user: User,
+) -> PromotionRunOut:
+    year = academic_year_label(date.today())
+    if confirm_academic_year.strip() != year:
+        raise PromotionConfirmMismatch
+    if await _active_run(db, year) is not None:
+        raise PromotionAlreadyRun
+
+    views = await _load_school_views(db)
+    plan = plan_promotion(views, section_overrides)
+
+    affected: set[int] = set()
+    for t in plan.transitions:
+        affected.update(t.moving_student_ids)
+    for g in plan.graduating:
+        affected.update(g.student_ids)
+
+    users_result = await db.execute(select(User).where(User.id.in_(affected)))
+    users_by_id = {u.id: u for u in users_result.scalars()}
+
+    snapshot = [
+        {
+            "user_id": uid,
+            "old_class_id": user.school_class_id,
+            "was_active": user.is_active,
+        }
+        for uid, user in users_by_id.items()
+    ]
+
+    carry = set(carry_teachers_for)
+    classes_created = 0
+
+    for t in plan.transitions:
+        target_id = t.target_class_id
+        if target_id is None:
+            new_class = SchoolClass(grade=t.target_grade, section=t.target_section)
+            db.add(new_class)
+            await db.flush()
+            target_id = new_class.id
+            classes_created += 1
+
+            # Перенос учителей только для нового целевого без слияния: у merge
+            # несколько исходных составов, чей брать — решать не нам.
+            if not t.merge and t.source_class_ids[0] in carry:
+                source_id = t.source_class_ids[0]
+                links = await db.execute(
+                    select(TeacherClass).where(TeacherClass.class_id == source_id)
+                )
+                for link in links.scalars():
+                    db.add(
+                        TeacherClass(
+                            teacher_id=link.teacher_id,
+                            class_id=target_id,
+                            subject=link.subject,
+                            is_homeroom=link.is_homeroom,
+                        )
+                    )
+
+        for student_id in t.moving_student_ids:
+            users_by_id[student_id].school_class_id = target_id
+
+    for g in plan.graduating:
+        for student_id in g.student_ids:
+            user = users_by_id[student_id]
+            user.is_active = False
+            user.school_class_id = None
+
+    run = PromotionRun(
+        academic_year=year,
+        ran_by_id=current_user.id,
+        summary={
+            "moved": plan.total_moving,
+            "graduated": plan.total_graduating,
+            "classes_created": classes_created,
+        },
+        snapshot=snapshot,
+    )
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+    return PromotionRunOut(**_run_fields(run), can_undo=True)
+
+
+async def current_promotion(db: AsyncSession) -> PromotionRunOut | None:
+    year = academic_year_label(date.today())
+    run = await _active_run(db, year)
+    if run is None:
+        return None
+    can_undo = not await _has_campaign_since(db, run.ran_at)
+    return PromotionRunOut(**_run_fields(run), can_undo=can_undo)
+
+
+async def undo_promotion(db: AsyncSession, run_id: int) -> PromotionRunOut:
+    run = await db.get(PromotionRun, run_id)
+    if run is None:
+        raise PromotionRunNotFound
+    if run.undone_at is not None:
+        raise PromotionAlreadyUndone
+    if await _has_campaign_since(db, run.ran_at):
+        raise PromotionUndoBlocked
+
+    for entry in run.snapshot:
+        user = await db.get(User, entry["user_id"])
+        if user is None:
+            continue
+        user.school_class_id = entry["old_class_id"]
+        user.is_active = entry["was_active"]
+
+    run.undone_at = func.now()
+    await db.commit()
+    await db.refresh(run)
+    return PromotionRunOut(**_run_fields(run), can_undo=False)
+
+
+def _run_fields(run: PromotionRun) -> dict[str, Any]:
+    return {
+        "id": run.id,
+        "academic_year": run.academic_year,
+        "ran_at": run.ran_at,
+        "summary": run.summary,
+        "undone_at": run.undone_at,
+    }

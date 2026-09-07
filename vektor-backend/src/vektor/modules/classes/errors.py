@@ -46,3 +46,40 @@ class StudentNotInClass(DomainError):
     status_code = 404
     code = "student_not_in_class"
     message = "Ученик не числится в этом классе"
+
+
+class PromotionAlreadyRun(DomainError):
+    """За текущий учебный год перевод уже выполнен (есть активный PromotionRun)."""
+
+    status_code = 409
+    code = "promotion_already_run"
+    message = "Перевод за этот учебный год уже выполнен"
+
+
+class PromotionConfirmMismatch(DomainError):
+    """confirm_academic_year не совпал с текущим учебным годом — защита от
+    случайного запуска."""
+
+    status_code = 422
+    code = "promotion_confirm_mismatch"
+    message = "Подтверждение учебного года не совпадает"
+
+
+class PromotionRunNotFound(DomainError):
+    status_code = 404
+    code = "promotion_run_not_found"
+    message = "Запуск перевода не найден"
+
+
+class PromotionUndoBlocked(DomainError):
+    """После перевода уже создана кампания — откат сломал бы её состав."""
+
+    status_code = 409
+    code = "promotion_undo_blocked"
+    message = "Откат невозможен: после перевода уже создана кампания"
+
+
+class PromotionAlreadyUndone(DomainError):
+    status_code = 409
+    code = "promotion_already_undone"
+    message = "Этот перевод уже отменён"

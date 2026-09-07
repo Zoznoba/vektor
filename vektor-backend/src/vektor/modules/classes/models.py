@@ -1,6 +1,19 @@
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, String, UniqueConstraint, false
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    false,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vektor.core.database import Base
@@ -80,3 +93,52 @@ class SchoolClass(Base):
 
     def __repr__(self) -> str:
         return f"<SchoolClass id={self.id} grade={self.grade} section={self.section}>"
+
+
+class PromotionRun(Base):
+    """Один запуск ежегодного перевода всей школы на класс вперёд.
+
+    Служит двум целям:
+      - маркер «за этот учебный год перевод уже сделан» — партиальный
+        уникальный индекс по academic_year среди строк с undone_at IS NULL
+        не даёт запустить второй активный перевод за тот же год (повторный
+        клик по кнопке — 409, а не второй сдвиг всей школы на класс вперёд);
+      - аудит + возможность отката: snapshot хранит состояние КАЖДОГО
+        затронутого ученика ДО перевода (класс и активность), поэтому undo
+        восстанавливает состав точно, не «угадывая» его из текущего.
+
+    Прошлую диагностику перевод не трогает — она держится на снапшотах
+    Assessment.subject_class_id/subject_case_id/rater_role, а тут мы двигаем
+    только текущее членство. См. classes/promotion.py.
+    """
+
+    __tablename__ = "promotion_runs"
+
+    __table_args__ = (
+        Index(
+            "uq_promotion_runs_active_year",
+            "academic_year",
+            unique=True,
+            postgresql_where=text("undone_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # Ярлык учебного года из shared.academic_year.academic_year_label
+    # («2026/2027 учебный год»).
+    academic_year: Mapped[str] = mapped_column(String(50))
+
+    ran_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    ran_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+    # Счётчики для экрана-résumé: moved / graduated / classes_created.
+    summary: Mapped[dict] = mapped_column(JSON)
+
+    # [{ "user_id", "old_class_id" | null, "was_active" }] — before-state под undo.
+    snapshot: Mapped[list] = mapped_column(JSON)
+
+    undone_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    def __repr__(self) -> str:
+        return f"<PromotionRun id={self.id} year={self.academic_year!r} undone={self.undone_at}>"

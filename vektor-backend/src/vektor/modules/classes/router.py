@@ -5,14 +5,19 @@ from vektor.core.database import get_db
 from vektor.modules.auth.dependencies import require_role
 from vektor.modules.classes import service
 from vektor.modules.classes.schemas import (
+    ApplyPromotionIn,
     AssignStudentsIn,
     AssignTeachersIn,
+    PreviewPromotionIn,
+    PromotionPlanOut,
+    PromotionRunOut,
     RemoveStudentsIn,
     RemoveTeachersIn,
     SchoolClassCreate,
     SchoolClassOut,
     UpdateTeacherInClassIn,
 )
+from vektor.modules.users.models import User
 from vektor.shared.enums import UserRole
 
 router = APIRouter(prefix="/classes", tags=["classes"])
@@ -44,6 +49,78 @@ async def all_school_classes(
     _roles=Depends(require_role(UserRole.ADMIN, UserRole.TEACHER)),
 ) -> list[SchoolClassOut]:
     return await service.all_classes(db)
+
+
+@router.post(
+    "/promotion/preview",
+    response_model=PromotionPlanOut,
+    summary="Предпросмотр перевода на новый учебный год",
+    description="Сухой прогон: показывает, кто в какой класс перейдёт, какие "
+    "классы будут созданы и кто выпускается. В БД ничего не меняет. "
+    "`section_overrides` — переопределение целевой секции по id исходного "
+    "класса. Только админ.",
+)
+async def preview_promotion(
+    data: PreviewPromotionIn,
+    db: AsyncSession = Depends(get_db),
+    _admin_role=Depends(require_role(UserRole.ADMIN)),
+) -> PromotionPlanOut:
+    return await service.preview_promotion(db, data.section_overrides)
+
+
+@router.post(
+    "/promotion/apply",
+    response_model=PromotionRunOut,
+    summary="Выполнить перевод на новый учебный год",
+    description="Одной транзакцией: создаёт недостающие целевые классы, "
+    "переносит учеников, деактивирует и открепляет выпускников 11-х классов. "
+    "`confirm_academic_year` должен точно совпасть с текущим учебным годом "
+    "(защита от случайного запуска). Повторный запуск за тот же год — 409. "
+    "Идемпотентно по ученикам: уже переведённые пропускаются. Только админ.",
+)
+async def apply_promotion(
+    data: ApplyPromotionIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
+) -> PromotionRunOut:
+    return await service.apply_promotion(
+        db,
+        data.section_overrides,
+        data.carry_teachers_for,
+        data.confirm_academic_year,
+        current_user,
+    )
+
+
+@router.get(
+    "/promotion/current",
+    response_model=PromotionRunOut | None,
+    summary="Активный перевод за текущий учебный год",
+    description="Возвращает запуск перевода за текущий учебный год, если он был, "
+    "иначе null. `can_undo=false`, если после перевода уже создана кампания. "
+    "Только админ.",
+)
+async def current_promotion(
+    db: AsyncSession = Depends(get_db),
+    _admin_role=Depends(require_role(UserRole.ADMIN)),
+) -> PromotionRunOut | None:
+    return await service.current_promotion(db)
+
+
+@router.post(
+    "/promotion/{run_id}/undo",
+    response_model=PromotionRunOut,
+    summary="Отменить перевод",
+    description="Восстанавливает состав классов и активность учеников из "
+    "снапшота. Заблокировано (409), если после перевода уже создана кампания — "
+    "откат сломал бы её состав. Созданные пустые классы не удаляются. Только админ.",
+)
+async def undo_promotion(
+    run_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin_role=Depends(require_role(UserRole.ADMIN)),
+) -> PromotionRunOut:
+    return await service.undo_promotion(db, run_id)
 
 
 @router.post(

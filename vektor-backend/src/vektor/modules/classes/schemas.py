@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from vektor.modules.auth.schemas import UserOut
@@ -74,3 +76,63 @@ class UpdateTeacherInClassIn(BaseModel):
 
     subject: str | None = Field(default=None, max_length=100)
     is_homeroom: bool | None = None
+
+
+# ── Ежегодный перевод классов ─────────────────────────────────────────────
+
+
+class PreviewPromotionIn(BaseModel):
+    # source_class_id -> целевая секция (перебивает секцию по умолчанию —
+    # на случай нестандартного перестроения параллелей).
+    section_overrides: dict[int, str] = Field(default_factory=dict)
+
+
+class ApplyPromotionIn(PreviewPromotionIn):
+    # id исходных классов, чей состав учителей перенести в новый целевой
+    # класс. Работает только для НЕ merge-переходов, где целевой класс
+    # создаётся с нуля.
+    carry_teachers_for: list[int] = Field(default_factory=list)
+    # Должно точно совпасть с текущим ярлыком учебного года на сервере —
+    # защита от случайного нажатия.
+    confirm_academic_year: str
+
+
+class TransitionOut(BaseModel):
+    target_grade: int
+    target_section: str
+    target_label: str
+    target_class_id: int | None
+    source_class_ids: list[int]
+    source_labels: list[str]
+    moving_count: int
+    already_in_target_count: int
+    merge: bool
+
+
+class GraduatingOut(BaseModel):
+    class_id: int
+    class_label: str
+    student_count: int
+
+
+class PromotionPlanOut(BaseModel):
+    academic_year: str
+    already_ran: bool
+    transitions: list[TransitionOut]
+    graduating: list[GraduatingOut]
+    warnings: list[str]
+    total_moving: int
+    total_graduating: int
+    classes_to_create: int
+
+
+class PromotionRunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    academic_year: str
+    ran_at: datetime
+    summary: dict
+    undone_at: datetime | None
+    # false, если после перевода уже создана кампания (или он уже отменён).
+    can_undo: bool

@@ -1,0 +1,132 @@
+/* Экран ежегодного перевода классов (AdminPromotionPage). */
+
+.link-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--ink-soft);
+  font: inherit;
+  cursor: pointer;
+}
+.link-back:hover {
+  color: var(--blue-ink);
+}
+
+.promotion-lead {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+.promotion-hint {
+  margin: 6px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.promotion-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  background: var(--amber-tint);
+  color: var(--amber-ink);
+  font-size: 13px;
+}
+
+.promotion-table th,
+.promotion-table td {
+  vertical-align: middle;
+}
+
+.promotion-flow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.promotion-tag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  background: var(--blue-tint);
+  color: var(--blue-ink);
+  font-size: 11px;
+  font-weight: 600;
+}
+.promotion-tag--merge {
+  background: var(--amber-tint);
+  color: var(--amber-ink);
+}
+
+.promotion-section-input {
+  width: 64px;
+  padding: 4px 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  font: inherit;
+}
+
+.promotion-carry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.promotion-muted {
+  color: var(--ink-faint);
+  font-size: 13px;
+}
+
+.promotion-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 340px;
+  font-size: 14px;
+}
+
+.promotion-actions {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.promotion-metrics {
+  display: flex;
+  gap: 12px;
+  margin: 16px 0 4px;
+  flex-wrap: wrap;
+}
+
+.promotion-resume {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.promotion-resume h3 {
+  margin: 0 0 2px;
+}
+.promotion-resume__meta {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+.promotion-resume__badge {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--lime-tint);
+  color: var(--lime-ink);
+  flex-shrink: 0;
+}
