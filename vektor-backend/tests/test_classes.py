@@ -275,3 +275,67 @@ async def test_assign_teachers_forbidden_for_non_admin(
     )
 
     assert response.status_code == 403
+
+
+# --- PATCH /classes/{id} и DELETE /classes/{id} -----------------------------
+# Скелеты под срез «инструменты класса у админа». Тела дописать после
+# реализации service.update_class / service.delete_class.
+
+
+async def test_update_class_changes_grade_and_section(
+    client: AsyncClient, existing_class: dict
+) -> None:
+    # TODO: PATCH /classes/{id} с {"grade": 8, "section": "c"} → 200,
+    #   в ответе новые grade/section, состав не потерян.
+    ...
+
+
+async def test_update_class_partial_keeps_untouched_field(
+    client: AsyncClient, existing_class: dict
+) -> None:
+    # TODO: PATCH только с {"section": "d"} → grade остаётся прежним
+    #   (exclude_unset: ключа нет = «не трогать»).
+    ...
+
+
+async def test_update_class_duplicate_pair_conflict(
+    client: AsyncClient, admin_headers: dict[str, str], existing_class: dict
+) -> None:
+    # TODO: создать второй класс (8, "a"); PATCH первого в (8, "a") → 409.
+    ...
+
+
+async def test_update_class_forbidden_for_non_admin(
+    client: AsyncClient, existing_class: dict
+) -> None:
+    # TODO: учитель/ученик → 403.
+    ...
+
+
+async def test_delete_empty_class(client: AsyncClient, existing_class: dict) -> None:
+    # TODO: DELETE пустого класса → 204; GET /classes больше его не содержит.
+    ...
+
+
+async def test_delete_class_with_students_conflict(
+    client: AsyncClient, existing_class: dict
+) -> None:
+    # TODO: привязать ученика, DELETE → 409, класс на месте.
+    ...
+
+
+async def test_delete_class_with_diagnostics_history_conflict(
+    client: AsyncClient, existing_class: dict
+) -> None:
+    # TODO: самый важный кейс — класс без людей, но с анкетой, у которой
+    #   subject_class_id == этот класс (снапшот). DELETE → 409, а не 500.
+    #   Проще всего собрать через фикстуры assessments/results; если дорого —
+    #   вставить Assessment напрямую в тестовую сессию.
+    ...
+
+
+async def test_delete_class_forbidden_for_non_admin(
+    client: AsyncClient, existing_class: dict
+) -> None:
+    # TODO: учитель/ученик → 403.
+    ...

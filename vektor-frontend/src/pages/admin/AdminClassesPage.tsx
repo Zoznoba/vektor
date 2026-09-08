@@ -17,6 +17,8 @@ import type { RowSelection } from '../../hooks/useRowSelection';
 import {
   fetchClasses,
   createClass,
+  updateClass,
+  deleteClass,
   assignStudents,
   assignTeachers,
   updateTeacherInClass,
@@ -69,6 +71,9 @@ export function AdminClassesPage() {
   const [editSubjectFor, setEditSubjectFor] = useState<TeacherInClass | null>(null);
   const [transferring, setTransferring] = useState<User[] | null>(null);
   const [detaching, setDetaching] = useState<DetachTarget | null>(null);
+  // Правка/удаление самого класса — из меню «⚙» у состава, зеркально кейсам.
+  const [editing, setEditing] = useState<SchoolClass | null>(null);
+  const [deleting, setDeleting] = useState<SchoolClass | null>(null);
 
   const sorted = useMemo(
     () =>
@@ -203,6 +208,22 @@ export function AdminClassesPage() {
                   ))}
                 </div>
                 <div className="admin-toolbar__spacer" />
+                <ActionMenu
+                  trigger={<Icon name="settings" size={15} />}
+                  items={[
+                    {
+                      key: 'edit',
+                      label: 'Изменить класс',
+                      onSelect: () => setEditing(selected),
+                    },
+                    {
+                      key: 'delete',
+                      label: 'Удалить класс',
+                      danger: true,
+                      onSelect: () => setDeleting(selected),
+                    },
+                  ]}
+                />
                 <Button variant="secondary" onClick={() => setAssignMode(tab)}>
                   <Icon name="plus" size={15} />
                   {addLabel[tab]}
@@ -328,6 +349,31 @@ export function AdminClassesPage() {
           onDetached={() => {
             setDetaching(null);
             selection.clear();
+            classes.reload();
+          }}
+        />
+      )}
+
+      {editing && (
+        <EditClassModal
+          schoolClass={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            classes.reload();
+          }}
+        />
+      )}
+
+      {deleting && (
+        <DeleteClassModal
+          schoolClass={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => {
+            setDeleting(null);
+            // Выбранный класс исчез — сбрасываем выбор, состав переедет на
+            // первый по сортировке.
+            setSelectedId(null);
             classes.reload();
           }}
         />
@@ -732,6 +778,148 @@ function CreateClassModal({
   );
 }
 
+/**
+ * Правка самого класса — параллели и литеры. Отдельного «имени» у класса нет:
+ * подпись собирается из этих двух полей (`classLabel`), поэтому и «изменить
+ * класс» — это они. Зеркально «Переименовать кейс».
+ */
+function EditClassModal({
+  schoolClass,
+  onClose,
+  onSaved,
+}: {
+  schoolClass: SchoolClass;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [grade, setGrade] = useState(schoolClass.grade);
+  const [section, setSection] = useState(schoolClass.section);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const changed = grade !== schoolClass.grade || section.trim() !== schoolClass.section;
+
+  const handleSave = async () => {
+    if (!changed) {
+      onClose();
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      // Шлём обе части: они всегда заданы в форме, а «частичность» PATCH нужна
+      // на бэке для кейса «поменяли только предмет» — здесь такого нет.
+      await updateClass(schoolClass.id, { grade, section: section.trim() });
+      onSaved();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setError('Класс с такой параллелью и литерой уже существует');
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Не удалось сохранить класс');
+      }
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal title={`Класс ${classLabel(schoolClass)}`} onClose={onClose}>
+      <label className="form-field">
+        <span>Параллель (1–11)</span>
+        <select value={grade} onChange={(e) => setGrade(Number(e.target.value))}>
+          {Array.from({ length: 11 }, (_, i) => i + 1).map((g) => (
+            <option key={g} value={g}>
+              {g}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="form-field">
+        <span>Литера или номер (А, Б, 1…; пусто — для 10–11, где параллели нет)</span>
+        <input
+          value={section}
+          onChange={(e) => setSection(e.target.value)}
+          placeholder="А"
+          maxLength={10}
+          autoFocus
+        />
+      </label>
+
+      {error && <div className="form-error">{error}</div>}
+
+      <div className="modal__actions">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          Отмена
+        </Button>
+        <Button onClick={handleSave} disabled={submitting}>
+          {submitting ? 'Сохраняем…' : 'Сохранить'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Удаление класса. Как и у кейса — только пустого: с учениками/учителями
+ * внутри бэкенд отвечает 409, и объяснить, что делать, лучше до нажатия.
+ * История диагностик (снапшоты `subject_class_id` в анкетах) фронту не видна,
+ * поэтому на такой 409 просто показываем текст ошибки бэкенда.
+ */
+function DeleteClassModal({
+  schoolClass,
+  onClose,
+  onDeleted,
+}: {
+  schoolClass: SchoolClass;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const peopleCount = schoolClass.students.length + schoolClass.teachers.length;
+
+  const handleDelete = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await deleteClass(schoolClass.id);
+      onDeleted();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось удалить класс');
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal title={`Удалить класс ${classLabel(schoolClass)}`} onClose={onClose}>
+      {peopleCount > 0 ? (
+        <p className="roster-hint">
+          В классе ещё {studentsCountLabel(schoolClass.students.length)} и{' '}
+          {teachersCountLabel(schoolClass.teachers.length)}. Удалить можно только пустой
+          класс — сначала откройте вкладки состава и открепите всех.
+        </p>
+      ) : (
+        <p className="roster-hint">
+          Класс «{classLabel(schoolClass)}» будет удалён. Он пуст. Если по нему уже
+          проводилась диагностика, бэкенд не даст его удалить — историю нужно сохранить.
+        </p>
+      )}
+
+      {error && <div className="form-error">{error}</div>}
+
+      <div className="modal__actions">
+        <Button type="button" variant="secondary" onClick={onClose}>
+          {peopleCount > 0 ? 'Понятно' : 'Отмена'}
+        </Button>
+        {peopleCount === 0 && (
+          <Button variant="danger" onClick={handleDelete} disabled={submitting}>
+            {submitting ? 'Удаляем…' : 'Удалить класс'}
+          </Button>
+        )}
+      </div>
+    </Modal>
+  );
+}
 
 /**
  * Назначение в класс. Режим совпадает с активной вкладкой, поэтому кандидаты

@@ -9,6 +9,25 @@ export function createClass(grade: number, section: string): Promise<SchoolClass
   return apiRequest<SchoolClass>('/classes', { method: 'POST', body: { grade, section } });
 }
 
+/**
+ * Правка самого класса — параллели и/или литеры. Отдельного «имени» у класса
+ * нет: подпись («8-1») фронт собирает из grade+section, поэтому
+ * «переименование» — это правка этих двух полей. Как и updateTeacherInClass /
+ * updateCase, шлём только изменяемые ключи: бэкенд трактует отсутствие ключа
+ * как «не трогать». Пара (параллель, литера), занятая другим классом, — 409.
+ */
+export function updateClass(
+  classId: number,
+  changes: { grade?: number; section?: string },
+): Promise<SchoolClass> {
+  return apiRequest<SchoolClass>(`/classes/${classId}`, { method: 'PATCH', body: changes });
+}
+
+/** Удалить можно только пустой класс без истории диагностик — иначе 409. */
+export function deleteClass(classId: number): Promise<void> {
+  return apiRequest<void>(`/classes/${classId}`, { method: 'DELETE' });
+}
+
 export function assignStudents(classId: number, studentIds: number[]): Promise<SchoolClass> {
   return apiRequest<SchoolClass>(`/classes/${classId}/students`, {
     method: 'POST',

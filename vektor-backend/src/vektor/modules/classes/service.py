@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from vektor.modules.classes.errors import (
     ClassAlreadyExists,
+    ClassNotEmpty,
     ClassNotFound,
     StudentNotInClass,
     TeacherAlreadyAssigned,
@@ -57,6 +58,70 @@ async def create_class(db: AsyncSession, grade: int, section: str) -> SchoolClas
     db.add(school_class)
     await db.commit()
     return await _load_class(db, school_class.id)
+
+
+async def update_class(
+    db: AsyncSession, class_id: int, changes: dict[str, Any]
+) -> SchoolClass:
+    """Сменить параллель и/или литеру класса.
+
+    Отдельного «имени» у класса нет — подпись («8-1») фронт собирает из
+    grade+section, поэтому «переименование» это правка именно их. `changes` —
+    только реально пришедшие поля (роутер: exclude_unset), отсутствие ключа =
+    «не трогать».
+    """
+    school_class = await _load_class(db, class_id)
+
+    new_grade = changes.get("grade", school_class.grade)
+    new_section = changes.get("section", school_class.section)
+
+    if (new_grade, new_section) != (school_class.grade, school_class.section):
+        clash = await db.execute(
+            select(SchoolClass.id).where(
+                SchoolClass.grade == new_grade,
+                SchoolClass.section == new_section,
+                SchoolClass.id != class_id,
+            )
+        )
+        if clash.scalar_one_or_none() is not None:
+            raise ClassAlreadyExists
+
+    school_class.grade = new_grade
+    school_class.section = new_section
+
+    await db.commit()
+    return await _load_class(db, class_id)
+
+
+async def delete_class(db: AsyncSession, class_id: int) -> None:
+    """Удалить ПУСТОЙ класс без истории диагностик.
+
+    С людьми внутри — 409 (зеркально cases.delete_case): молчаливое
+    открепление всех разом слишком похоже на случайный клик.
+    """
+    school_class = await _load_class(db, class_id)
+
+    if school_class.students or school_class.teacher_links:
+        raise ClassNotEmpty(
+            "В классе ещё есть ученики или учителя — сначала разберите состав"
+        )
+
+    # Снапшот класса в анкетах: FK Assessment.subject_class_id объявлен БЕЗ
+    # ondelete (миграция e7b2065d94ac), поэтому db.delete() при живых ссылках
+    # упал бы IntegrityError → 500 вместо аккуратного 409. Импорт локальный:
+    # модулю classes assessments больше нигде не нужен.
+    from vektor.modules.assessments.models import Assessment
+
+    used = await db.execute(
+        select(Assessment.id).where(Assessment.subject_class_id == class_id).limit(1)
+    )
+    if used.scalar_one_or_none() is not None:
+        raise ClassNotEmpty(
+            "По классу уже проводилась диагностика — историю удалять нельзя"
+        )
+
+    await db.delete(school_class)
+    await db.commit()
 
 
 async def all_classes(db: AsyncSession) -> list[SchoolClass]:

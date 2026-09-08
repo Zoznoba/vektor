@@ -43,6 +43,19 @@ class SchoolClassCreate(BaseModel):
     section: str = Field(min_length=0, max_length=10)
 
 
+class SchoolClassUpdate(BaseModel):
+    """Частичная правка класса: параллель и/или литера.
+
+    Как у UpdateTeacherInClassIn — роутер отдаёт в сервис только реально
+    пришедшие поля (`exclude_unset`), поэтому отсутствие ключа = «не трогать».
+    В отличие от description у кейса, `section` стереть в None нельзя: пустая
+    секция — это "", а не отсутствие значения (min_length=0).
+    """
+
+    grade: int | None = Field(default=None, ge=1, le=11)
+    section: str | None = Field(default=None, min_length=0, max_length=10)
+
+
 class AssignStudentsIn(BaseModel):
     student_ids: list[int]
 

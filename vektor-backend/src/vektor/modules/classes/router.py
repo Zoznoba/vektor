@@ -11,6 +11,7 @@ from vektor.modules.classes.schemas import (
     RemoveTeachersIn,
     SchoolClassCreate,
     SchoolClassOut,
+    SchoolClassUpdate,
     UpdateTeacherInClassIn,
 )
 from vektor.shared.enums import UserRole
@@ -44,6 +45,39 @@ async def all_school_classes(
     _roles=Depends(require_role(UserRole.ADMIN, UserRole.TEACHER)),
 ) -> list[SchoolClassOut]:
     return await service.all_classes(db)
+
+
+@router.patch(
+    "/{class_id}",
+    response_model=SchoolClassOut,
+    summary="Изменить класс",
+    description="Частичная правка параллели и/или литеры. Передавайте только "
+    "изменяемые поля: отсутствующий ключ остаётся как был. Если класс с такой "
+    "парой (параллель, литера) уже есть — 409. Только админ.",
+)
+async def update_school_class(
+    class_id: int,
+    data: SchoolClassUpdate,
+    db: AsyncSession = Depends(get_db),
+    _admin_role=Depends(require_role(UserRole.ADMIN)),
+) -> SchoolClassOut:
+    return await service.update_class(db, class_id, data.model_dump(exclude_unset=True))
+
+
+@router.delete(
+    "/{class_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Удалить класс",
+    description="Удалить можно только пустой класс без истории диагностик. "
+    "Если в составе ещё есть ученики или учителя, либо по классу уже "
+    "проводилась кампания — 409. Только админ.",
+)
+async def delete_school_class(
+    class_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin_role=Depends(require_role(UserRole.ADMIN)),
+) -> None:
+    await service.delete_class(db, class_id)
 
 
 @router.post(
