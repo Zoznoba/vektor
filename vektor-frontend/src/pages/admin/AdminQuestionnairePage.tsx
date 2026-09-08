@@ -28,6 +28,7 @@ import {
 import type {
   BuilderCompetency,
   BuilderOutcomeArea,
+  BuilderQuestion,
   QuestionnaireTree,
 } from '../../types/questionnaireBuilder';
 import './admin.css';
@@ -547,16 +548,22 @@ function QuestionRow({
   onChanged,
   onError,
 }: {
-  question: { id: number; text: string; order: number };
+  question: BuilderQuestion;
   isFirst: boolean;
   isLast: boolean;
   onChanged: () => void;
   onError: (msg: string) => void;
 }) {
   const [text, setText] = useState(question.text);
+  const [selfText, setSelfText] = useState(question.self_text ?? '');
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => setText(question.text), [question.text]);
+  // Ресинк полей с сервером после сохранения/переупорядочивания — по
+  // идентичности строки, не по каждому полю (тот же приём, что и раньше).
+  useEffect(() => {
+    setText(question.text);
+    setSelfText(question.self_text ?? '');
+  }, [question.id, question.text, question.self_text]);
 
   const run = async (fn: () => Promise<unknown>, fallback: string) => {
     setBusy(true);
@@ -570,13 +577,20 @@ function QuestionRow({
     }
   };
 
-  const handleBlur = () => {
+  // Оба поля уходят одним PATCH: пустая формулировка самооценки → null.
+  const save = () => {
     const trimmed = text.trim();
-    if (!trimmed || trimmed === question.text) {
+    const trimmedSelf = selfText.trim();
+    if (!trimmed) {
       setText(question.text);
+      setSelfText(question.self_text ?? '');
       return;
     }
-    run(() => updateQuestion(question.id, trimmed), 'Не удалось изменить вопрос');
+    if (trimmed === question.text && trimmedSelf === (question.self_text ?? '')) return;
+    run(
+      () => updateQuestion(question.id, trimmed, trimmedSelf || null),
+      'Не удалось изменить вопрос',
+    );
   };
 
   const handleDelete = () => {
@@ -604,13 +618,23 @@ function QuestionRow({
           <Icon name="arrowDown" size={12} />
         </button>
       </div>
-      <input
-        className="qb-question__text"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={handleBlur}
-        disabled={busy}
-      />
+      <div className="qb-question__fields">
+        <input
+          className="qb-question__text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={save}
+          disabled={busy}
+        />
+        <input
+          className="qb-question__text qb-question__self"
+          value={selfText}
+          onChange={(e) => setSelfText(e.target.value)}
+          onBlur={save}
+          disabled={busy}
+          placeholder="Формулировка для самооценки (если отличается)"
+        />
+      </div>
       <button className="qb-delete-btn" disabled={busy} onClick={handleDelete} aria-label="Удалить вопрос">
         <Icon name="trash" size={13} />
       </button>
