@@ -406,7 +406,10 @@ export function AdminUsersPage() {
                 <tr
                   key={u.id}
                   className={u.id === highlightedId ? 'admin-table__row--selected' : ''}
-                  onClick={() => navigate(`/admin/users/${u.id}`)}
+                  onClick={() => {
+                    if (window.getSelection()?.toString()) return;
+                    navigate(`/admin/users/${u.id}`);
+                  }}
                 >
                   <td
                     className="admin-table__select-col"
