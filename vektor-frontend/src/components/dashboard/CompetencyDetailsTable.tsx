@@ -38,16 +38,39 @@ function Cell({ value }: { value: number | null }) {
   );
 }
 
-type SortKey = 'name' | 'self' | 'teacher' | 'parent' | 'overall';
+type SortKey = 'name' | 'self' | 'others' | 'teacher' | 'parent' | 'overall';
 type SortDir = 'asc' | 'desc';
 
-const COLUMNS: { key: SortKey; label: string; value: (c: CompetencyScore) => number | string | null }[] = [
-  { key: 'name', label: 'Критерий', value: (c) => c.name },
-  { key: 'self', label: 'Самооценка', value: (c) => c.self_avg },
-  { key: 'teacher', label: 'Учителя', value: (c) => c.teacher_avg },
-  { key: 'parent', label: 'Родители', value: (c) => c.parent_avg },
-  { key: 'overall', label: 'Итог', value: (c) => c.overall_avg },
-];
+interface Column {
+  key: SortKey;
+  label: string;
+  value: (c: CompetencyScore) => number | string | null;
+}
+
+const NAME_COLUMN: Column = { key: 'name', label: 'Критерий', value: (c) => c.name };
+const SELF_COLUMN: Column = { key: 'self', label: 'Самооценка', value: (c) => c.self_avg };
+const OVERALL_COLUMN: Column = { key: 'overall', label: 'Итог', value: (c) => c.overall_avg };
+
+/**
+ * Набор колонок под режим панели — тот же, что у контуров радара выше.
+ * `combined` — «окружающие» одним усреднённым слоем (единственное, что видит
+ * ученик); `split` — учителя и родители по отдельности, для взрослых.
+ */
+const COLUMN_SETS: Record<'combined' | 'split', Column[]> = {
+  combined: [
+    NAME_COLUMN,
+    SELF_COLUMN,
+    { key: 'others', label: 'Окружающие', value: (c) => c.others_avg },
+    OVERALL_COLUMN,
+  ],
+  split: [
+    NAME_COLUMN,
+    SELF_COLUMN,
+    { key: 'teacher', label: 'Учителя', value: (c) => c.teacher_avg },
+    { key: 'parent', label: 'Родители', value: (c) => c.parent_avg },
+    OVERALL_COLUMN,
+  ],
+};
 
 function HeaderCell({
   column,
@@ -55,7 +78,7 @@ function HeaderCell({
   sortDir,
   onSort,
 }: {
-  column: (typeof COLUMNS)[number];
+  column: Column;
   sortKey: SortKey;
   sortDir: SortDir;
   onSort: (key: SortKey) => void;
@@ -77,15 +100,22 @@ function HeaderCell({
 
 interface CompetencyDetailsTableProps {
   competencies: CompetencyScore[];
+  /** Разбивка «окружающих» по ролям; ученику всегда `combined`. */
+  layers?: 'combined' | 'split';
 }
 
 /**
  * Табличный вид тех же данных, что и радар выше по странице — для чтения
- * точных чисел по каждому слою разом, не только self/others (радар показывает
- * два контура, подсказка по оси — их же). Обязательный «табличный вид» результата поверх чарта:
- * heatmap-заливка тут дополняет число, а не заменяет его.
+ * точных чисел. Состав колонок повторяет контуры радара (`layers`): ученик
+ * видит только самооценку и «окружающих», взрослые — разбивку по ролям.
+ * Обязательный «табличный вид» результата поверх чарта: heatmap-заливка тут
+ * дополняет число, а не заменяет его.
  */
-export function CompetencyDetailsTable({ competencies }: CompetencyDetailsTableProps) {
+export function CompetencyDetailsTable({
+  competencies,
+  layers = 'split',
+}: CompetencyDetailsTableProps) {
+  const columns = COLUMN_SETS[layers];
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   // Перепечатка названий — только на смену сортировки, не на первой отрисовке.
@@ -114,7 +144,9 @@ export function CompetencyDetailsTable({ competencies }: CompetencyDetailsTableP
   };
 
   const sorted = useMemo(() => {
-    const column = COLUMNS.find((c) => c.key === sortKey)!;
+    // Колонка сортировки могла исчезнуть вместе со сменой набора — тогда
+    // падаем обратно на «Критерий», а не роняем таблицу на undefined.
+    const column = columns.find((c) => c.key === sortKey) ?? NAME_COLUMN;
     const dir = sortDir === 'asc' ? 1 : -1;
     return [...competencies].sort((a, b) => {
       const av = column.value(a);
@@ -128,14 +160,14 @@ export function CompetencyDetailsTable({ competencies }: CompetencyDetailsTableP
       if (bv === null) return -1;
       return dir * (av - bv);
     });
-  }, [competencies, sortKey, sortDir]);
+  }, [competencies, columns, sortKey, sortDir]);
 
   return (
     <div className="details-table-scroll">
       <table className={`details-table ${printing ? 'details-table--printing' : ''}`.trim()}>
         <thead>
           <tr>
-            {COLUMNS.map((column) => (
+            {columns.map((column) => (
               <HeaderCell
                 key={column.key}
                 column={column}
@@ -154,10 +186,9 @@ export function CompetencyDetailsTable({ competencies }: CompetencyDetailsTableP
                   {c.name}
                 </span>
               </td>
-              <Cell value={c.self_avg} />
-              <Cell value={c.teacher_avg} />
-              <Cell value={c.parent_avg} />
-              <Cell value={c.overall_avg} />
+              {columns.slice(1).map((column) => (
+                <Cell key={column.key} value={column.value(c) as number | null} />
+              ))}
             </tr>
           ))}
         </tbody>

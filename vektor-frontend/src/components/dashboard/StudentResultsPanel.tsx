@@ -78,11 +78,17 @@ export function StudentResultsPanel({
   title = 'Мои результаты',
 }: StudentResultsPanelProps) {
   const { user } = useAuth();
+  // Ученику разбивка по ролям НЕ показывается вовсе (решение заказчика): он
+  // видит только «самооценка против окружающих» — и на радаре, и в таблице.
+  // Кто именно так оценил — данные для взрослых (учитель/родитель/админ),
+  // ученику они читались бы как «кто мне поставил низкий балл».
+  const canSplitLayers = user?.role !== 'student';
   // «окружающие» одним контуром или разложить на слои (учителя / родители /
   // одноклассники) — переключатель прямо над радаром. По умолчанию свёрнуто:
   // единая форма профиля читается быстрее, разбивка — когда интересно, кто
   // именно так оценил.
   const [layers, setLayers] = useState<'combined' | 'split'>('combined');
+  const effectiveLayers = canSplitLayers ? layers : 'combined';
   // useApi требует стабильную ссылку — иначе effect уходит в цикл запросов.
   const loadResults = useCallback(() => fetchSubjectResults(subjectId), [subjectId]);
   const loadDynamics = useCallback(() => fetchSubjectDynamics(subjectId), [subjectId]);
@@ -161,26 +167,28 @@ export function StudentResultsPanel({
                видно тем же зазором между контурами. Меньше трёх осей радар
                не образует — там остаётся таблица «Детали по компетенциям». */
             <>
-              <div className="results-layer-toggle">
-                <button
-                  type="button"
-                  className={layers === 'combined' ? 'results-layer-toggle__btn--active' : ''}
-                  onClick={() => setLayers('combined')}
-                >
-                  Окружающие вместе
-                </button>
-                <button
-                  type="button"
-                  className={layers === 'split' ? 'results-layer-toggle__btn--active' : ''}
-                  onClick={() => setLayers('split')}
-                >
-                  По ролям
-                </button>
-              </div>
+              {canSplitLayers && (
+                <div className="results-layer-toggle">
+                  <button
+                    type="button"
+                    className={layers === 'combined' ? 'results-layer-toggle__btn--active' : ''}
+                    onClick={() => setLayers('combined')}
+                  >
+                    Окружающие вместе
+                  </button>
+                  <button
+                    type="button"
+                    className={layers === 'split' ? 'results-layer-toggle__btn--active' : ''}
+                    onClick={() => setLayers('split')}
+                  >
+                    По ролям
+                  </button>
+                </div>
+              )}
               <RadarChart
                 axes={scored.map((c) => shortCompetencyName(c.code, c.name))}
                 axisTitles={scored.map((c) => c.name)}
-                series={buildSeries(scored, layers)}
+                series={buildSeries(scored, effectiveLayers)}
               />
             </>
           )}
@@ -225,7 +233,7 @@ export function StudentResultsPanel({
           {scored.length > 0 && (
             <div className="results-dynamics">
               <div className="results-section__title">Детали по компетенциям</div>
-              <CompetencyDetailsTable competencies={scored} />
+              <CompetencyDetailsTable competencies={scored} layers={effectiveLayers} />
             </div>
           )}
         </>
