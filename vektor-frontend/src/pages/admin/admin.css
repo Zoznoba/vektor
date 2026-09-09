@@ -584,14 +584,66 @@ a.metric:hover {
   font-size: 13px;
 }
 
-/* Связи человека прямо в шапке карточки: класс(ы) и кейс ссылками. Отдельным
-   блоком они не живут — это одна ссылка на связь, а не список. */
+/* Связи человека прямо в шапке карточки: класс(ы) и кейс. Отдельным блоком
+   они не живут — это признаки человека, а не разделы страницы. */
 .user-card__links {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 6px;
-  font-size: 13px;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* Чип связи — кликабельная пилюля с иконкой сущности (шапочка = класс,
+   портфель = кейс). Форма и радиус те же, что у .filter-chip и .badge:
+   прежние голые синие ссылки «7-2 →» были единственным таким элементом на
+   весь интерфейс. Иконка нужна не для красоты: у учителя в ряду стоят и
+   классы, и кейс, а «8-1» и «Робототехника» без неё не различимы по типу. */
+.entity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-b);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.entity-chip:hover {
+  border-color: var(--blue);
+  color: var(--blue-ink);
+}
+
+.entity-chip svg {
+  color: var(--ink-faint);
+}
+
+.entity-chip:hover svg {
+  color: var(--blue);
+}
+
+/* Предмет учителя или «кл. рук» — приписка на том же чипе: это уточнение
+   связи, а не вторая связь, и отдельным чипом читалось бы как ещё один
+   класс. */
+.entity-chip__note {
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+
+.entity-chip__note::before {
+  content: '· ';
+}
+
+/* «+ ещё 3» — не ссылка на сущность, поэтому без рамки: иначе счётчик
+   выглядит как ещё один класс с таким названием. */
+.entity-chip--more {
+  border-style: dashed;
+  color: var(--ink-faint);
 }
 
 /* Действия прижаты к правому краю карточки: имя и связи читают слева

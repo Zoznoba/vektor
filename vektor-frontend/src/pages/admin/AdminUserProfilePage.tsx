@@ -22,6 +22,9 @@ import type { SchoolClass } from '../../types/school';
 import { DeactivateModal, ResetPasswordModal } from './AdminUsersPage';
 import './admin.css';
 
+/** Сколько классов показываем чипами до «+ ещё N». */
+const CLASS_CHIP_LIMIT = 4;
+
 /**
  * Карточка одного пользователя глазами админа.
  *
@@ -31,7 +34,7 @@ import './admin.css';
  *
  * Всё живёт на ОДНОЙ странице, без вкладок: у человека ровно один набор
  * связей, и отдельная вкладка «Обзор» повторяла бы строками (email, роль,
- * статус) то, что и так написано в шапке. Класс и кейс — ссылки прямо в
+ * статус) то, что и так написано в шапке. Класс и кейс — чипами прямо в
  * шапке, а диагностика — сворачиваемый блок внизу, тем же приёмом, что
  * аналитика класса в «Классах» и кейса в «Кейсах».
  *
@@ -60,6 +63,10 @@ export function AdminUserProfilePage() {
   // ученику. Свернуть вручную можно, состояние переживает только эту
   // страницу.
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(true);
+  // Предметник ведёт до десятка классов, и ряд чипов вытеснял бы из шапки
+  // всё остальное. Раскрытие одностороннее: свернуть обратно нечего —
+  // список коротких пилюль, а не панель.
+  const [allClassesShown, setAllClassesShown] = useState(false);
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [deactivateOpen, setDeactivateOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +96,9 @@ export function AdminUserProfilePage() {
       ) ?? null
     );
   }, [cases.data, user]);
+
+  const visibleClasses = allClassesShown ? userClasses : userClasses.slice(0, CLASS_CHIP_LIMIT);
+  const hiddenClassCount = userClasses.length - visibleClasses.length;
 
   if (!Number.isFinite(subjectId)) return <Navigate to="/admin/users" replace />;
 
@@ -153,31 +163,48 @@ export function AdminUserProfilePage() {
                   </span>
                 </div>
 
-                {/* Связи — здесь же, а не отдельным блоком: у человека их
-                    ровно две (класс и кейс), и каждая — одна ссылка. Роль,
-                    у которой их не бывает (админ), строку не получает вовсе:
-                    «не состоит нигде» двумя пустыми блоками читалось бы как
+                {/* Связи — здесь же, а не отдельным блоком: это чипы того же
+                    рода, что фильтры и бейджи ролей, а не список. Голыми
+                    синими ссылками («7-2 →») они были единственным таким
+                    элементом на весь проект и выпадали из стиля. Роль, у
+                    которой связей не бывает (админ), строку не получает
+                    вовсе: «не состоит нигде» пустым блоком читалось бы как
                     незагрузившийся экран. */}
                 {(userClasses.length > 0 || userCase !== null) && (
                   <div className="user-card__links">
-                    {userClasses.map((cls) => (
+                    {visibleClasses.map((cls) => (
                       <button
                         key={cls.id}
                         type="button"
-                        className="link-button"
+                        className="entity-chip"
+                        title={`Открыть класс ${classLabel(cls)}`}
                         onClick={() => navigate('/admin/classes', { state: { classId: cls.id } })}
                       >
+                        <Icon name="school" size={14} />
                         {classLabel(cls)}
-                        {teacherRoleSuffix(cls, user)} →
+                        {teacherRoleSuffix(cls, user) && (
+                          <span className="entity-chip__note">{teacherRoleSuffix(cls, user)}</span>
+                        )}
                       </button>
                     ))}
+                    {hiddenClassCount > 0 && (
+                      <button
+                        type="button"
+                        className="entity-chip entity-chip--more"
+                        onClick={() => setAllClassesShown(true)}
+                      >
+                        + ещё {hiddenClassCount}
+                      </button>
+                    )}
                     {userCase && (
                       <button
                         type="button"
-                        className="link-button"
+                        className="entity-chip"
+                        title={`Открыть кейс «${userCase.name}»`}
                         onClick={() => navigate('/admin/cases', { state: { caseId: userCase.id } })}
                       >
-                        Кейс «{userCase.name}» →
+                        <Icon name="briefcase" size={14} />
+                        {userCase.name}
                       </button>
                     )}
                   </div>
@@ -224,7 +251,7 @@ export function AdminUserProfilePage() {
               open={diagnosticsOpen}
               onToggle={() => setDiagnosticsOpen((value) => !value)}
             >
-              <StudentResultsPanel subjectId={user.id} title="Результаты" />
+              <StudentResultsPanel subjectId={user.id} title="Результаты" subjectShownOutside />
             </Collapsible>
           )}
         </>
@@ -248,14 +275,14 @@ export function AdminUserProfilePage() {
   );
 }
 
-/** «8-1 (кл. рук)» / «8-1 (физика)» — только для учителя. У ученика класс
- *  один и без уточнений: он в нём просто учится. */
+/** «кл. рук» / «физика» — приписка на чипе класса, только для учителя. У
+ *  ученика класс один и без уточнений: он в нём просто учится. */
 function teacherRoleSuffix(cls: SchoolClass, user: User): string {
   if (user.role !== 'teacher') return '';
   const link = cls.teachers.find((t) => t.teacher.id === user.id);
   if (!link) return '';
-  if (link.is_homeroom) return ' (кл. рук)';
-  return link.subject ? ` (${link.subject})` : '';
+  if (link.is_homeroom) return 'кл. рук';
+  return link.subject ?? '';
 }
 
 /** Дети родителя. Единственный блок, которому нужен свой запрос: связь

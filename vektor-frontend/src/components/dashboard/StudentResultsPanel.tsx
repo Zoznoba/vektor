@@ -16,6 +16,14 @@ interface StudentResultsPanelProps {
   subjectId: number;
   /** «Мои результаты» на дашборде ученика, ФИО — на экране учителя/админа. */
   title?: string;
+  /**
+   * Имя и почта субъекта уже написаны снаружи — своей шапки панель не рисует.
+   * Так живёт карточка пользователя у админа (`/admin/users/:id`): там ФИО
+   * стоит и в заголовке страницы, и в карточке, и третий повтор внутри
+   * панели читался как шум. У учителя и родителя панель открывается сама по
+   * себе, и шапка — единственный признак, чей это профиль.
+   */
+  subjectShownOutside?: boolean;
 }
 
 function formatDelta(delta: number | null): string {
@@ -76,6 +84,7 @@ function buildSeries(
 export function StudentResultsPanel({
   subjectId,
   title = 'Мои результаты',
+  subjectShownOutside = false,
 }: StudentResultsPanelProps) {
   const { user } = useAuth();
   // Ученику разбивка по ролям НЕ показывается вовсе (решение заказчика): он
@@ -98,7 +107,8 @@ export function StudentResultsPanel({
   // Шапку с именем/почтой ученика показываем только тому, кто смотрит НЕ на
   // себя (админ/учитель/родитель) — на своём дашборде ученик и так знает,
   // кто он, а «Мои результаты» + повтор своего имени читались бы как шум.
-  const viewingOther = results.data && user && user.id !== results.data.subject.id;
+  const viewingOther =
+    !subjectShownOutside && results.data && user && user.id !== results.data.subject.id;
 
   // Критерии без итогового балла не рисуем: у восьмиклассника это блок
   // профпроб (он открывается с 9 класса), и строка с прочерками читалась бы
