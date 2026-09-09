@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Panel } from '../../components/ui/Panel';
+import { PeriodSelect } from '../../components/ui/PeriodSelect';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/icons/Icon';
 import {
@@ -10,7 +11,12 @@ import {
   SelfGapList,
 } from '../../components/dashboard/GroupProfile';
 import { useApi } from '../../hooks/useApi';
-import { fetchClassResults, fetchClassRoster, fetchGroupDynamics } from '../../api/results';
+import {
+  fetchClassCampaigns,
+  fetchClassResults,
+  fetchClassRoster,
+  fetchGroupDynamics,
+} from '../../api/results';
 import { fetchMyAssessments } from '../../api/assessments';
 import type { ClassRosterRow } from '../../types/results';
 import type { AssessmentListItem } from '../../types/assessment';
@@ -96,12 +102,33 @@ export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
   const [filter, setFilter] = useState<FilterKey>('all');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  // undefined — «как решит бэкенд»: последняя кампания, где участвовали
+  // нынешние ученики. Явное значение — выбор в переключателе периодов.
+  // Сбрасывать при смене класса не нужно: родитель пересоздаёт блок по
+  // key={classId}, и состояние уезжает вместе со старым классом.
+  const [campaignId, setCampaignId] = useState<number | undefined>(undefined);
 
   // useApi требует стабильную ссылку — иначе effect уходит в цикл запросов.
-  const loadRoster = useCallback(() => fetchClassRoster(classId), [classId]);
-  const loadResults = useCallback(() => fetchClassResults(classId), [classId]);
-  const loadDynamics = useCallback(() => fetchGroupDynamics('class', classId), [classId]);
+  const loadRoster = useCallback(() => fetchClassRoster(classId, campaignId), [classId, campaignId]);
+  const loadCampaigns = useCallback(() => fetchClassCampaigns(classId), [classId]);
   const roster = useApi(loadRoster);
+  const campaigns = useApi(loadCampaigns);
+
+  // Профиль и динамику ведём за ростером, а не за собственным дефолтом
+  // эндпоинта: иначе на одном экране состав был бы за один период, а радар —
+  // за другой (у профиля свой выбор «последней кампании», по снапшоту класса).
+  // Незавершённую кампанию не передаём — по ней профиль отвечает 409, и там
+  // уместен его собственный дефолт «последняя завершённая».
+  const profileCampaignId =
+    roster.data?.campaign_status === 'closed' ? roster.data.campaign_id : undefined;
+  const loadResults = useCallback(
+    () => fetchClassResults(classId, profileCampaignId),
+    [classId, profileCampaignId],
+  );
+  const loadDynamics = useCallback(
+    () => fetchGroupDynamics('class', classId, profileCampaignId),
+    [classId, profileCampaignId],
+  );
   const results = useApi(loadResults);
   // Свои анкеты нужны, чтобы кнопка «Оценить» вела в конкретную анкету.
   // Отдельным полем в ростере это не отдаём: ростер — про класс, а «моя
@@ -200,10 +227,27 @@ export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
     );
   }
 
+  // Переключатель периодов рисуется и над пустым экраном тоже: по умолчанию
+  // открывается только кампания НЫНЕШНЕЙ когорты, а её у нового набора ещё
+  // нет — при этом архив прошлых лет по этой строке класса существует, и без
+  // переключателя до него было бы не добраться вовсе.
+  const periodSwitcher = (
+    <PeriodSelect
+      campaigns={campaigns.data ?? []}
+      value={campaignId}
+      onChange={setCampaignId}
+    />
+  );
+
   if (roster.error || !roster.data) {
     return (
       <Panel>
-        <div className="app-main__sub">По этому классу ещё нет диагностики</div>
+        {periodSwitcher}
+        <div className="app-main__sub">
+          {campaigns.data && campaigns.data.length > 0
+            ? 'У нынешнего состава класса диагностики ещё не было — выберите период выше, чтобы посмотреть архив'
+            : 'По этому классу ещё нет диагностики'}
+        </div>
       </Panel>
     );
   }
@@ -248,6 +292,20 @@ export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
           .filter(Boolean)
           .join(' · ')}
       >
+        {periodSwitcher}
+
+        {roster.data.campaign_status === 'closed' && (
+          /* Кампания закрыта — значит состав тут ИСТОРИЧЕСКИЙ: снапшот на её
+             момент, а не сегодняшний список класса. Оговорка обязательна:
+             школа переиспользует классы из года в год, поэтому у закрытой
+             диагностики 8-1 и у вкладки состава класса сегодня — разные дети,
+             и два разных числа рядом читаются как ошибка. Та же оговорка, что
+             в GroupProfile. */
+          <div className="app-main__sub">
+            Диагностика завершена — состав на момент кампании
+          </div>
+        )}
+
         <div className="roster-filters">
           {filters.map((item) => (
             <button

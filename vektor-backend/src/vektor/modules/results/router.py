@@ -33,8 +33,10 @@ router = APIRouter(prefix="/results", tags=["results"])
     description="Средний профиль класса по критериям (среднее по ученикам, "
     "не по ответам), сравнение со школой за тот же период и зоны роста "
     "класса по охвату. Без campaign_id берётся последняя ЗАВЕРШЁННАЯ "
-    "кампания класса; по незавершённой результаты не отдаются (409). "
-    "Доступно админу и учителю этого класса.",
+    "кампания, где участвовал кто-то из нынешних учеников класса; по "
+    "незавершённой результаты не отдаются (409). Архив прошлых когорт той же "
+    "строки класса открывается явным campaign_id — список даёт "
+    "/results/class/{class_id}/campaigns. Доступно админу и учителю класса.",
 )
 async def get_class_results(
     class_id: int,
@@ -42,13 +44,9 @@ async def get_class_results(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ClassResultsOut:
-    if campaign_id is None:
-        campaign_id = await service.latest_campaign_id_for_class(db, class_id)
-        if campaign_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="У класса пока нет результатов",
-            )
+    # Резолюция кампании — в сервисе: «последняя кампания класса» должна
+    # учитывать нынешний состав (см. _resolve_class_campaign), а состав
+    # сервис и так грузит ради прав. У кейса такого условия нет — см. ниже.
     return await service.get_class_results(db, class_id, campaign_id, user)
 
 
@@ -67,6 +65,12 @@ async def get_case_results(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> CaseResultsOut:
+    # Условие «кампания нынешней когорты», как у класса, кейсу намеренно НЕ
+    # переносится: строки классов школа переиспользует под новый набор каждый
+    # год целиком, а кружок живёт дальше со своим именем и меняет состав
+    # постепенно. Подмены когорты, от которой защищаемся у класса, тут не
+    # происходит, а фильтр отрезал бы доступ к архиву кружка — переключателя
+    # периодов на экранах кейса пока нет.
     if campaign_id is None:
         campaign_id = await service.latest_campaign_id_for_case(db, case_id)
         if campaign_id is None:
@@ -85,7 +89,8 @@ async def get_case_results(
     "по критериям. Сравниваются одни и те же ученики (те, у кого есть оба "
     "периода), дельты — только по общему ядру критериев. Отсутствие "
     "предыдущего периода — не ошибка: `previous_campaign_id=null` и текущие "
-    "баллы без дельт. Доступно админу и учителю этого класса.",
+    "баллы без дельт. Кампания по умолчанию выбирается так же, как у профиля "
+    "класса. Доступно админу и учителю этого класса.",
 )
 async def get_class_dynamics(
     class_id: int,
@@ -93,13 +98,6 @@ async def get_class_dynamics(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> GroupDynamicsOut:
-    if campaign_id is None:
-        campaign_id = await service.latest_campaign_id_for_class(db, class_id)
-        if campaign_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="У класса пока нет результатов",
-            )
     return await service.get_class_dynamics(db, class_id, campaign_id, user)
 
 
@@ -127,13 +125,31 @@ async def get_case_dynamics(
 
 
 @router.get(
+    "/class/{class_id}/campaigns",
+    response_model=list[SubjectCampaignOut],
+    summary="Периоды диагностики класса",
+    description="Кампании под переключатель на экране класса, свежие сверху: "
+    "и выданные по этой строке класса (включая архив прошлых когорт), и те, "
+    "где участвовали нынешние ученики под прежним ярлыком класса. Любого "
+    "статуса, включая идущую. Доступно админу и учителю этого класса.",
+)
+async def list_class_campaigns(
+    class_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[SubjectCampaignOut]:
+    return await service.list_class_campaigns(db, class_id, user)
+
+
+@router.get(
     "/class/{class_id}/roster",
     response_model=ClassRosterOut,
     summary="Состав класса с прогрессом диагностики",
     description="Строка на ученика: статус самооценки, сколько анкет про него "
     "завершено, итоговый балл и динамика к прошлому периоду; плюс метрики "
     "шапки экрана. Это экран хода диагностики, поэтому без campaign_id "
-    "берётся последняя кампания ЛЮБОГО статуса, включая идущую. "
+    "берётся последняя кампания ЛЮБОГО статуса, включая идущую, — но только "
+    "среди тех, где участвовал кто-то из нынешних учеников класса. "
     "Доступно админу и учителю этого класса.",
 )
 async def get_class_roster(
@@ -142,17 +158,10 @@ async def get_class_roster(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ClassRosterOut:
-    if campaign_id is None:
-        # Экран мониторинга: берём последнюю кампанию ЛЮБОГО статуса, включая
-        # идущую сейчас — иначе во время диагностики учитель видел бы прошлый
-        # год вместо того, по кому анкеты ещё не заполнены. Балльные экраны
-        # (профиль класса, результаты ученика) — наоборот, только завершённые.
-        campaign_id = await service.latest_campaign_id_for_class(db, class_id, only_completed=False)
-        if campaign_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="У класса пока нет результатов",
-            )
+    # Резолюция кампании живёт в сервисе, а не здесь: чтобы выбрать «последнюю
+    # кампанию ЭТОЙ когорты», нужен состав класса, который сервис и так грузит
+    # ради проверки прав. Заодно право проверяется ДО того, как ответ начнёт
+    # зависеть от наличия кампаний.
     return await service.get_class_roster(db, class_id, campaign_id, user)
 
 

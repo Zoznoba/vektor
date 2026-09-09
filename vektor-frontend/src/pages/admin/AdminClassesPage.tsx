@@ -7,6 +7,7 @@ import { classResultsToAnalytics } from '../../data/groupAnalytics';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import { Collapsible } from '../../components/ui/Collapsible';
+import { PeriodSelect } from '../../components/ui/PeriodSelect';
 import { Icon } from '../../components/icons/Icon';
 import { ActionMenu } from '../../components/ui/ActionMenu';
 import type { ActionMenuItem } from '../../components/ui/ActionMenu';
@@ -31,7 +32,7 @@ import { ApiError } from '../../api/client';
 import { classLabel, homeroomTeachers } from '../../types/school';
 import type { SchoolClass, TeacherInClass } from '../../types/school';
 import type { User } from '../../types/auth';
-import { fetchClassResults, fetchGroupDynamics } from '../../api/results';
+import { fetchClassCampaigns, fetchClassResults, fetchGroupDynamics } from '../../api/results';
 import { parseRoster, rosterErrorCount } from './roster';
 import { RosterInput } from './RosterInput';
 import './admin.css';
@@ -104,13 +105,28 @@ export function AdminClassesPage() {
   // useApi внутри GroupAnalytics требует стабильную ссылку — иначе effect
   // уходит в цикл запросов.
   const selectedClassId = selected?.id;
-  const loadClassAnalytics = useCallback(
-    async () => classResultsToAnalytics(await fetchClassResults(selectedClassId as number)),
+
+  // Период аналитики. undefined — «как решит бэкенд»: последняя завершённая
+  // кампания, где участвовал кто-то из НЫНЕШНИХ учеников. Явное значение —
+  // выбор в переключателе: строки классов школа переиспользует из года в год,
+  // и архив прошлой когорты («5-2 · 2026» у нынешнего 5-2) достижим только так.
+  const [analyticsCampaignId, setAnalyticsCampaignId] = useState<number | undefined>(undefined);
+  const loadClassCampaigns = useCallback(
+    () => (selectedClassId ? fetchClassCampaigns(selectedClassId) : Promise.resolve([])),
     [selectedClassId],
   );
+  const classCampaigns = useApi(loadClassCampaigns);
+
+  const loadClassAnalytics = useCallback(
+    async () =>
+      classResultsToAnalytics(
+        await fetchClassResults(selectedClassId as number, analyticsCampaignId),
+      ),
+    [selectedClassId, analyticsCampaignId],
+  );
   const loadClassDynamics = useCallback(
-    () => fetchGroupDynamics('class', selectedClassId as number),
-    [selectedClassId],
+    () => fetchGroupDynamics('class', selectedClassId as number, analyticsCampaignId),
+    [selectedClassId, analyticsCampaignId],
   );
   const selectedRows = rows.filter((u) => selection.selectedIds.includes(u.id));
 
@@ -182,13 +198,18 @@ export function AdminClassesPage() {
               open={analyticsOpen}
               onToggle={() => setAnalyticsOpen((value) => !value)}
             >
+              <PeriodSelect
+                campaigns={classCampaigns.data ?? []}
+                value={analyticsCampaignId}
+                onChange={setAnalyticsCampaignId}
+              />
               <GroupAnalytics
                 label={classLabel(selected)}
                 averageLabel="Средний балл класса"
                 groupNoun="класс"
                 load={loadClassAnalytics}
                 loadDynamics={loadClassDynamics}
-                emptyText="По этому классу ещё не было завершённой диагностики — аналитика появится после закрытия кампании."
+                emptyText="У нынешнего состава класса завершённой диагностики ещё не было — выберите период выше, чтобы посмотреть архив."
               />
             </Collapsible>
           )}

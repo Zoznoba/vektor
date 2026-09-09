@@ -1,5 +1,6 @@
 import { apiRequest } from './client';
 import type {
+  CampaignRef,
   CaseResults,
   GroupDynamics,
   ClassResults,
@@ -53,6 +54,18 @@ export function fetchSubjectDynamics(
 export function fetchClassRoster(classId: number, campaignId?: number): Promise<ClassRoster> {
   const query = campaignId !== undefined ? `?campaign_id=${campaignId}` : '';
   return apiRequest<ClassRoster>(`/results/class/${classId}/roster${query}`);
+}
+
+/**
+ * Периоды диагностики класса — под переключатель на экране класса.
+ *
+ * Список шире, чем «кампании этой строки класса»: в него входят и те, где
+ * участвовали нынешние ученики под прежним ярлыком (сегодняшний 8-1 год назад
+ * был 7-1). Без второй половины учитель не добрался бы до истории своего же
+ * класса — см. list_campaigns_for_class на бэке.
+ */
+export function fetchClassCampaigns(classId: number): Promise<CampaignRef[]> {
+  return apiRequest<CampaignRef[]>(`/results/class/${classId}/campaigns`);
 }
 
 /**

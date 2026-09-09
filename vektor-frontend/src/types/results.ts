@@ -12,6 +12,7 @@
  */
 
 import type { User } from './auth';
+import type { CampaignStatus } from './campaign';
 
 export interface CompetencyScore {
   competency_id: number;
@@ -163,6 +164,18 @@ export interface SubjectDynamics {
 }
 
 /** Состав класса с прогрессом: GET /results/class/{id}/roster. */
+/**
+ * Период под переключатель на экране класса. Приходит и от
+ * `/results/{id}/campaigns` (у ученика), и от `/results/class/{id}/campaigns`.
+ */
+export interface CampaignRef {
+  campaign_id: number;
+  title: string;
+  period_year: number;
+  period_month: number;
+  status: CampaignStatus;
+}
+
 export interface ClassRosterRow {
   subject: { id: number; full_name: string };
   /** null — анкета не выдана вовсе; это не то же самое, что not_started. */
@@ -184,6 +197,11 @@ export interface ClassRoster {
   campaign_title: string;
   campaign_period_year: number;
   campaign_period_month: number;
+  /**
+   * Состав закрытой кампании — её снапшот: те, кто учился в классе тогда.
+   * Нынешние ученики без анкет добавляются только в идущую (см. get_class_roster).
+   */
+  campaign_status: CampaignStatus;
   students_count: number;
   assessments_total: number;
   assessments_completed: number;

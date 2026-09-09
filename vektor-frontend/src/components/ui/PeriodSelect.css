@@ -1,0 +1,25 @@
+.period-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.period-select__label {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* Повторяет .admin-select, но живёт здесь: тот лежит в admin.css, который на
+   учительские страницы не импортируется, и при code-splitting стиль просто не
+   доехал бы до экрана диагностики класса. */
+.period-select__control {
+  font-family: var(--font-b);
+  font-size: 13.5px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}

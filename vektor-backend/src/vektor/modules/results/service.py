@@ -9,6 +9,8 @@ domain.py — чистые правила без БД, repository.py — зап�
 при генерации — см. repository.load_scored_answers.
 """
 
+from collections.abc import Collection
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vektor.modules.assessments.errors import CampaignNotFound
@@ -37,10 +39,14 @@ from vektor.modules.results.domain import (
     self_by_competency,
     shared_competencies,
 )
-from vektor.modules.results.errors import NotAllowedToViewResults, SubjectNotFound
+from vektor.modules.results.errors import (
+    ClassHasNoDiagnostics,
+    NotAllowedToViewResults,
+    SubjectNotFound,
+)
 from vektor.modules.users.models import User
 from vektor.shared.class_label import class_label
-from vektor.shared.enums import RaterRole
+from vektor.shared.enums import CampaignStatus, RaterRole
 
 
 async def _load_subject_for_results(db: AsyncSession, subject_id: int, current_user: User) -> User:
@@ -75,12 +81,15 @@ async def latest_campaign_id_for_subject(db: AsyncSession, subject_id: int) -> i
 
 
 async def latest_campaign_id_for_class(
-    db: AsyncSession, class_id: int, only_completed: bool = True
+    db: AsyncSession,
+    class_id: int,
+    only_completed: bool = True,
+    subject_ids: Collection[int] | None = None,
 ) -> int | None:
     """Последняя кампания класса. Обёртка над общей репозиторной функцией:
     класс и кейс отличаются только колонкой снапшота."""
     return await repo.latest_campaign_id_for_group(
-        db, Assessment.subject_class_id, class_id, only_completed
+        db, Assessment.subject_class_id, class_id, only_completed, subject_ids
     )
 
 
@@ -396,7 +405,7 @@ async def _group_profile(
 
 
 async def get_class_results(
-    db: AsyncSession, class_id: int, campaign_id: int, current_user: User
+    db: AsyncSession, class_id: int, campaign_id: int | None, current_user: User
 ) -> dict:
     """Средний профиль класса, сравнение со школой и зоны роста класса."""
     school_class = await repo.load_class_with_teachers(db, class_id)
@@ -406,6 +415,8 @@ async def get_class_results(
     teacher_ids = {t.id for t in school_class.teachers}
     if not can_view_group_results(current_user.id, current_user.role, teacher_ids):
         raise NotAllowedToViewResults()
+
+    campaign_id = await _resolve_class_campaign(db, class_id, campaign_id, only_completed=True)
 
     profile = await _group_profile(
         db, campaign_id, Assessment.subject_class_id, class_id, "class_avg"
@@ -584,7 +595,7 @@ async def _group_dynamics(
 
 
 async def get_class_dynamics(
-    db: AsyncSession, class_id: int, campaign_id: int, current_user: User
+    db: AsyncSession, class_id: int, campaign_id: int | None, current_user: User
 ) -> dict:
     """Динамика класса по критериям. Права те же, что у профиля класса."""
     school_class = await repo.load_class_with_teachers(db, class_id)
@@ -594,6 +605,8 @@ async def get_class_dynamics(
         current_user.id, current_user.role, {t.id for t in school_class.teachers}
     ):
         raise NotAllowedToViewResults()
+
+    campaign_id = await _resolve_class_campaign(db, class_id, campaign_id, only_completed=True)
 
     dynamics = await _group_dynamics(db, campaign_id, Assessment.subject_class_id, class_id)
     return {
@@ -699,18 +712,41 @@ async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
     }
 
 
-async def get_class_roster(
-    db: AsyncSession, class_id: int, campaign_id: int, current_user: User
-) -> dict:
-    """Состав класса с прогрессом диагностики: строка на ученика (статус
-    самооценки, собрано анкет, итоговый балл, динамика) плюс метрики шапки.
+async def _resolve_class_campaign(
+    db: AsyncSession, class_id: int, campaign_id: int | None, only_completed: bool
+) -> int:
+    """Кампания для экранов класса: явная либо «последняя у ЭТОЙ когорты».
 
-    Права те же, что у профиля класса: admin или учитель ЭТОГО класса.
+    Ключевое слово — когорта. Школа переиспользует строки классов из года в
+    год (перевод меняет ученику school_class_id, а не заводит новый
+    SchoolClass), поэтому «последняя кампания класса 5-2» вполне может
+    относиться к детям, которых в нём давно нет: к прошлогодним
+    пятиклассникам, ныне шестиклассникам, вместе с выбывшими из школы.
+    Открывать такое по умолчанию нельзя — ни учителю, ни админу: экран
+    выглядит рабочим, а показывает чужих людей.
+
+    Архив никуда не девается и открывается явным campaign_id — их список
+    отдаёт `list_class_campaigns`, на нём и построен переключатель периодов.
     """
-    campaign = await repo.get_campaign(db, campaign_id)
-    if campaign is None:
-        raise CampaignNotFound()
+    if campaign_id is not None:
+        return campaign_id
 
+    student_ids = await repo.student_ids_of_class(db, class_id)
+    resolved = await latest_campaign_id_for_class(
+        db, class_id, only_completed=only_completed, subject_ids=student_ids
+    )
+    if resolved is None:
+        raise ClassHasNoDiagnostics()
+    return resolved
+
+
+async def list_class_campaigns(db: AsyncSession, class_id: int, current_user: User) -> list[dict]:
+    """Периоды под переключатель на экране диагностики класса.
+
+    Права те же, что у самого экрана: admin или учитель ЭТОГО класса —
+    иначе список кампаний рассказывал бы постороннему, когда класс проходил
+    диагностику.
+    """
     school_class = await repo.load_class_with_roster(db, class_id)
     if school_class is None:
         raise ClassNotFound()
@@ -719,13 +755,74 @@ async def get_class_roster(
     if not can_view_group_results(current_user.id, current_user.role, teacher_ids):
         raise NotAllowedToViewResults()
 
-    # Состав берём по СНАПШОТУ анкет кампании, а не по текущему списку класса:
-    # на прошлогоднюю кампанию должны попасть те, кто учился тогда, включая
-    # выбывших. Текущих учеников без анкет добавляем отдельно — учитель должен
-    # видеть, что диагностика по ним не выдана.
+    student_ids = {student.id for student in school_class.students}
+    return [
+        {
+            "campaign_id": campaign.id,
+            "title": campaign.title,
+            "period_year": campaign.period_year,
+            "period_month": campaign.period_month,
+            "status": campaign.status,
+        }
+        for campaign in await repo.list_campaigns_for_class(db, class_id, student_ids)
+    ]
+
+
+async def get_class_roster(
+    db: AsyncSession, class_id: int, campaign_id: int | None, current_user: User
+) -> dict:
+    """Состав класса с прогрессом диагностики: строка на ученика (статус
+    самооценки, собрано анкет, итоговый балл, динамика) плюс метрики шапки.
+
+    Права те же, что у профиля класса: admin или учитель ЭТОГО класса.
+
+    campaign_id=None — «последняя кампания ЭТОЙ когорты»: см. ниже, почему
+    просто «последняя кампания класса» тут не годится.
+    """
+    school_class = await repo.load_class_with_roster(db, class_id)
+    if school_class is None:
+        raise ClassNotFound()
+
+    teacher_ids = {t.id for t in school_class.teachers}
+    if not can_view_group_results(current_user.id, current_user.role, teacher_ids):
+        raise NotAllowedToViewResults()
+
+    student_ids = {student.id for student in school_class.students}
+
+    # only_completed=False: это экран МОНИТОРИНГА, ему нужна и идущая
+    # кампания — иначе во время диагностики учитель видел бы прошлый период
+    # вместо того, по кому анкеты ещё не заполнены. Балльные экраны
+    # (профиль, динамика) — наоборот, только завершённые.
+    campaign_id = await _resolve_class_campaign(db, class_id, campaign_id, only_completed=False)
+
+    campaign = await repo.get_campaign(db, campaign_id)
+    if campaign is None:
+        raise CampaignNotFound()
+
+    # Состав складывается из трёх слагаемых — и все три нужны, потому что
+    # «класс» в данных двусмысленен: строки классов школа переиспользует из
+    # года в год (перевод меняет ученику school_class_id, а не заводит новый
+    # SchoolClass), поэтому «8-1 в июне» и «8-1 сегодня» — разные дети.
     class_map = await repo.subject_group_map(db, campaign_id, Assessment.subject_class_id)
+    participants = set(class_map)
+
+    # 1. Снапшот: кому анкеты выдали ПО ЭТОЙ строке класса. Именно снапшот, а
+    #    не текущая привязка, — иначе выбывшие исчезли бы из прошлогодней
+    #    диагностики, и средние за тот год перестали бы сходиться.
     subject_ids = {sid for sid, cid in class_map.items() if cid == class_id}
-    subject_ids |= {student.id for student in school_class.students}
+
+    # 2. Нынешние ученики, участвовавшие в ЭТОЙ кампании под другим ярлыком:
+    #    сегодняшний 8-1 год назад проходил диагностику как 7-1. Без этого
+    #    слагаемого выбор прошлого периода в переключателе давал бы пустой
+    #    экран вместо истории собственного класса.
+    subject_ids |= student_ids & participants
+
+    # 3. Нынешние ученики БЕЗ анкет — только пока диагностика идёт: тогда
+    #    пустая строка означает «анкету не выдали, разберитесь». В закрытой
+    #    кампании выдавать уже нечего, а подмешивание сегодняшнего состава к
+    #    прошлому году склеивало бы две когорты в одной таблице.
+    if campaign.status != CampaignStatus.CLOSED:
+        subject_ids |= student_ids
 
     progress = await repo.assessment_progress_by_subject(db, campaign_id, subject_ids)
 
@@ -796,6 +893,10 @@ async def get_class_roster(
         "campaign_title": campaign.title,
         "campaign_period_year": campaign.period_year,
         "campaign_period_month": campaign.period_month,
+        # Статус отдаём сырым, а не готовой подписью: у закрытой кампании
+        # состав — это снапшот на её момент, и предупредить об этом должен
+        # экран. Текст под UI собирает фронт (то же решение, что badgeLabel в 4e).
+        "campaign_status": campaign.status,
         "students_count": len(rows_out),
         "assessments_total": total_all,
         "assessments_completed": completed_all,
