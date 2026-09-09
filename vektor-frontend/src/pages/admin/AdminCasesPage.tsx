@@ -402,25 +402,15 @@ function MembersTable({
   );
 }
 
-/** Пункты «профиль» и «результаты» — те же, что в составе класса. */
+/** Пункт «профиль» — тот же, что в составе класса. */
 function commonUserActions(user: User, navigate: ReturnType<typeof useNavigate>): ActionMenuItem[] {
-  const items: ActionMenuItem[] = [
+  return [
     {
       key: 'profile',
       label: 'Открыть профиль',
       onSelect: () => navigate(`/admin/users/${user.id}`),
     },
   ];
-  // Результаты есть только у ученика: субъект диагностики — он, учитель
-  // выступает оценивающим и собственного профиля результатов не имеет.
-  if (user.role === 'student') {
-    items.push({
-      key: 'results',
-      label: 'Посмотреть результаты',
-      onSelect: () => navigate(`/admin/users/${user.id}/results`),
-    });
-  }
-  return items;
 }
 
 /** Одна форма на создание и переименование — поля те же, разнится только текст. */

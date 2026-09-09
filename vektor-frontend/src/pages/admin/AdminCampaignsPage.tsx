@@ -420,7 +420,7 @@ function CoverageStudentsTable({ students }: { students: CampaignStudentRow[] })
             <tr
               key={student.subject.id}
               className="coverage-students__row"
-              onClick={() => navigate(`/admin/users/${student.subject.id}/results`)}
+              onClick={() => navigate(`/admin/users/${student.subject.id}`)}
             >
               {/* Подсказка про переход висит на ИМЕНИ, а не на всей строке:
                   системный тултип появляется через секунду и накрывал бы наш

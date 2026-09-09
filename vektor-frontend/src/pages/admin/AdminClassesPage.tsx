@@ -395,25 +395,16 @@ function countFor(cls: SchoolClass, tab: CompositionTab): number {
   return homeroomTeachers(cls).length;
 }
 
-/** Пункты «профиль» и «результаты» — общие для любой роли в составе класса. */
+/** Пункт «профиль» — общий для любой роли в составе класса. Диагностика
+ * отдельным пунктом не нужна: она раскрыта прямо в карточке пользователя. */
 function commonUserActions(user: User, navigate: ReturnType<typeof useNavigate>): ActionMenuItem[] {
-  const items: ActionMenuItem[] = [
+  return [
     {
       key: 'profile',
       label: 'Открыть профиль',
       onSelect: () => navigate(`/admin/users/${user.id}`),
     },
   ];
-  // Результаты есть только у ученика: субъект диагностики — он, учитель
-  // выступает оценивающим и собственного профиля результатов не имеет.
-  if (user.role === 'student') {
-    items.push({
-      key: 'results',
-      label: 'Посмотреть результаты',
-      onSelect: () => navigate(`/admin/users/${user.id}/results`),
-    });
-  }
-  return items;
 }
 
 function StudentsTable({

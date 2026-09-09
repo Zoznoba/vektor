@@ -138,20 +138,10 @@ function App() {
                 </RequireAdmin>
               }
             />
-            {/* Карточка пользователя — одна страница. `/results` оставлен
-                синонимом: по нему ведут действия «Диагностика» из «Классов»,
-                «Кейсов» и покрытия кампании. Блок диагностики раскрыт в
-                обоих случаях, поэтому поведение адресов не различается. */}
+            {/* Карточка пользователя — одна страница: диагностика на ней уже
+                раскрыта, отдельного адреса под неё не нужно. */}
             <Route
               path="/admin/users/:id"
-              element={
-                <RequireAdmin>
-                  <AdminUserProfilePage />
-                </RequireAdmin>
-              }
-            />
-            <Route
-              path="/admin/users/:id/results"
               element={
                 <RequireAdmin>
                   <AdminUserProfilePage />

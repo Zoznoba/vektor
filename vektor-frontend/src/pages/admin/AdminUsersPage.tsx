@@ -247,15 +247,6 @@ export function AdminUsersPage() {
         onSelect: () => navigate(`/admin/users/${user.id}`),
       },
     ];
-    // Диагностика есть только у ученика: субъект оценки — он, остальные роли
-    // выступают оценивающими и собственного профиля результатов не имеют.
-    if (user.role === 'student') {
-      items.push({
-        key: 'results',
-        label: 'Диагностика',
-        onSelect: () => navigate(`/admin/users/${user.id}/results`),
-      });
-    }
     items.push({
       key: 'password',
       label: 'Сбросить пароль',
