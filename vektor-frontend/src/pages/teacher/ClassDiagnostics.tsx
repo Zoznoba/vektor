@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Panel } from '../../components/ui/Panel';
-import { PeriodSelect } from '../../components/ui/PeriodSelect';
+import { PeriodBar } from '../../components/ui/PeriodBar';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/icons/Icon';
 import {
@@ -11,6 +11,7 @@ import {
   SelfGapList,
 } from '../../components/dashboard/GroupProfile';
 import { useApi } from '../../hooks/useApi';
+import { useGroupSelection } from '../../hooks/useGroupSelection';
 import {
   fetchClassCampaigns,
   fetchClassResults,
@@ -80,6 +81,10 @@ function RosterTh({
 
 interface ClassDiagnosticsProps {
   classId: number;
+  /** Подпись класса для строки контекста («8-1»). Приходит из списка классов,
+   *  а не из ростера: строка контекста стоит и над пустым экраном, где
+   *  ростера ещё нет. */
+  classLabel: string;
   /**
    * Чем смотрящий занят в этом классе («архитектура», «кл. руководитель»).
    * Раньше это висело тегом на КАЖДОМ чипе класса и у предметника с
@@ -98,17 +103,18 @@ interface ClassDiagnosticsProps {
  * переживала успешную загрузку, из-за чего экран писал «диагностики нет»
  * поверх нормальных данных.
  */
-export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
+export function ClassDiagnostics({ classId, classLabel, roleNote }: ClassDiagnosticsProps) {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<FilterKey>('all');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
-  // Явный выбор в переключателе периодов. Пока его нет — умолчание из
+  // Явный выбор периода живёт в адресе страницы (?campaign=), а не в
+  // useState: срез экрана — это то, что пересылают ссылкой, и то, к чему
+  // возвращаются кнопкой «назад». Пока выбора нет — умолчание из
   // defaultCampaignId: самая свежая кампания НЫНЕШНЕГО состава, ЛЮБОГО
   // статуса (этот экран — мониторинг, ради идущей диагностики его и
-  // открывают). Сбрасывать при смене класса не нужно: родитель пересоздаёт
-  // блок по key={classId}, и состояние уезжает вместе со старым классом.
-  const [pickedCampaignId, setPickedCampaignId] = useState<number | undefined>(undefined);
+  // открывают).
+  const { campaignId: pickedCampaignId, selectCampaign } = useGroupSelection();
 
   // useApi требует стабильную ссылку — иначе effect уходит в цикл запросов.
   const loadCampaigns = useCallback(() => fetchClassCampaigns(classId), [classId]);
@@ -216,11 +222,31 @@ export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
     [students],
   );
 
+  // Строка контекста рисуется и над пустым экраном тоже: по умолчанию
+  // открывается только кампания НЫНЕШНЕЙ когорты, а её у нового набора ещё
+  // нет — при этом архив прошлых лет по этой строке класса существует, и без
+  // переключателя до него было бы не добраться вовсе.
+  const periodBar = (
+    <PeriodBar
+      title={[`Диагностика ${classLabel}`, roleNote].filter(Boolean).join(' · ')}
+      campaigns={campaigns.data ?? []}
+      value={campaignId}
+      onChange={selectCampaign}
+      loading={campaigns.loading}
+    />
+  );
+
+  // Строка контекста остаётся на экране и во время загрузки, и на ошибке:
+  // она не часть данных, а подпись к ним — вместе с ней пропадал бы и
+  // единственный способ выбрать другой период.
   if (campaigns.loading || roster.loading) {
     return (
-      <Panel>
-        <div className="app-main__sub">Загрузка…</div>
-      </Panel>
+      <>
+        {periodBar}
+        <Panel>
+          <div className="app-main__sub">Загрузка…</div>
+        </Panel>
+      </>
     );
   }
 
@@ -230,23 +256,14 @@ export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
   // «нет доступа» и не понимает, что дело в привязке к классу.
   if (roster.error && roster.status !== 404) {
     return (
-      <Panel>
-        <div className="form-error">{roster.error}</div>
-      </Panel>
+      <>
+        {periodBar}
+        <Panel>
+          <div className="form-error">{roster.error}</div>
+        </Panel>
+      </>
     );
   }
-
-  // Переключатель периодов рисуется и над пустым экраном тоже: по умолчанию
-  // открывается только кампания НЫНЕШНЕЙ когорты, а её у нового набора ещё
-  // нет — при этом архив прошлых лет по этой строке класса существует, и без
-  // переключателя до него было бы не добраться вовсе.
-  const periodSwitcher = (
-    <PeriodSelect
-      campaigns={campaigns.data ?? []}
-      value={campaignId}
-      onChange={setPickedCampaignId}
-    />
-  );
 
   const metrics = roster.data;
 
@@ -258,9 +275,9 @@ export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
 
   return (
     <>
-      {/* Переключатель — НАД метриками: он меняет и их, и радар ниже, а стоя
-          под ними читался бы как фильтр одной только таблицы состава. */}
-      {periodSwitcher}
+      {/* Строка контекста — НАД метриками: она задаёт и их, и радар ниже, а
+          стоя под ними читалась бы как фильтр одной только таблицы состава. */}
+      {periodBar}
 
       {/* Состав и метрики есть только тогда, когда по классу выдана кампания.
           Профиль ниже от этого не зависит: он считается по нынешним ученикам
@@ -293,11 +310,9 @@ export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
           </div>
         </div>
 
-        <Panel
-          title={[`Состав ${metrics.class_label}`, roleNote, metrics.campaign_title]
-            .filter(Boolean)
-            .join(' · ')}
-        >
+        {/* Роль в классе и название кампании уехали в строку контекста
+            выше — здесь они были бы третьим повтором одного и того же. */}
+        <Panel title={`Состав ${metrics.class_label}`}>
           {metrics.campaign_status === 'closed' && (
             /* Кампания закрыта — значит состав тут ИСТОРИЧЕСКИЙ: снапшот на её
                момент, а не сегодняшний список класса. Оговорка обязательна:

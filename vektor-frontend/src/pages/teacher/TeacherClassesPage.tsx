@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { RoleShell } from '../../components/layout/RoleShell';
 import { ClassDiagnostics } from './ClassDiagnostics';
 import { useApi } from '../../hooks/useApi';
+import { useGroupSelection } from '../../hooks/useGroupSelection';
 import { useAuth } from '../../auth/AuthContext';
 import { fetchClasses } from '../../api/classes';
 import { classLabel } from '../../types/school';
@@ -19,7 +20,10 @@ import './TeacherClassesPage.css';
 export function TeacherClassesPage() {
   const { user } = useAuth();
   const classes = useApi(fetchClasses);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  // Открытый класс — в адресе страницы (?class=), вместе с периодом: без
+  // него ссылка на срез открывала бы первый класс по сортировке, а период из
+  // неё применился бы к чужому классу.
+  const { groupId: selectedId, selectGroup } = useGroupSelection();
 
   const myClasses = useMemo(
     () => (classes.data ?? []).filter((c) => c.teachers.some((t) => t.teacher.id === user?.id)),
@@ -51,7 +55,7 @@ export function TeacherClassesPage() {
                   ? `Класс ${classLabel(cls)}, вы классный руководитель`
                   : `Класс ${classLabel(cls)}`
               }
-              onClick={() => setSelectedId(cls.id)}
+              onClick={() => selectGroup(cls.id)}
             >
               {classLabel(cls)}
               {isHomeroom(cls, user?.id) && (
@@ -79,11 +83,12 @@ export function TeacherClassesPage() {
       ) : (
         // key — чтобы смена класса пересоздавала блок, а не подмешивала
         // данные прошлого класса в новый рендер.
-        activeClassId !== null && (
+        activeClass !== null && (
           <ClassDiagnostics
-            key={activeClassId}
-            classId={activeClassId}
-            roleNote={activeClass ? myRoleNote(activeClass, user?.id) : null}
+            key={activeClass.id}
+            classId={activeClass.id}
+            classLabel={classLabel(activeClass)}
+            roleNote={myRoleNote(activeClass, user?.id)}
           />
         )
       )}
