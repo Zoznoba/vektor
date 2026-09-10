@@ -15,9 +15,11 @@ import type { CaseResults, ClassResults } from '../types/results';
 /** Профиль группы, приведённый к общему виду: класс и кейс отдают одни и те
  *  же числа под разными именами полей (`class_avg` / `case_avg`). */
 export interface GroupAnalyticsData {
-  campaignTitle: string;
-  periodYear: number;
-  periodMonth: number;
+  /** null — профиль сшит по нынешнему составу, одной кампании у него нет. */
+  campaignTitle: string | null;
+  periodYear: number | null;
+  periodMonth: number | null;
+  studentsTotal: number;
   studentsWithResults: number;
   average: number | null;
   schoolAverage: number | null;
@@ -31,6 +33,7 @@ export function classResultsToAnalytics(data: ClassResults): GroupAnalyticsData 
     campaignTitle: data.campaign_title,
     periodYear: data.campaign_period_year,
     periodMonth: data.campaign_period_month,
+    studentsTotal: data.students_total,
     studentsWithResults: data.students_with_results,
     average: data.class_average,
     schoolAverage: data.school_average,
@@ -57,6 +60,7 @@ export function caseResultsToAnalytics(data: CaseResults): GroupAnalyticsData {
     campaignTitle: data.campaign_title,
     periodYear: data.campaign_period_year,
     periodMonth: data.campaign_period_month,
+    studentsTotal: data.students_total,
     studentsWithResults: data.students_with_results,
     average: data.case_average,
     schoolAverage: data.school_average,

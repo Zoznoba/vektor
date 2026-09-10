@@ -201,13 +201,28 @@ export function GroupAnalytics({
 
   return (
     <>
-      {/* Явно про состав НА МОМЕНТ КАМПАНИИ: ниже на странице стоит вкладка
-          «Ученики · N» с сегодняшним составом, и без этой оговорки два разных
-          числа рядом читаются как ошибка (7-1 прошлого года — 11 человек в
-          диагностике и 2 в классе сейчас). */}
+      {/* Подпись говорит, ЧЕЙ это профиль, и она разная у двух режимов.
+          Без периода профиль сшит по сегодняшним ученикам (у каждого его
+          последняя диагностика), с периодом — это снапшот той кампании, где
+          состав другой. Ниже на странице стоит вкладка «Ученики · N» с
+          сегодняшним составом, и без оговорки два разных числа рядом
+          читаются как ошибка (7-1 прошлого года — 11 человек в диагностике и
+          2 в классе сейчас). */}
       <div className="app-main__sub">
-        {data.campaignTitle} · {formatPeriod(data.periodYear, data.periodMonth)} ·{' '}
-        {data.studentsWithResults} учеников в диагностике (состав на момент кампании)
+        {data.campaignTitle === null ? (
+          <>
+            Нынешний состав · {data.studentsWithResults} из {data.studentsTotal} учеников с
+            диагностикой (у каждого — его последняя)
+          </>
+        ) : (
+          <>
+            {data.campaignTitle}
+            {data.periodYear !== null && data.periodMonth !== null && (
+              <> · {formatPeriod(data.periodYear, data.periodMonth)}</>
+            )}{' '}
+            · {data.studentsWithResults} учеников в диагностике (состав на момент кампании)
+          </>
+        )}
       </div>
 
       <div className="group-analytics__tiles">
@@ -285,7 +300,13 @@ export function GroupDynamicsSection({
       <DynamicsChart
         competencies={scored}
         previousLabel={previousLabel}
-        currentLabel={formatPeriod(data.campaign_period_year, data.campaign_period_month)}
+        currentLabel={
+          // В режиме нынешнего состава кампании у учеников разные, и в ярлыке
+          // стоит самая свежая; период может отсутствовать вовсе.
+          data.campaign_period_year !== null && data.campaign_period_month !== null
+            ? formatPeriod(data.campaign_period_year, data.campaign_period_month)
+            : 'сейчас'
+        }
       />
       {data.versions_differ && data.version_note && (
         <div className="app-main__sub">{data.version_note}</div>

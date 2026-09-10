@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Panel } from '../../components/ui/Panel';
+import { PeriodSelect } from '../../components/ui/PeriodSelect';
 import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/icons/Icon';
 import {
@@ -10,7 +11,12 @@ import {
   SelfGapList,
 } from '../../components/dashboard/GroupProfile';
 import { useApi } from '../../hooks/useApi';
-import { fetchClassResults, fetchClassRoster, fetchGroupDynamics } from '../../api/results';
+import {
+  fetchClassCampaigns,
+  fetchClassResults,
+  fetchClassRoster,
+  fetchGroupDynamics,
+} from '../../api/results';
 import { fetchMyAssessments } from '../../api/assessments';
 import type { ClassRosterRow } from '../../types/results';
 import type { AssessmentListItem } from '../../types/assessment';
@@ -96,12 +102,32 @@ export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
   const [filter, setFilter] = useState<FilterKey>('all');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  // undefined — «как решит бэкенд»: последняя кампания, где участвовали
+  // нынешние ученики. Явное значение — выбор в переключателе периодов.
+  // Сбрасывать при смене класса не нужно: родитель пересоздаёт блок по
+  // key={classId}, и состояние уезжает вместе со старым классом.
+  const [campaignId, setCampaignId] = useState<number | undefined>(undefined);
 
   // useApi требует стабильную ссылку — иначе effect уходит в цикл запросов.
-  const loadRoster = useCallback(() => fetchClassRoster(classId), [classId]);
-  const loadResults = useCallback(() => fetchClassResults(classId), [classId]);
-  const loadDynamics = useCallback(() => fetchGroupDynamics('class', classId), [classId]);
+  const loadRoster = useCallback(() => fetchClassRoster(classId, campaignId), [classId, campaignId]);
+  const loadCampaigns = useCallback(() => fetchClassCampaigns(classId), [classId]);
   const roster = useApi(loadRoster);
+  const campaigns = useApi(loadCampaigns);
+
+  // Профиль и динамику ведём за ЯВНЫМ выбором периода, а не за ростером.
+  // Без выбора бэкенд считает их по нынешнему составу, сшивая последние
+  // диагностики каждого ученика, — а ростер в том же случае показывает одну
+  // кампанию. Привязав профиль к ней, мы бы у класса, собранного из двух
+  // прежних (10-й — из двух девятых), нарисовали радар по половине состава.
+  const profileCampaignId = campaignId;
+  const loadResults = useCallback(
+    () => fetchClassResults(classId, profileCampaignId),
+    [classId, profileCampaignId],
+  );
+  const loadDynamics = useCallback(
+    () => fetchGroupDynamics('class', classId, profileCampaignId),
+    [classId, profileCampaignId],
+  );
   const results = useApi(loadResults);
   // Свои анкеты нужны, чтобы кнопка «Оценить» вела в конкретную анкету.
   // Отдельным полем в ростере это не отдаём: ростер — про класс, а «моя
@@ -200,13 +226,17 @@ export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
     );
   }
 
-  if (roster.error || !roster.data) {
-    return (
-      <Panel>
-        <div className="app-main__sub">По этому классу ещё нет диагностики</div>
-      </Panel>
-    );
-  }
+  // Переключатель периодов рисуется и над пустым экраном тоже: по умолчанию
+  // открывается только кампания НЫНЕШНЕЙ когорты, а её у нового набора ещё
+  // нет — при этом архив прошлых лет по этой строке класса существует, и без
+  // переключателя до него было бы не добраться вовсе.
+  const periodSwitcher = (
+    <PeriodSelect
+      campaigns={campaigns.data ?? []}
+      value={campaignId}
+      onChange={setCampaignId}
+    />
+  );
 
   const metrics = roster.data;
 
@@ -218,133 +248,165 @@ export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
 
   return (
     <>
-      <div className="teacher-metrics">
-        <div className="teacher-metric">
-          <div className="teacher-metric__value">{metrics.students_count}</div>
-          <div className="teacher-metric__label">Учеников в классе</div>
-        </div>
-        <div className="teacher-metric">
-          <div className="teacher-metric__value teacher-metric__value--blue">
-            {Math.round(metrics.coverage_percent)}%
-          </div>
-          <div className="teacher-metric__label">
-            Анкет заполнено · {metrics.assessments_completed} из {metrics.assessments_total}
-          </div>
-        </div>
-        <div className="teacher-metric">
-          <div className="teacher-metric__value">{metrics.class_average?.toFixed(2) ?? '—'}</div>
-          <div className="teacher-metric__label">Средний балл класса</div>
-        </div>
-        <div className="teacher-metric">
-          <div className="teacher-metric__value teacher-metric__value--sage">
-            {formatDelta(metrics.average_delta)}
-          </div>
-          <div className="teacher-metric__label">Динамика за год</div>
-        </div>
-      </div>
+      {/* Переключатель — НАД метриками: он меняет и их, и радар ниже, а стоя
+          под ними читался бы как фильтр одной только таблицы состава. */}
+      {periodSwitcher}
 
-      <Panel
-        title={[`Состав ${metrics.class_label}`, roleNote, metrics.campaign_title]
-          .filter(Boolean)
-          .join(' · ')}
-      >
-        <div className="roster-filters">
-          {filters.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              className={`roster-filter ${
-                filter === item.key ? 'roster-filter--active' : ''
-              }`.trim()}
-              onClick={() => setFilter(item.key)}
-            >
-              {item.label}
-            </button>
-          ))}
+      {/* Состав и метрики есть только тогда, когда по классу выдана кампания.
+          Профиль ниже от этого не зависит: он считается по нынешним ученикам
+          и их последним диагностикам, даже если общей кампании у класса нет
+          ни одной. */}
+      {metrics ? (
+        <>
+        <div className="teacher-metrics">
+          <div className="teacher-metric">
+            <div className="teacher-metric__value">{metrics.students_count}</div>
+            <div className="teacher-metric__label">Учеников в классе</div>
+          </div>
+          <div className="teacher-metric">
+            <div className="teacher-metric__value teacher-metric__value--blue">
+              {Math.round(metrics.coverage_percent)}%
+            </div>
+            <div className="teacher-metric__label">
+              Анкет заполнено · {metrics.assessments_completed} из {metrics.assessments_total}
+            </div>
+          </div>
+          <div className="teacher-metric">
+            <div className="teacher-metric__value">{metrics.class_average?.toFixed(2) ?? '—'}</div>
+            <div className="teacher-metric__label">Средний балл класса</div>
+          </div>
+          <div className="teacher-metric">
+            <div className="teacher-metric__value teacher-metric__value--sage">
+              {formatDelta(metrics.average_delta)}
+            </div>
+            <div className="teacher-metric__label">Динамика за год</div>
+          </div>
         </div>
 
-        <div className="roster-scroll">
-          <table className="roster">
-            <thead>
-              <tr>
-                <RosterTh label="Ученик" col="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <RosterTh label="Самооценка" col="self" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <RosterTh label="Собрано" col="collected" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <RosterTh label="Балл" col="score" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <RosterTh label="Дин." col="delta" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((row) => {
-                const myAssessment = assessmentBySubject.get(row.subject.id);
-                return (
-                  <tr
-                    key={row.subject.id}
-                    className="roster__row"
-                    onClick={() => navigate(`/teacher/students/${row.subject.id}`)}
-                  >
-                    <td className="roster__name">{row.subject.full_name}</td>
-                    <td>
-                      <span
-                        className={`roster__status roster__status--${row.self_status ?? 'none'}`}
-                      >
-                        {selfStatusLabel(row.self_status)}
-                      </span>
-                    </td>
-                    <td className="roster__muted">
-                      {row.assessments_completed} из {row.assessments_total}
-                    </td>
-                    <td className="roster__score">
-                      {row.overall_avg === null ? '—' : row.overall_avg.toFixed(2)}
-                    </td>
-                    <td
-                      className={`roster__delta ${
-                        row.delta !== null && row.delta > 0 ? 'roster__delta--up' : ''
-                      }`.trim()}
+        <Panel
+          title={[`Состав ${metrics.class_label}`, roleNote, metrics.campaign_title]
+            .filter(Boolean)
+            .join(' · ')}
+        >
+          {metrics.campaign_status === 'closed' && (
+            /* Кампания закрыта — значит состав тут ИСТОРИЧЕСКИЙ: снапшот на её
+               момент, а не сегодняшний список класса. Оговорка обязательна:
+               школа переиспользует классы из года в год, поэтому у закрытой
+               диагностики 8-1 и у вкладки состава класса сегодня — разные дети,
+               и два разных числа рядом читаются как ошибка. Та же оговорка, что
+               в GroupProfile. */
+            <div className="app-main__sub">
+              Диагностика завершена — состав на момент кампании
+            </div>
+          )}
+
+          <div className="roster-filters">
+            {filters.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={`roster-filter ${
+                  filter === item.key ? 'roster-filter--active' : ''
+                }`.trim()}
+                onClick={() => setFilter(item.key)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="roster-scroll">
+            <table className="roster">
+              <thead>
+                <tr>
+                  <RosterTh label="Ученик" col="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                  <RosterTh label="Самооценка" col="self" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                  <RosterTh label="Собрано" col="collected" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                  <RosterTh label="Балл" col="score" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                  <RosterTh label="Дин." col="delta" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((row) => {
+                  const myAssessment = assessmentBySubject.get(row.subject.id);
+                  return (
+                    <tr
+                      key={row.subject.id}
+                      className="roster__row"
+                      onClick={() => navigate(`/teacher/students/${row.subject.id}`)}
                     >
-                      {formatDelta(row.delta)}
-                    </td>
-                    <td className="roster__action" onClick={(e) => e.stopPropagation()}>
-                      {/* «Оценить» только там, где анкета этого учителя про
-                          ученика реально существует и не завершена. Кнопкой
-                          со словом, а не значком, она осталась намеренно:
-                          строка с ней — это «здесь ещё есть работа», и по
-                          этому признаку таблицу просматривают глазами.
-                          «Профиль» же был одинаков во ВСЕХ строках и читался
-                          дюжиной белых коробок — он ушёл в клик по строке,
-                          от него остался значок-стрелка. */}
-                      {myAssessment && myAssessment.status !== 'completed' && (
-                        <Button
-                          className="btn-sm"
-                          onClick={() => navigate(`/assessments/${myAssessment.id}`)}
+                      <td className="roster__name">{row.subject.full_name}</td>
+                      <td>
+                        <span
+                          className={`roster__status roster__status--${row.self_status ?? 'none'}`}
                         >
-                          {myAssessment.status === 'not_started' ? 'Оценить' : 'Продолжить'}
-                        </Button>
-                      )}
-                      {/* Настоящая кнопка, а не декоративная иконка: клик по
-                          строке мышью удобен, но с клавиатуры недоступен. */}
-                      <button
-                        type="button"
-                        className="roster__open"
-                        aria-label={`Профиль: ${row.subject.full_name}`}
-                        title="Профиль ученика"
-                        onClick={() => navigate(`/teacher/students/${row.subject.id}`)}
+                          {selfStatusLabel(row.self_status)}
+                        </span>
+                      </td>
+                      <td className="roster__muted">
+                        {row.assessments_completed} из {row.assessments_total}
+                      </td>
+                      <td className="roster__score">
+                        {row.overall_avg === null ? '—' : row.overall_avg.toFixed(2)}
+                      </td>
+                      <td
+                        className={`roster__delta ${
+                          row.delta !== null && row.delta > 0 ? 'roster__delta--up' : ''
+                        }`.trim()}
                       >
-                        <Icon name="arrowRight" size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                        {formatDelta(row.delta)}
+                      </td>
+                      <td className="roster__action" onClick={(e) => e.stopPropagation()}>
+                        {/* «Оценить» только там, где анкета этого учителя про
+                            ученика реально существует и не завершена. Кнопкой
+                            со словом, а не значком, она осталась намеренно:
+                            строка с ней — это «здесь ещё есть работа», и по
+                            этому признаку таблицу просматривают глазами.
+                            «Профиль» же был одинаков во ВСЕХ строках и читался
+                            дюжиной белых коробок — он ушёл в клик по строке,
+                            от него остался значок-стрелка. */}
+                        {myAssessment && myAssessment.status !== 'completed' && (
+                          <Button
+                            className="btn-sm"
+                            onClick={() => navigate(`/assessments/${myAssessment.id}`)}
+                          >
+                            {myAssessment.status === 'not_started' ? 'Оценить' : 'Продолжить'}
+                          </Button>
+                        )}
+                        {/* Настоящая кнопка, а не декоративная иконка: клик по
+                            строке мышью удобен, но с клавиатуры недоступен. */}
+                        <button
+                          type="button"
+                          className="roster__open"
+                          aria-label={`Профиль: ${row.subject.full_name}`}
+                          title="Профиль ученика"
+                          onClick={() => navigate(`/teacher/students/${row.subject.id}`)}
+                        >
+                          <Icon name="arrowRight" size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-        {filtered.length === 0 && (
-          <div className="app-main__sub">По этому фильтру учеников нет</div>
-        )}
-      </Panel>
+          {filtered.length === 0 && (
+            <div className="app-main__sub">По этому фильтру учеников нет</div>
+          )}
+        </Panel>
+        </>
+      ) : (
+        <Panel>
+          <div className="app-main__sub">
+            {roster.status === 404
+              ? 'Диагностика по этому составу класса ещё не выдавалась. Ниже — профиль по последним диагностикам этих учеников; архив прошлых наборов доступен в списке периодов.'
+              : (roster.error ?? 'Загрузка…')}
+          </div>
+        </Panel>
+      )}
 
       <Panel title="Средний профиль класса">
         {results.loading ? (
