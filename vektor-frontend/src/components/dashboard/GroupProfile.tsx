@@ -201,13 +201,15 @@ export function GroupAnalytics({
 
   return (
     <>
-      {/* Явно про состав НА МОМЕНТ КАМПАНИИ: ниже на странице стоит вкладка
-          «Ученики · N» с сегодняшним составом, и без этой оговорки два разных
-          числа рядом читаются как ошибка (7-1 прошлого года — 11 человек в
-          диагностике и 2 в классе сейчас). */}
+      {/* Подпись говорит, ЧЕЙ это профиль: состав берётся на момент выбранной
+          кампании, а не сегодняшний. Ниже на странице стоит вкладка
+          «Ученики · N» с сегодняшним составом, и без оговорки два разных числа
+          рядом читаются как ошибка (в диагностике 7-1 прошлого года 11
+          человек, а в классе сейчас 2). */}
       <div className="app-main__sub">
         {data.campaignTitle} · {formatPeriod(data.periodYear, data.periodMonth)} ·{' '}
-        {data.studentsWithResults} учеников в диагностике (состав на момент кампании)
+        {data.studentsWithResults} из {data.studentsTotal} учеников в диагностике (состав на
+        момент кампании)
       </div>
 
       <div className="group-analytics__tiles">
@@ -285,7 +287,13 @@ export function GroupDynamicsSection({
       <DynamicsChart
         competencies={scored}
         previousLabel={previousLabel}
-        currentLabel={formatPeriod(data.campaign_period_year, data.campaign_period_month)}
+        currentLabel={
+          // Период может отсутствовать, если в сравнение не попал никто:
+          // ярлык тогда собирать не из чего.
+          data.campaign_period_year !== null && data.campaign_period_month !== null
+            ? formatPeriod(data.campaign_period_year, data.campaign_period_month)
+            : 'сейчас'
+        }
       />
       {data.versions_differ && data.version_note && (
         <div className="app-main__sub">{data.version_note}</div>

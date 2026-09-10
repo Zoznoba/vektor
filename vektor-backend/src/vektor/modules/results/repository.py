@@ -6,7 +6,9 @@
 ответа эндпоинта — в service.py, доменные правила — в domain.py.
 """
 
-from sqlalchemy import func, select, tuple_
+from collections.abc import Collection
+
+from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute, aliased, selectinload
 
@@ -25,7 +27,7 @@ from vektor.modules.results.domain import (
 )
 from vektor.modules.results.errors import CampaignNotCompleted
 from vektor.modules.users.models import User
-from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole
+from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole, UserRole
 
 
 async def load_completed_campaign(db: AsyncSession, campaign_id: int) -> Campaign:
@@ -445,6 +447,7 @@ async def latest_campaign_id_for_group(
     snapshot_column: InstrumentedAttribute,
     group_id: int,
     only_completed: bool = True,
+    subject_ids: Collection[int] | None = None,
 ) -> int | None:
     """Самая свежая кампания, где у группы (класса или кейса) есть анкеты —
     по снапшоту, а не по текущей привязке учеников.
@@ -457,6 +460,15 @@ async def latest_campaign_id_for_group(
     прогрессом, покрытие) передают False: там смысл как раз в текущей,
     незакрытой кампании — иначе учитель во время диагностики видел бы
     прошлый год и не понимал, по кому анкеты ещё не заполнены.
+
+    `subject_ids` сужает поиск до кампаний, где участвовал кто-то из этих
+    людей. Нужен экрану состава класса: школа переиспользует строки классов
+    из года в год (перевод меняет ученику school_class_id, а не заводит новый
+    SchoolClass), поэтому последняя кампания СТРОКИ «5-2» может относиться к
+    совсем другим детям — прошлогодним пятиклассникам, которые сейчас в 6-2.
+    Открывать её учителю по умолчанию незачем: он увидит чужую когорту, в том
+    числе выбывших из школы. Пустая коллекция даёт None — у класса без
+    учеников показывать нечего.
     """
     query = (
         select(Assessment.campaign_id)
@@ -471,6 +483,8 @@ async def latest_campaign_id_for_group(
     )
     if only_completed:
         query = query.where(Campaign.status == CampaignStatus.CLOSED)
+    if subject_ids is not None:
+        query = query.where(Assessment.subject_id.in_(subject_ids))
     row = await db.execute(query)
     return row.scalar_one_or_none()
 
@@ -517,6 +531,64 @@ async def list_closed_campaigns_for_subject(db: AsyncSession, subject_id: int) -
         .order_by(Campaign.period_year.desc(), Campaign.period_month.desc(), Campaign.id.desc())
     )
     return list(rows.scalars())
+
+
+async def student_ids_of_class(db: AsyncSession, class_id: int) -> set[int]:
+    """Нынешний состав класса, только идентификаторы.
+
+    Отдельный лёгкий запрос, а не selectinload всего класса: он нужен ровно
+    там, где резолвится кампания «этой когорты», и тянуть ради множества id
+    полные объекты учеников незачем.
+    """
+    rows = await db.execute(
+        select(User.id).where(User.school_class_id == class_id, User.role == UserRole.STUDENT)
+    )
+    return set(rows.scalars())
+
+
+async def list_campaigns_for_class(
+    db: AsyncSession, class_id: int, student_ids: Collection[int]
+) -> list[tuple[Campaign, bool]]:
+    """Кампании, относящиеся к классу, свежие сверху — под переключатель
+    периодов на экране диагностики.
+
+    Условие ИЛИ, а не одно из двух, потому что «класс» тут двусмысленен по
+    построению данных:
+
+    * `subject_class_id == class_id` — кампании, выданные ПО ЭТОЙ СТРОКЕ
+      класса. Сюда попадает архив прошлых когорт: строки классов школа
+      переиспользует из года в год.
+    * `subject_id in student_ids` — кампании, где участвовали НЫНЕШНИЕ
+      ученики. Их прошлогодние анкеты лежат под другим ярлыком (сегодняшний
+      8-1 год назад был 7-1), и без этой половины учитель не добрался бы до
+      истории собственного класса.
+
+    Статус не фильтруем: экран мониторинга показывает и идущую кампанию —
+    в отличие от списка периодов у ученика, где только завершённые (там
+    страница по незавершённой отвечает 409, а ростер отдаёт прогресс).
+
+    Вторым элементом пары — сработала ли ВТОРАЯ половина условия, то есть
+    участвовал ли в кампании кто-то из нынешних учеников. Считается тем же
+    запросом (`bool_or` по тому же предикату), а не вторым проходом: иначе
+    два запроса разошлись бы между собой при любой правке условия, а именно
+    по нему экран отличает архив прошлого набора от истории своих детей.
+    """
+    rows = await db.execute(
+        select(
+            Campaign,
+            func.bool_or(Assessment.subject_id.in_(student_ids)).label("is_current_cohort"),
+        )
+        .join(Assessment, Assessment.campaign_id == Campaign.id)
+        .where(
+            or_(
+                Assessment.subject_class_id == class_id,
+                Assessment.subject_id.in_(student_ids),
+            )
+        )
+        .group_by(Campaign.id)
+        .order_by(Campaign.period_year.desc(), Campaign.period_month.desc(), Campaign.id.desc())
+    )
+    return [(campaign, bool(is_current)) for campaign, is_current in rows.all()]
 
 
 async def questionnaire_version_note(db: AsyncSession, version_id: int) -> str | None:

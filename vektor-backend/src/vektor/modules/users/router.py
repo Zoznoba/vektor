@@ -70,6 +70,7 @@ async def read_me(
     "подстроке в имени/email, классу (только для учеников) и кейсу. "
     "`without_case=true` отбирает тех, кто не состоит ни в одном кейсе, — "
     "именно они могут быть кандидатами на привязку (членство в кейсе одно). "
+    "Служебные слоты импорта (`is_placeholder`) не отдаются никогда. "
     "Только админ.",
 )
 async def get_all_users(
@@ -81,7 +82,12 @@ async def get_all_users(
     _admin_user: User = Depends(require_role(UserRole.ADMIN)),
     db: AsyncSession = Depends(get_db),
 ):
-    query = select(User).order_by(User.id)
+    # Служебные слоты импорта (обезличенные «Педагог 1 (архив, 5.1 2026)» и
+    # родительские слоты из выгрузки МО) — не люди, а держатели чужих оценок:
+    # в них нельзя войти, их некому назначать. Отсекаем ЗДЕСЬ, а не на фронте:
+    # флаг наружу не отдаётся, и каждый потребитель списка (кандидаты в класс,
+    # в кейс, сводка) иначе фильтровал бы их по имени — так уже был баг в 7m.
+    query = select(User).where(User.is_placeholder.is_(False)).order_by(User.id)
     if role is not None:
         query = query.where(User.role == role)
     if search is not None:

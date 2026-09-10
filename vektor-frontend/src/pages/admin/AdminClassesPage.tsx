@@ -7,11 +7,14 @@ import { classResultsToAnalytics } from '../../data/groupAnalytics';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import { Collapsible } from '../../components/ui/Collapsible';
+import { PeriodBar } from '../../components/ui/PeriodBar';
+import { defaultCampaignId } from '../../data/period';
 import { Icon } from '../../components/icons/Icon';
 import { ActionMenu } from '../../components/ui/ActionMenu';
 import type { ActionMenuItem } from '../../components/ui/ActionMenu';
 import { SelectAllCheckbox, SelectionBar } from '../../components/ui/SelectionBar';
 import { useApi } from '../../hooks/useApi';
+import { useGroupSelection } from '../../hooks/useGroupSelection';
 import { useRowSelection } from '../../hooks/useRowSelection';
 import type { RowSelection } from '../../hooks/useRowSelection';
 import {
@@ -31,7 +34,7 @@ import { ApiError } from '../../api/client';
 import { classLabel, homeroomTeachers } from '../../types/school';
 import type { SchoolClass, TeacherInClass } from '../../types/school';
 import type { User } from '../../types/auth';
-import { fetchClassResults, fetchGroupDynamics } from '../../api/results';
+import { fetchClassCampaigns, fetchClassResults, fetchGroupDynamics } from '../../api/results';
 import { parseRoster, rosterErrorCount } from './roster';
 import { RosterInput } from './RosterInput';
 import './admin.css';
@@ -57,11 +60,21 @@ export function AdminClassesPage() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // Открытый класс и период диагностики живут в адресе страницы
+  // (?class=&campaign=): см. useGroupSelection — оттуда же берётся правило
+  // «смена класса сбрасывает период».
+  const {
+    groupId,
+    campaignId: pickedCampaignId,
+    selectGroup,
+    selectCampaign,
+    clearGroup,
+  } = useGroupSelection();
   // Переход «Классы» из карточки учителя (AdminUsersPage) кладёт id класса
   // в state — так сразу открывается нужный класс, а не первый по сортировке.
-  const [selectedId, setSelectedId] = useState<number | null>(
-    () => (location.state as { classId?: number } | null)?.classId ?? null,
-  );
+  // Параметр в адресе главнее: он либо пришёл по ссылке, либо выбран руками
+  // уже на этом экране, а state остаётся от перехода и не обновляется.
+  const selectedId = groupId ?? (location.state as { classId?: number } | null)?.classId ?? null;
   const [tab, setTab] = useState<CompositionTab>('students');
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -104,13 +117,31 @@ export function AdminClassesPage() {
   // useApi внутри GroupAnalytics требует стабильную ссылку — иначе effect
   // уходит в цикл запросов.
   const selectedClassId = selected?.id;
-  const loadClassAnalytics = useCallback(
-    async () => classResultsToAnalytics(await fetchClassResults(selectedClassId as number)),
+
+  // Период аналитики. Пока в переключателе ничего не выбрано, берётся
+  // умолчание — самая свежая ЗАВЕРШЁННАЯ кампания нынешнего состава
+  // (defaultCampaignId): по идущей баллы не считаются вовсе, а «последняя
+  // кампания класса» без оговорки про состав — это чужие дети, школа
+  // переиспользует строки классов из года в год. Архив прошлого набора
+  // («5-2 · 2026» у нынешнего 5-2) достижим только явным выбором.
+  const loadClassCampaigns = useCallback(
+    () => (selectedClassId ? fetchClassCampaigns(selectedClassId) : Promise.resolve([])),
     [selectedClassId],
   );
+  const classCampaigns = useApi(loadClassCampaigns);
+  const analyticsCampaignId =
+    pickedCampaignId ?? defaultCampaignId(classCampaigns.data ?? [], { closedOnly: true });
+
+  const loadClassAnalytics = useCallback(
+    async () =>
+      classResultsToAnalytics(
+        await fetchClassResults(selectedClassId as number, analyticsCampaignId as number),
+      ),
+    [selectedClassId, analyticsCampaignId],
+  );
   const loadClassDynamics = useCallback(
-    () => fetchGroupDynamics('class', selectedClassId as number),
-    [selectedClassId],
+    () => fetchGroupDynamics('class', selectedClassId as number, analyticsCampaignId),
+    [selectedClassId, analyticsCampaignId],
   );
   const selectedRows = rows.filter((u) => selection.selectedIds.includes(u.id));
 
@@ -146,7 +177,7 @@ export function AdminClassesPage() {
               <button
                 key={cls.id}
                 className={`class-card ${cls.id === selected?.id ? 'class-card--selected' : ''}`.trim()}
-                onClick={() => setSelectedId(cls.id)}
+                onClick={() => selectGroup(cls.id)}
               >
                 <div className="class-card__name">{classLabel(cls)}</div>
                 <div className="class-card__count">{studentsCountLabel(cls.students.length)}</div>
@@ -171,6 +202,21 @@ export function AdminClassesPage() {
           )}
 
           {selected && (
+            /* Строка контекста — на уровне класса, а не внутри блока
+               аналитики: период определяет, о каких детях идут числа ниже, и
+               в свёрнутом блоке этот выбор был бы не виден вовсе. Состав
+               класса под ним от периода не зависит — он сегодняшний, и об
+               этом сказано в самой панели состава. */
+            <PeriodBar
+              title={`Класс ${classLabel(selected)} · диагностика`}
+              campaigns={classCampaigns.data ?? []}
+              value={analyticsCampaignId}
+              onChange={selectCampaign}
+              loading={classCampaigns.loading}
+            />
+          )}
+
+          {selected && (
             /* Аналитика — сворачиваемый блок НАД составом, а не вкладка
                внутри него: это ответ на вопрос «как класс выглядит», а состав
                ниже — рабочий инструмент. Свёрнут по умолчанию, и потому же
@@ -182,19 +228,44 @@ export function AdminClassesPage() {
               open={analyticsOpen}
               onToggle={() => setAnalyticsOpen((value) => !value)}
             >
-              <GroupAnalytics
-                label={classLabel(selected)}
-                averageLabel="Средний балл класса"
-                groupNoun="класс"
-                load={loadClassAnalytics}
-                loadDynamics={loadClassDynamics}
-                emptyText="По этому классу ещё не было завершённой диагностики — аналитика появится после закрытия кампании."
-              />
+              {/* Без выбранного периода запрос не уходит вовсе: считать
+                  «профиль класса вообще» нечем — период и определяет, о каких
+                  детях речь. Список периодов при этом не пуст (в нём архив
+                  прошлых наборов), поэтому переключатель выше остаётся. */}
+              {analyticsCampaignId === undefined ? (
+                <div className="admin-empty">
+                  {/* Список периодов грузится при каждой смене класса, и
+                      «периодов нет» на это время — неправда: пока запрос не
+                      вернулся, класс без диагностики неотличим от любого
+                      другого. */}
+                  {classCampaigns.loading
+                    ? 'Загрузка…'
+                    : classCampaigns.data?.length
+                      ? 'У нынешнего состава класса завершённой диагностики ещё не было — выберите период в строке выше, чтобы посмотреть архив.'
+                      : 'Диагностика по этому классу ещё не проводилась.'}
+                </div>
+              ) : (
+                <GroupAnalytics
+                  label={classLabel(selected)}
+                  averageLabel="Средний балл класса"
+                  groupNoun="класс"
+                  load={loadClassAnalytics}
+                  loadDynamics={loadClassDynamics}
+                  emptyText="По выбранному периоду результатов нет."
+                />
+              )}
             </Collapsible>
           )}
 
           {selected && (
             <Panel title={`Состав класса ${classLabel(selected)}`}>
+              {/* Оговорка нужна из-за строки периода выше: состав — это
+                  сегодняшний список класса, а не снапшот выбранной кампании,
+                  и два разных числа учеников рядом читались бы как ошибка.
+                  Школа переиспользует строки классов из года в год, поэтому в
+                  архивной диагностике того же 5-2 — другие дети. */}
+              <div className="app-main__sub">Сегодняшний состав — не зависит от выбранного периода</div>
+
               <div className="class-tabs">
                 <div className="filter-chips">
                   {TABS.map((t) => (
@@ -295,7 +366,7 @@ export function AdminClassesPage() {
           onClose={() => setShowCreate(false)}
           onCreated={(classId) => {
             setShowCreate(false);
-            setSelectedId(classId);
+            selectGroup(classId);
             classes.reload();
             users.reload();
           }}
@@ -373,7 +444,7 @@ export function AdminClassesPage() {
             setDeleting(null);
             // Выбранный класс исчез — сбрасываем выбор, состав переедет на
             // первый по сортировке.
-            setSelectedId(null);
+            clearGroup();
             classes.reload();
           }}
         />

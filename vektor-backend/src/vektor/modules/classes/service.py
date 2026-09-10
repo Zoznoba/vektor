@@ -60,9 +60,7 @@ async def create_class(db: AsyncSession, grade: int, section: str) -> SchoolClas
     return await _load_class(db, school_class.id)
 
 
-async def update_class(
-    db: AsyncSession, class_id: int, changes: dict[str, Any]
-) -> SchoolClass:
+async def update_class(db: AsyncSession, class_id: int, changes: dict[str, Any]) -> SchoolClass:
     """Сменить параллель и/или литеру класса.
 
     Отдельного «имени» у класса нет — подпись («8-1») фронт собирает из
@@ -102,9 +100,7 @@ async def delete_class(db: AsyncSession, class_id: int) -> None:
     school_class = await _load_class(db, class_id)
 
     if school_class.students or school_class.teacher_links:
-        raise ClassNotEmpty(
-            "В классе ещё есть ученики или учителя — сначала разберите состав"
-        )
+        raise ClassNotEmpty("В классе ещё есть ученики или учителя — сначала разберите состав")
 
     # Снапшот класса в анкетах: FK Assessment.subject_class_id объявлен БЕЗ
     # ondelete (миграция e7b2065d94ac), поэтому db.delete() при живых ссылках
@@ -116,9 +112,7 @@ async def delete_class(db: AsyncSession, class_id: int) -> None:
         select(Assessment.id).where(Assessment.subject_class_id == class_id).limit(1)
     )
     if used.scalar_one_or_none() is not None:
-        raise ClassNotEmpty(
-            "По классу уже проводилась диагностика — историю удалять нельзя"
-        )
+        raise ClassNotEmpty("По классу уже проводилась диагностика — историю удалять нельзя")
 
     await db.delete(school_class)
     await db.commit()

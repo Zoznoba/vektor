@@ -35,6 +35,11 @@ import { RosterInput } from './RosterInput';
 import './admin.css';
 
 type RoleFilter = UserRole | 'all';
+// «Неактивен» в этой системе — единственная форма удаления (7l): вход
+// заблокирован, история цела. Таких набирается больше, чем действующих людей
+// (выпускники прошлых лет), поэтому по умолчанию список показывает активных, а
+// выбывшие достаются отдельным режимом, а не тонут в общей таблице.
+type StatusFilter = 'active' | 'inactive' | 'all';
 
 /** Колонка сортировки таблицы пользователей. */
 type SortKey = 'name' | 'email' | 'role' | 'class' | 'case' | 'status';
@@ -106,6 +111,7 @@ export function AdminUsersPage() {
     (location.state as { roleFilter?: RoleFilter } | null)?.roleFilter ?? 'all';
   const [roleFilter, setRoleFilter] = useState<RoleFilter>(initialRoleFilter);
   const [classFilter, setClassFilter] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -130,16 +136,23 @@ export function AdminUsersPage() {
   // Фильтр по классу считаем по составу класса (ученики + учителя), а не по
   // колонке-подписи: подпись у учителя склеена из нескольких классов и на
   // подстроку не проверяется.
+  // Статус входит в scoped, а не в filtered: счётчики на чипсах ролей должны
+  // считать то же, что лежит в таблице, иначе «Ученики · 159» над списком из
+  // 138 действующих читается как ошибка — та же причина, что у класса ниже.
   const scoped = useMemo(() => {
-    if (classFilter === null) return allUsers;
+    const byStatus =
+      statusFilter === 'all'
+        ? allUsers
+        : allUsers.filter((u) => u.is_active === (statusFilter === 'active'));
+    if (classFilter === null) return byStatus;
     const cls = (classes.data ?? []).find((c) => c.id === classFilter);
-    if (!cls) return allUsers;
+    if (!cls) return byStatus;
     const members = new Set<number>([
       ...cls.students.map((s) => s.id),
       ...cls.teachers.map((t) => t.teacher.id),
     ]);
-    return allUsers.filter((u) => members.has(u.id));
-  }, [allUsers, classes.data, classFilter]);
+    return byStatus.filter((u) => members.has(u.id));
+  }, [allUsers, classes.data, classFilter, statusFilter]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -205,7 +218,7 @@ export function AdminUsersPage() {
   // выборки, иначе массовое действие уедет на людей, которых на экране нет.
   const selection = useRowSelection(
     rowIds,
-    `${roleFilter}:${classFilter ?? 'all'}:${search.trim().toLowerCase()}`,
+    `${roleFilter}:${classFilter ?? 'all'}:${statusFilter}:${search.trim().toLowerCase()}`,
   );
   const selectedUsers = useMemo(
     () => sorted.filter((u) => selection.selectedIds.includes(u.id)),
@@ -297,6 +310,15 @@ export function AdminUsersPage() {
               {classLabel(cls)}
             </option>
           ))}
+        </select>
+        <select
+          className="admin-select"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+        >
+          <option value="active">Активные</option>
+          <option value="inactive">Неактивные</option>
+          <option value="all">Все статусы</option>
         </select>
         {/* Поиск и «+» — одна неразрывная группа: тулбар переносится по
             словам, и в одиночку кнопка уехала бы на новую строку к левому

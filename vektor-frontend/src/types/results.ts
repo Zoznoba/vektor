@@ -12,6 +12,7 @@
  */
 
 import type { User } from './auth';
+import type { CampaignStatus } from './campaign';
 
 export interface CompetencyScore {
   competency_id: number;
@@ -89,10 +90,13 @@ export interface GroupSelfGap {
 export interface ClassResults {
   class_id: number;
   class_label: string;
+  /** Профиль всегда за ОДНУ кампанию — ту, что выбрана в переключателе. */
   campaign_id: number;
   campaign_title: string;
   campaign_period_year: number;
   campaign_period_month: number;
+  /** Учеников в группе всего — знаменатель к students_with_results. */
+  students_total: number;
   students_with_results: number;
   class_average: number | null;
   school_average: number | null;
@@ -116,10 +120,12 @@ export interface CompetencyCaseScore {
 export interface CaseResults {
   case_id: number;
   case_name: string;
+  /** Профиль всегда за ОДНУ кампанию — как у класса. */
   campaign_id: number;
   campaign_title: string;
   campaign_period_year: number;
   campaign_period_month: number;
+  students_total: number;
   students_with_results: number;
   case_average: number | null;
   school_average: number | null;
@@ -163,6 +169,25 @@ export interface SubjectDynamics {
 }
 
 /** Состав класса с прогрессом: GET /results/class/{id}/roster. */
+/**
+ * Период под переключатель на экране класса. Приходит и от
+ * `/results/{id}/campaigns` (у ученика), и от `/results/class/{id}/campaigns`.
+ */
+export interface CampaignRef {
+  campaign_id: number;
+  title: string;
+  period_year: number;
+  period_month: number;
+  status: CampaignStatus;
+  /**
+   * Участвовал ли в этой кампании кто-то из НЫНЕШНИХ учеников класса.
+   * false — архив прошлого набора той же строки класса: школа переиспользует
+   * классы из года в год, поэтому в списке периодов 5-1 стоит диагностика
+   * детей, которые сегодня учатся в 6-1.
+   */
+  is_current_cohort: boolean;
+}
+
 export interface ClassRosterRow {
   subject: { id: number; full_name: string };
   /** null — анкета не выдана вовсе; это не то же самое, что not_started. */
@@ -184,6 +209,11 @@ export interface ClassRoster {
   campaign_title: string;
   campaign_period_year: number;
   campaign_period_month: number;
+  /**
+   * Состав закрытой кампании — её снапшот: те, кто учился в классе тогда.
+   * Нынешние ученики без анкет добавляются только в идущую (см. get_class_roster).
+   */
+  campaign_status: CampaignStatus;
   students_count: number;
   assessments_total: number;
   assessments_completed: number;
@@ -205,10 +235,12 @@ export interface GroupDynamics {
   case_id: number | null;
   case_name: string | null;
 
-  campaign_id: number;
-  campaign_title: string;
-  campaign_period_year: number;
-  campaign_period_month: number;
+  /** null — в режиме нынешнего состава: у учеников кампании разные, в
+   *  ярлыке стоит самая свежая из них. */
+  campaign_id: number | null;
+  campaign_title: string | null;
+  campaign_period_year: number | null;
+  campaign_period_month: number | null;
 
   /** null — предыдущего периода нет. Штатное состояние, а не ошибка. */
   previous_campaign_id: number | null;
