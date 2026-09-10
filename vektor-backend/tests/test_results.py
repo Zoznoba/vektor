@@ -920,6 +920,7 @@ async def dynamics_scenario(client: AsyncClient, admin_headers: dict[str, str], 
         "campaigns": campaigns,
         "comp_a": comp_a,
         "comp_b": comp_b,
+        "comp_c": comp_c,
         "ids": {"s1": s1, "t1": t1},
     }
 
@@ -2076,9 +2077,10 @@ async def test_case_dynamics_available_to_case_teacher(
 async def school_scenario(client: AsyncClient, admin_headers: dict[str, str], db_session) -> dict:
     """Школа за ДВА периода: июнь 2025 и июнь 2026, один класс 5-1.
 
-    Критерий A мерили в обоих годах (2.0 → 4.0), критерий B появился только в
-    2026-м (5.0) — на нём проверяется, что ряд по годам считается по общему
-    ядру, а не по всем критериям периода.
+    Критерий A мерили в обоих годах (2.0 → 4.0), B появился только в 2026-м
+    (5.0), C наоборот мерили только в 2025-м (3.0) — на них проверяется, что
+    в ответ попадают критерии ОБОИХ периодов: радар сравнивает год с годом, и
+    ось, потерянная молча, врала бы в обе стороны.
     """
     s1 = await _register(client, "sch1@vektor.ru", "student")
     s2 = await _register(client, "sch2@vektor.ru", "student")
@@ -2092,8 +2094,10 @@ async def school_scenario(client: AsyncClient, admin_headers: dict[str, str], db
 
     comp_a = await _seed_competency(db_session, "sch_a", order=1)
     comp_b = await _seed_competency(db_session, "sch_b", order=2)
+    comp_c = await _seed_competency(db_session, "sch_c", order=3)
     q_a = await _question_id_for(db_session, comp_a)
     q_b = await _question_id_for(db_session, comp_b)
+    q_c = await _question_id_for(db_session, comp_c)
 
     campaigns: dict[int, int] = {}
     for year, value_a in ((2025, 2), (2026, 4)):
@@ -2121,6 +2125,8 @@ async def school_scenario(client: AsyncClient, admin_headers: dict[str, str], db
             await _post_answer(client, db_session, email, aid, q_a, value_a)
             if year == 2026:
                 await _post_answer(client, db_session, email, aid, q_b, 5)
+            else:
+                await _post_answer(client, db_session, email, aid, q_c, 3)
 
     return {
         "class_id": cls["id"],
@@ -2143,7 +2149,7 @@ async def test_school_results_lists_periods_with_results(
         (2025, 6),
         (2026, 6),
     ]
-    assert body["periods"][0]["average"] == pytest.approx(2.0)
+    assert body["periods"][0]["average"] == pytest.approx(2.5)
     assert body["periods"][1]["average"] == pytest.approx(4.5)
     assert body["periods"][1]["students_with_results"] == 2
 
@@ -2172,6 +2178,21 @@ async def test_school_results_current_period_and_deltas(
     # Слои: отвечали только сами ученики, окружающих нет.
     assert comp_a["self_avg"] == pytest.approx(4.0)
     assert comp_a["others_avg"] is None
+
+
+async def test_school_results_keeps_competency_of_previous_period_only(
+    client: AsyncClient, admin_headers, school_scenario
+) -> None:
+    """Критерий, который мерили ТОЛЬКО в прошлом периоде, остаётся в списке с
+    avg=None: иначе на радаре «этот год vs прошлый» вторая серия молча
+    теряла бы ось, и школа выглядела бы ровнее, чем есть."""
+    body = (await client.get("/results/school", headers=admin_headers)).json()
+    by_id = {c["competency_id"]: c for c in body["current"]["competencies"]}
+
+    comp_c = by_id[school_scenario["comp_c"]]
+    assert comp_c["avg"] is None
+    assert comp_c["previous_avg"] == pytest.approx(3.0)
+    assert comp_c["delta"] is None
 
 
 async def test_school_results_explicit_period(
