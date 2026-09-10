@@ -1192,7 +1192,10 @@ async def test_class_results_visible_to_teacher_of_class(
     client: AsyncClient, class_scenario
 ) -> None:
     headers = await _login(client, "ct1@vektor.ru")
-    response = await client.get(f"/results/class/{class_scenario['class_id']}", headers=headers)
+    response = await client.get(
+        f"/results/class/{class_scenario['class_id']}?campaign_id={class_scenario['campaign_id']}",
+        headers=headers,
+    )
     assert response.status_code == 200
     assert response.json()["class_label"] == "7-к"
 
@@ -1201,7 +1204,8 @@ async def test_class_results_visible_to_admin(
     client: AsyncClient, admin_headers, class_scenario
 ) -> None:
     response = await client.get(
-        f"/results/class/{class_scenario['class_id']}", headers=admin_headers
+        f"/results/class/{class_scenario['class_id']}?campaign_id={class_scenario['campaign_id']}",
+        headers=admin_headers,
     )
     assert response.status_code == 200
 
@@ -1213,81 +1217,47 @@ async def test_class_results_forbidden_for_student_and_parent(
     # экран есть только у учителя и админа.
     for email in ("cs1@vektor.ru", "cp1@vektor.ru"):
         headers = await _login(client, email)
-        response = await client.get(f"/results/class/{class_scenario['class_id']}", headers=headers)
+        response = await client.get(
+            f"/results/class/{class_scenario['class_id']}"
+            f"?campaign_id={class_scenario['campaign_id']}",
+            headers=headers,
+        )
         assert response.status_code == 403, email
 
 
-async def test_class_profile_stitches_current_students_from_different_campaigns(
-    client: AsyncClient, admin_headers, class_scenario, db_session
-) -> None:
-    """Профиль класса по умолчанию считается по НЫНЕШНИМ ученикам, у каждого —
-    его последняя диагностика, даже если общей кампании у класса нет вовсе.
-
-    Так собирается 10-й класс: из двух девятых, и диагностику эти дети
-    проходили в разных кампаниях под разными ярлыками. Пока профиль требовал
-    одну кампанию, такой класс показывал половину состава или не открывался.
-    """
-    s1, s2 = class_scenario["ids"]["s1"], class_scenario["ids"]["s2"]
-    q_a = await _question_id_for(db_session, class_scenario["comp_a"])
-
-    # s2 успел пройти ЕЩЁ ОДНУ диагностику — свою, в другом классе и другой
-    # кампании. Именно она у него последняя.
-    other_class_id = (
-        await client.post("/classes", json={"grade": 9, "section": "2"}, headers=admin_headers)
-    ).json()["id"]
-    await client.post(
-        f"/classes/{other_class_id}/students", json={"student_ids": [s2]}, headers=admin_headers
-    )
-    other_campaign_id = (
-        await client.post(
-            "/campaigns",
-            json={"title": "360 · 9-2", "period_year": 2026, "period_month": 9},
-            headers=admin_headers,
-        )
-    ).json()["id"]
-    await client.post(
-        f"/campaigns/{other_campaign_id}/generate",
-        json={"class_ids": [other_class_id]},
-        headers=admin_headers,
-    )
-    await _answer_in_campaign(
-        client, db_session, "cs2@vektor.ru", s2, s2, other_campaign_id, q_a, 3
-    )
-
-    # Оба собраны в новый класс — общей кампании у него нет ни одной.
-    merged_class_id = (
-        await client.post("/classes", json={"grade": 10, "section": ""}, headers=admin_headers)
-    ).json()["id"]
-    await client.post(
-        f"/classes/{merged_class_id}/students",
-        json={"student_ids": [s1, s2]},
-        headers=admin_headers,
-    )
-
-    profile = await client.get(f"/results/class/{merged_class_id}", headers=admin_headers)
-    assert profile.status_code == 200
-    body = profile.json()
-    # Оба ученика в профиле, хотя пришли из разных кампаний.
-    assert body["students_total"] == 2
-    assert body["students_with_results"] == 2
-    # Одной кампании у сшитого профиля нет — и подставлять чужую нельзя.
-    assert body["campaign_id"] is None
-
-    # У s2 взята ПОСЛЕДНЯЯ его диагностика (сентябрьская, 3.0), а не июньская
-    # (4.0): иначе средний балл класса считался бы по устаревшим данным.
-    scores = {c["competency_id"]: c["class_avg"] for c in body["competencies"]}
-    assert scores[class_scenario["comp_a"]] == pytest.approx((2.0 + 3.0) / 2)
-
-
-async def test_class_profile_skips_campaign_of_previous_cohort(
+async def test_class_profile_requires_campaign_id(
     client: AsyncClient, admin_headers, class_scenario
 ) -> None:
-    """Профиль класса по умолчанию не открывает кампанию чужой когорты.
+    """Период — обязательный параметр профиля класса, а не «как решит бэкенд».
 
-    То же правило, что у ростера, и по той же причине: строки классов школа
-    переиспользует из года в год. Без него админ на странице класса видел бы
-    радар и «зоны роста» детей, которых в этом классе давно нет, — причём
-    экран выглядел бы совершенно рабочим.
+    Строки классов школа переиспользует из года в год, поэтому «класс» сам по
+    себе группу людей не определяет: 5-1 сегодня и 5-1 в прошлом июне — разные
+    дети. Раньше запрос без периода считал третий, никем не выбранный вариант
+    (нынешний состав, у каждого своя последняя диагностика), и профиль мог
+    разойтись с составом на том же экране. Теперь период выбирает экран, а
+    список даёт /results/class/{id}/campaigns.
+    """
+    response = await client.get(
+        f"/results/class/{class_scenario['class_id']}", headers=admin_headers
+    )
+    assert response.status_code == 422
+
+    dynamics = await client.get(
+        f"/results/class/{class_scenario['class_id']}/dynamics", headers=admin_headers
+    )
+    assert dynamics.status_code == 422
+
+
+async def test_class_profile_of_archive_campaign_keeps_previous_cohort(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    """Архив прошлого набора открывается явным периодом и считается по нему.
+
+    Школа переиспользует строки классов из года в год, поэтому в списке
+    периодов 7-к стоит диагностика детей, которых в нём давно нет. Открывать
+    её по умолчанию нельзя (умолчание считает экран — только среди кампаний
+    нынешнего состава), но данные не теряются: выбрал период — увидел ту
+    когорту целиком, включая выбывших.
     """
     class_id = class_scenario["class_id"]
     for student_id in (class_scenario["ids"]["s1"], class_scenario["ids"]["s2"]):
@@ -1297,24 +1267,22 @@ async def test_class_profile_skips_campaign_of_previous_cohort(
         f"/classes/{class_id}/students", json={"student_ids": [newcomer]}, headers=admin_headers
     )
 
-    profile = await client.get(f"/results/class/{class_id}", headers=admin_headers)
-    assert profile.status_code == 404
-    assert profile.json()["code"] == "class_has_no_diagnostics"
-
-    dynamics = await client.get(f"/results/class/{class_id}/dynamics", headers=admin_headers)
-    assert dynamics.status_code == 404
-
-    # Явный campaign_id по-прежнему открывает архив — данные не потеряны.
     archived = await client.get(
         f"/results/class/{class_id}?campaign_id={class_scenario['campaign_id']}",
         headers=admin_headers,
     )
     assert archived.status_code == 200
+    # Оба прежних ученика на месте, новичок в этой кампании не участвовал.
+    assert archived.json()["students_total"] == 2
     assert archived.json()["students_with_results"] == 2
 
 
-async def test_class_results_unknown_class_404(client: AsyncClient, admin_headers) -> None:
-    response = await client.get("/results/class/99999", headers=admin_headers)
+async def test_class_results_unknown_class_404(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    response = await client.get(
+        f"/results/class/99999?campaign_id={class_scenario['campaign_id']}", headers=admin_headers
+    )
     assert response.status_code == 404
 
 
@@ -1325,7 +1293,8 @@ async def test_class_profile_weighs_students_equally(
     # Правильное среднее по КЛАССУ = (2.0 + 4.0) / 2 = 3.0. Если бы считали
     # по ответам, три двойки s1 перевесили бы одну четвёрку s2 → 2.5.
     response = await client.get(
-        f"/results/class/{class_scenario['class_id']}", headers=admin_headers
+        f"/results/class/{class_scenario['class_id']}?campaign_id={class_scenario['campaign_id']}",
+        headers=admin_headers,
     )
     body = response.json()
     comp_a = next(c for c in body["competencies"] if c["competency_id"] == class_scenario["comp_a"])
@@ -1339,7 +1308,8 @@ async def test_class_self_gap_uses_group_layers(
     # Критерий A: самооценка (2.0 и 4.0) в среднем 3.0, окружающие есть
     # только у s1 — 2.0. Разрыв +1.0, «себя выше».
     response = await client.get(
-        f"/results/class/{class_scenario['class_id']}", headers=admin_headers
+        f"/results/class/{class_scenario['class_id']}?campaign_id={class_scenario['campaign_id']}",
+        headers=admin_headers,
     )
     gaps = response.json()["self_gaps"]
     assert [g["competency_id"] for g in gaps] == [class_scenario["comp_a"]]
@@ -1354,7 +1324,8 @@ async def test_class_school_gaps_empty_when_class_is_the_whole_school(
     # В периоде одна кампания, поэтому «школа» — это тот же класс: отставания
     # нет и список пуст. Честнее, чем показывать три случайных критерия.
     response = await client.get(
-        f"/results/class/{class_scenario['class_id']}", headers=admin_headers
+        f"/results/class/{class_scenario['class_id']}?campaign_id={class_scenario['campaign_id']}",
+        headers=admin_headers,
     )
     assert response.json()["school_gaps"] == []
 
@@ -1812,10 +1783,13 @@ async def test_roster_still_works_for_campaign_in_progress(
     assert roster.status_code == 200
     assert roster.json()["campaign_id"] == class_scenario["campaign_id"]
 
-    profile = await client.get(f"/results/class/{class_id}", headers=admin_headers)
-    # Незавершённая кампания в резолюцию профиля не попадает: других кампаний у
-    # класса нет, поэтому «результатов пока нет».
-    assert profile.status_code == 404
+    profile = await client.get(
+        f"/results/class/{class_id}?campaign_id={class_scenario['campaign_id']}",
+        headers=admin_headers,
+    )
+    # Балльный экран на той же кампании закрыт: пока анкеты заполняются,
+    # средние по ним — срез хода сбора, а не результат класса.
+    assert profile.status_code == 409
 
 
 # --- Права: руководитель кейса видит результаты своих учеников (Этап 8) ---
@@ -2196,7 +2170,9 @@ async def test_class_dynamics_compares_same_students(
     # Критерий A есть в обоих периодах: 3.0 → 4.0, дельта +1.0. Критерий B
     # появился только сейчас — значение есть, дельты нет.
     response = await client.get(
-        f"/results/class/{dynamics_scenario['class_id']}/dynamics", headers=admin_headers
+        f"/results/class/{dynamics_scenario['class_id']}/dynamics"
+        f"?campaign_id={dynamics_scenario['campaigns'][2026]}",
+        headers=admin_headers,
     )
     assert response.status_code == 200
     body = response.json()
@@ -2220,7 +2196,9 @@ async def test_class_dynamics_without_previous_period_is_not_an_error(
     # У класса единственная кампания. Это штатное состояние (пятиклассники),
     # а не ошибка: отдаём текущие баллы без дельт.
     response = await client.get(
-        f"/results/class/{class_scenario['class_id']}/dynamics", headers=admin_headers
+        f"/results/class/{class_scenario['class_id']}/dynamics"
+        f"?campaign_id={class_scenario['campaign_id']}",
+        headers=admin_headers,
     )
     assert response.status_code == 200
     body = response.json()
@@ -2241,7 +2219,9 @@ async def test_class_dynamics_forbidden_for_other_teacher(
     # права, что у профиля класса.
     headers = await _login(client, "kt1@vektor.ru")
     response = await client.get(
-        f"/results/class/{dynamics_scenario['class_id']}/dynamics", headers=headers
+        f"/results/class/{dynamics_scenario['class_id']}/dynamics"
+        f"?campaign_id={dynamics_scenario['campaigns'][2026]}",
+        headers=headers,
     )
     assert response.status_code == 403
 

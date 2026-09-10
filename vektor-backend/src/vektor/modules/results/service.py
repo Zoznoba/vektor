@@ -301,29 +301,64 @@ async def get_subject_dynamics(
 # ---------- Срез 5e: агрегаты класса и покрытие кампании (БД) ----------
 
 
+async def _class_cohort_subject_ids(
+    db: AsyncSession, campaign_id: int, class_id: int, current_student_ids: Collection[int]
+) -> set[int]:
+    """Кого считать «этим классом» в этой кампании — ЕДИНСТВЕННОЕ место, где
+    это решается: профиль, динамика и состав обязаны брать одних и тех же
+    детей, иначе радар нарисован по одной группе, а таблица под ним по другой.
+
+    Слагаемых два, и оба нужны, потому что «класс» в данных двусмыслен по
+    построению: школа переиспользует строки классов из года в год (перевод
+    меняет ученику school_class_id, а не заводит новый SchoolClass).
+
+    1. Снапшот `Assessment.subject_class_id` — кому анкеты выдали ПО ЭТОЙ
+       строке класса. Именно снапшот, а не текущая привязка: иначе выбывшие
+       исчезли бы из прошлогодней диагностики и средние за тот год перестали
+       бы сходиться.
+    2. Нынешние ученики, участвовавшие в ЭТОЙ кампании под ДРУГИМ ярлыком:
+       сегодняшний 8-1 год назад проходил диагностику как 7-1. Без второго
+       слагаемого выбор прошлого периода давал бы пустой экран вместо истории
+       собственного класса — ровно тот баг, из-за которого правило и свели
+       в одну функцию.
+    """
+    class_map = await repo.subject_group_map(db, campaign_id, Assessment.subject_class_id)
+    subject_ids = {sid for sid, cid in class_map.items() if cid == class_id}
+    return subject_ids | (set(current_student_ids) & set(class_map))
+
+
+async def _case_subject_ids(db: AsyncSession, campaign_id: int, case_id: int) -> set[int]:
+    """Состав кейса в кампании — чистый снапшот, без «нынешних участников».
+
+    Двусмысленности класса тут нет: строку класса школа переиспользует под
+    новый набор целиком, а кружок живёт дальше со своим именем и меняет
+    состав постепенно. Второе слагаемое поэтому было бы почти всегда no-op,
+    но подмешивало бы в архив кружка сегодняшних участников.
+    """
+    case_map = await repo.subject_group_map(db, campaign_id, Assessment.subject_case_id)
+    return {sid for sid, cid in case_map.items() if cid == case_id}
+
+
 async def _group_profile(
     db: AsyncSession,
     campaign_id: int,
-    snapshot_column,
-    group_id: int,
+    subject_ids: set[int],
     score_key: str,
 ) -> dict:
-    """Общее ядро профиля группы: класс и кейс считаются ОДИНАКОВО.
+    """Профиль группы за ОДНУ кампанию: класс и кейс считаются ОДИНАКОВО.
 
-    Различий ровно три, и все три — параметры: колонка снапшота, id группы и
-    префикс ключей в ответе (`class_avg` / `case_avg`). Всё остальное —
-    состав по снапшоту, «школа» за период, среднее по ученикам, обе метрики
-    под радаром — одно и то же, и раздваивать это нельзя: разъехавшись, две копии
-    дали бы двум экранам разные числа по одним данным.
+    Группу принимаем уже готовым списком учеников, а не парой «колонка
+    снапшота + id»: кто входит в группу — вопрос класса и кейса, и он у них
+    разный (см. _class_cohort_subject_ids против _case_subject_ids), а как
+    считается профиль — вопрос один на всех. Развести эти два вопроса и есть
+    смысл этой сигнатуры: раньше сюда протекало правило состава, и оно
+    разъехалось с тем, по которому собирался состав на экране.
 
     Права и загрузка самой группы остаются у вызывающего: они у класса и
     кейса разные (SchoolClass против Case), и подмешивать их сюда значило бы
     протащить сюда же оба модуля.
     """
     campaign = await repo.load_completed_campaign(db, campaign_id)
-
-    group_map = await repo.subject_group_map(db, campaign_id, snapshot_column)
-    subject_ids = {sid for sid, gid in group_map.items() if gid == group_id}
 
     # «Школа» — весь ПЕРИОД, а не одна кампания: в боевых данных кампанию
     # заводят на каждый класс/кейс отдельно, поэтому внутри одной кампании
@@ -351,80 +386,17 @@ async def _group_profile(
     }
 
 
-async def _current_students_profile(
-    db: AsyncSession,
-    subject_ids: set[int],
-    score_key: str,
-) -> dict:
-    """Профиль группы по НЫНЕШНЕМУ составу: у каждого ученика берётся его
-    последняя завершённая диагностика, даже если они разные у разных детей.
-
-    Так устроен экран класса по умолчанию, и иначе он не работает вовсе:
-    школа переиспользует строки классов из года в год, поэтому у сегодняшнего
-    состава общей кампании может не быть ни одной (новый набор), а у класса,
-    собранного из двух прежних (10-й — из двух девятых), последняя кампания у
-    половины детей своя.
-
-    Школа для сравнения считается ТЕМ ЖЕ способом — по нынешним ученикам и их
-    последним диагностикам. Брать её за один период было бы нечестно: группа
-    сшита из разных лет, и сравнивать её с одним срезом значит сравнивать
-    разное с разным.
-    """
-    group_latest = await repo.closed_campaign_history_by_subject(db, subject_ids)
-    if not any(group_latest.values()):
-        # Ни у одного НЫНЕШНЕГО ученика нет завершённой диагностики (новый
-        # набор пятиклассников). Это ровно тот же случай, что «класс не
-        # участвовал в кампании», и код ответа тот же: пустой профиль с
-        # нулями фронт нарисовал бы как настоящий радар из нулей.
-        raise ClassHasNoDiagnostics()
-
-    school_latest = await repo.closed_campaign_history_by_subject(
-        db, await repo.active_student_ids(db)
-    )
-
-    def pairs(history: dict[int, list[int]]) -> dict[int, int]:
-        return {sid: campaigns[0] for sid, campaigns in history.items() if campaigns}
-
-    group_pairs = pairs(group_latest)
-    school_pairs = pairs(school_latest)
-
-    all_profiles = await repo.profiles_by_campaign_and_subject(
-        db, set(group_pairs.values()) | set(school_pairs.values())
-    )
-
-    def profiles_for(selected: dict[int, int]):
-        return [
-            profile
-            for sid, cid in selected.items()
-            if (profile := all_profiles.get((cid, sid))) is not None and profile.overall
-        ]
-
-    return {
-        # Одной кампании у сшитого профиля нет — и подставлять сюда любую из
-        # них значило бы соврать про остальных. Фронт по пустому campaign_id
-        # и отличает этот режим от явно выбранного периода.
-        "campaign_id": None,
-        "campaign_title": None,
-        "campaign_period_year": None,
-        "campaign_period_month": None,
-        "students_total": len(subject_ids),
-        **await _profile_payload(
-            db, profiles_for(group_pairs), profiles_for(school_pairs), score_key
-        ),
-    }
-
-
 async def _profile_payload(
     db: AsyncSession,
     group_profiles: list,
     school_profiles: list,
     score_key: str,
 ) -> dict:
-    """Сборка ответа из уже отобранных профилей — общая для обоих режимов
-    (одна кампания и «последние диагностики нынешнего состава»).
+    """Сборка ответа из уже отобранных профилей — общая для класса и кейса.
 
-    Отбор пар (кто и за какую кампанию) живёт у вызывающего, всё остальное
-    здесь: разъехавшись, два режима дали бы разные числа по одним данным.
+    Кто попал в группу, решает вызывающий; всё, что дальше, — здесь и только
+    здесь: разъехавшись, две копии дали бы двум экранам разные числа по одним
+    данным.
     """
     # Среднее ПО УЧЕНИКАМ (каждый весит одинаково), а не по ответам: иначе
     # ученик, про которого ответили пятеро, перевесил бы того, про кого
@@ -486,9 +458,18 @@ async def _profile_payload(
 
 
 async def get_class_results(
-    db: AsyncSession, class_id: int, campaign_id: int | None, current_user: User
+    db: AsyncSession, class_id: int, campaign_id: int, current_user: User
 ) -> dict:
-    """Средний профиль класса, сравнение со школой и зоны роста класса."""
+    """Средний профиль класса, сравнение со школой и зоны роста класса.
+
+    Период ОБЯЗАТЕЛЕН и приходит явным id. Раньше без него экран считал
+    «нынешний состав по последней диагностике каждого ученика» — второй режим
+    со своим составом, своей школой для сравнения и своим пустым состоянием,
+    из-за которого профиль и таблица под ним могли показывать разных детей.
+    Выбор периода живёт на экране (переключатель + список из
+    `list_class_campaigns`), и он же теперь единственное место, где решается,
+    какой период открыт по умолчанию.
+    """
     school_class = await repo.load_class_with_roster(db, class_id)
     if school_class is None:
         raise ClassNotFound()
@@ -497,19 +478,10 @@ async def get_class_results(
     if not can_view_group_results(current_user.id, current_user.role, teacher_ids):
         raise NotAllowedToViewResults()
 
-    # Без явного периода экран показывает НЫНЕШНИЙ состав по последним
-    # диагностикам каждого ученика, а не одну кампанию: строки классов школа
-    # переиспользует из года в год, и «последняя кампания класса» — это в
-    # общем случае другие дети (см. _current_students_profile). Явный выбор
-    # периода остаётся прежним: одна кампания по снапшоту.
-    if campaign_id is None:
-        profile = await _current_students_profile(
-            db, {student.id for student in school_class.students}, "class_avg"
-        )
-    else:
-        profile = await _group_profile(
-            db, campaign_id, Assessment.subject_class_id, class_id, "class_avg"
-        )
+    subject_ids = await _class_cohort_subject_ids(
+        db, campaign_id, class_id, {student.id for student in school_class.students}
+    )
+    profile = await _group_profile(db, campaign_id, subject_ids, "class_avg")
     return {
         "class_id": class_id,
         "class_label": class_label(school_class.grade, school_class.section),
@@ -536,7 +508,8 @@ async def get_case_results(
     if not can_view_group_results(current_user.id, current_user.role, teacher_ids):
         raise NotAllowedToViewResults()
 
-    profile = await _group_profile(db, campaign_id, Assessment.subject_case_id, case_id, "case_avg")
+    subject_ids = await _case_subject_ids(db, campaign_id, case_id)
+    profile = await _group_profile(db, campaign_id, subject_ids, "case_avg")
     return {
         "case_id": case_id,
         "case_name": case.name,
@@ -560,16 +533,13 @@ async def _latest_campaign_of(db: AsyncSession, campaign_ids: set[int]):
 async def _group_dynamics(
     db: AsyncSession,
     campaign_id: int,
-    snapshot_column,
-    group_id: int,
+    subject_ids: set[int],
 ) -> dict:
     """Динамика группы за ОДНУ выбранную кампанию: её период против
-    предыдущего. Состав — по снапшоту, как у `_group_profile`.
+    предыдущего. Состав приходит готовым — тем же, что у `_group_profile`,
+    иначе радар и столбики под ним считались бы по разным детям.
     """
     campaign = await repo.load_completed_campaign(db, campaign_id)
-
-    group_map = await repo.subject_group_map(db, campaign_id, snapshot_column)
-    subject_ids = {sid for sid, gid in group_map.items() if gid == group_id}
 
     previous_ids = await repo.previous_campaign_by_subject(
         db, subject_ids, campaign.period_year, campaign.period_month
@@ -582,33 +552,13 @@ async def _group_dynamics(
     )
 
 
-async def _current_students_dynamics(db: AsyncSession, subject_ids: set[int]) -> dict:
-    """Динамика группы по НЫНЕШНЕМУ составу: у каждого ученика его последняя
-    диагностика против его же предыдущей.
-
-    Та же причина, что у `_current_students_profile`: общей кампании у
-    сегодняшнего состава может не быть вовсе, а «за год вырос или просел»
-    спрашивают именно про этих детей.
-    """
-    history = await repo.closed_campaign_history_by_subject(db, subject_ids)
-    if not any(history.values()):
-        raise ClassHasNoDiagnostics()
-    return await _dynamics_payload(
-        db,
-        subject_ids,
-        current_ids={sid: items[0] for sid, items in history.items() if items},
-        previous_ids={sid: items[1] for sid, items in history.items() if len(items) > 1},
-    )
-
-
 async def _dynamics_payload(
     db: AsyncSession,
     subject_ids: set[int],
     current_ids: dict[int, int],
     previous_ids: dict[int, int],
 ) -> dict:
-    """Расчёт динамики из уже отобранных пар «сейчас / тогда» — общий для
-    обоих режимов (одна кампания и последние диагностики нынешнего состава).
+    """Расчёт динамики из уже отобранных пар «сейчас / тогда».
 
     Два правила, без которых сравнение врёт, живут здесь и только здесь:
 
@@ -726,9 +676,10 @@ async def _dynamics_payload(
 
 
 async def get_class_dynamics(
-    db: AsyncSession, class_id: int, campaign_id: int | None, current_user: User
+    db: AsyncSession, class_id: int, campaign_id: int, current_user: User
 ) -> dict:
-    """Динамика класса по критериям. Права те же, что у профиля класса."""
+    """Динамика класса по критериям. Права и период — как у профиля класса:
+    период обязателен и приходит явным id."""
     school_class = await repo.load_class_with_roster(db, class_id)
     if school_class is None:
         raise ClassNotFound()
@@ -737,14 +688,12 @@ async def get_class_dynamics(
     ):
         raise NotAllowedToViewResults()
 
-    # Режимы те же, что у профиля класса: без периода — нынешний состав по
-    # своим последним диагностикам, с периодом — одна кампания по снапшоту.
-    if campaign_id is None:
-        dynamics = await _current_students_dynamics(
-            db, {student.id for student in school_class.students}
-        )
-    else:
-        dynamics = await _group_dynamics(db, campaign_id, Assessment.subject_class_id, class_id)
+    # Состав — тот же, что у профиля класса, и той же функцией: динамика
+    # рисуется под радаром, и считать их по разным детям нельзя.
+    subject_ids = await _class_cohort_subject_ids(
+        db, campaign_id, class_id, {student.id for student in school_class.students}
+    )
+    dynamics = await _group_dynamics(db, campaign_id, subject_ids)
     return {
         "class_id": class_id,
         "class_label": class_label(school_class.grade, school_class.section),
@@ -764,7 +713,8 @@ async def get_case_dynamics(
     ):
         raise NotAllowedToViewResults()
 
-    dynamics = await _group_dynamics(db, campaign_id, Assessment.subject_case_id, case_id)
+    subject_ids = await _case_subject_ids(db, campaign_id, case_id)
+    dynamics = await _group_dynamics(db, campaign_id, subject_ids)
     return {
         "case_id": case_id,
         "case_name": case.name,
@@ -868,8 +818,10 @@ async def _resolve_class_campaign(db: AsyncSession, class_id: int, campaign_id: 
     student_ids = await repo.student_ids_of_class(db, class_id)
     # Незавершённую кампанию берём тоже: единственный оставшийся потребитель —
     # состав класса с прогрессом, экран МОНИТОРИНГА, где смысл как раз в
-    # идущей диагностике. Балльные экраны сюда больше не ходят: без периода
-    # они считают нынешний состав, а не выбирают одну кампанию.
+    # идущей диагностике. Балльные экраны сюда не ходят вовсе: у них период
+    # обязателен и приходит из переключателя. То же правило живёт и на фронте
+    # (defaultCampaignId) — здесь оно остаётся ради прямых обращений к API и
+    # первого запроса, когда список периодов ещё не загружен.
     resolved = await latest_campaign_id_for_class(
         db, class_id, only_completed=False, subject_ids=student_ids
     )
@@ -943,28 +895,16 @@ async def get_class_roster(
     if campaign is None:
         raise CampaignNotFound()
 
-    # Состав складывается из трёх слагаемых — и все три нужны, потому что
-    # «класс» в данных двусмысленен: строки классов школа переиспользует из
-    # года в год (перевод меняет ученику school_class_id, а не заводит новый
-    # SchoolClass), поэтому «8-1 в июне» и «8-1 сегодня» — разные дети.
-    class_map = await repo.subject_group_map(db, campaign_id, Assessment.subject_class_id)
-    participants = set(class_map)
+    # Когорта класса в этой кампании — та же функция, что у профиля и
+    # динамики: три экрана обязаны показывать одних и тех же детей.
+    subject_ids = await _class_cohort_subject_ids(db, campaign_id, class_id, student_ids)
 
-    # 1. Снапшот: кому анкеты выдали ПО ЭТОЙ строке класса. Именно снапшот, а
-    #    не текущая привязка, — иначе выбывшие исчезли бы из прошлогодней
-    #    диагностики, и средние за тот год перестали бы сходиться.
-    subject_ids = {sid for sid, cid in class_map.items() if cid == class_id}
-
-    # 2. Нынешние ученики, участвовавшие в ЭТОЙ кампании под другим ярлыком:
-    #    сегодняшний 8-1 год назад проходил диагностику как 7-1. Без этого
-    #    слагаемого выбор прошлого периода в переключателе давал бы пустой
-    #    экран вместо истории собственного класса.
-    subject_ids |= student_ids & participants
-
-    # 3. Нынешние ученики БЕЗ анкет — только пока диагностика идёт: тогда
-    #    пустая строка означает «анкету не выдали, разберитесь». В закрытой
-    #    кампании выдавать уже нечего, а подмешивание сегодняшнего состава к
-    #    прошлому году склеивало бы две когорты в одной таблице.
+    # Плюс слагаемое, которое есть ТОЛЬКО у этого экрана: нынешние ученики
+    # БЕЗ анкет, пока диагностика идёт, — тогда пустая строка означает
+    # «анкету не выдали, разберитесь». Балльным экранам такой ученик не нужен
+    # вовсе (баллов у него нет), а в закрытой кампании выдавать уже нечего:
+    # подмешивание сегодняшнего состава к прошлому году склеивало бы две
+    # когорты в одной таблице.
     if campaign.status != CampaignStatus.CLOSED:
         subject_ids |= student_ids
 

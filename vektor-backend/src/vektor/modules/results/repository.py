@@ -489,66 +489,6 @@ async def latest_campaign_id_for_group(
     return row.scalar_one_or_none()
 
 
-async def closed_campaign_history_by_subject(
-    db: AsyncSession, subject_ids: Collection[int]
-) -> dict[int, list[int]]:
-    """subject_id → его завершённые кампании, свежие первыми. Одним запросом.
-
-    Нужна экранам, которые считают группу по НЫНЕШНЕМУ составу: у класса,
-    собранного из разных прежних классов (10-й — из двух девятых), общей
-    кампании не существует, и «последняя диагностика» есть только у каждого
-    ученика своя. Отсюда история целиком, а не один id: тем же списком
-    берётся и предыдущий период под динамику — вторым элементом.
-
-    Порядок считается в Python по той же причине, что в
-    previous_campaign_by_subject: это group-by-максимум, в SQL он потребовал
-    бы оконной функции ради выборки, где кампаний на ученика единицы.
-    """
-    if not subject_ids:
-        return {}
-
-    rows = await db.execute(
-        select(
-            Assessment.subject_id,
-            Assessment.campaign_id,
-            Campaign.period_year,
-            Campaign.period_month,
-        )
-        .join(Campaign, Campaign.id == Assessment.campaign_id)
-        .where(
-            Assessment.subject_id.in_(subject_ids),
-            Campaign.status == CampaignStatus.CLOSED,
-        )
-        .distinct()
-    )
-
-    history: dict[int, list[tuple[int, int, int]]] = {}
-    for subject_id, campaign_id, year, month in rows.all():
-        history.setdefault(subject_id, []).append((year, month, campaign_id))
-    return {
-        subject_id: [campaign_id for _, _, campaign_id in sorted(items, reverse=True)]
-        for subject_id, items in history.items()
-    }
-
-
-async def active_student_ids(db: AsyncSession) -> set[int]:
-    """Нынешние ученики школы — знаменатель для сравнения «группа против
-    школы», когда школа тоже считается по последним диагностикам.
-
-    Только активные: выпускники и выбывшие остаются в базе ради снапшотов
-    прошлых кампаний (правило «не нашёлся — значит выпускник»), но школой
-    сегодняшнего дня они уже не являются.
-    """
-    rows = await db.execute(
-        select(User.id).where(
-            User.role == UserRole.STUDENT,
-            User.is_active.is_(True),
-            User.is_placeholder.is_(False),
-        )
-    )
-    return set(rows.scalars())
-
-
 async def closed_campaign_ids_in_period(db: AsyncSession, campaign: Campaign) -> set[int]:
     """Все завершённые кампании того же периода — это и есть «школа».
 

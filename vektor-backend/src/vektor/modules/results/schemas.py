@@ -159,20 +159,23 @@ class GroupSelfGapOut(BaseModel):
 
 
 class ClassResultsOut(BaseModel):
-    """Профиль класса.
+    """Профиль класса за ОДНУ кампанию.
 
-    Кампания НЕОБЯЗАТЕЛЬНА: без явного периода экран считает нынешний состав
-    по последним диагностикам каждого ученика, а они у разных детей разные —
-    у класса, собранного из двух прежних, общей кампании нет вовсе. Пустой
-    `campaign_id` и есть признак этого режима.
+    Период всегда известен и всегда один: «класс» сам по себе группу людей не
+    определяет — школа переиспользует строки классов из года в год, — поэтому
+    выбор периода обязателен и делается на экране.
+
+    В состав входят и те, кому анкеты выданы по этой строке класса (включая
+    выбывших), и нынешние ученики, участвовавшие в этой же кампании под
+    прежним ярлыком: см. _class_cohort_subject_ids.
     """
 
     class_id: int
     class_label: str
-    campaign_id: int | None
-    campaign_title: str | None
-    campaign_period_year: int | None
-    campaign_period_month: int | None
+    campaign_id: int
+    campaign_title: str
+    campaign_period_year: int
+    campaign_period_month: int
 
     # Сколько учеников в группе вообще и у скольких есть результаты: без
     # знаменателя «средний балл по 7 ученикам» читается как балл всего класса.
@@ -210,12 +213,17 @@ class CaseSchoolGapOut(BaseModel):
 
 
 class CaseResultsOut(BaseModel):
+    """Профиль кейса за одну кампанию — см. ClassResultsOut. Состав кейса, в
+    отличие от класса, берётся чистым снапшотом: строку класса школа
+    переиспользует под новый набор целиком, а кружок живёт дальше со своим
+    именем и меняет состав постепенно."""
+
     case_id: int
     case_name: str
-    campaign_id: int | None
-    campaign_title: str | None
-    campaign_period_year: int | None
-    campaign_period_month: int | None
+    campaign_id: int
+    campaign_title: str
+    campaign_period_year: int
+    campaign_period_month: int
 
     students_total: int
     students_with_results: int
