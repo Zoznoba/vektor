@@ -23,7 +23,7 @@ from vektor.modules.classes.models import SchoolClass
 from vektor.modules.competencies.errors import NoCurrentQuestionnaireVersion
 from vektor.modules.competencies.models import Competency, Question, QuestionnaireVersion
 from vektor.modules.users.models import User
-from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole
+from vektor.shared.enums import AssessmentBasis, AssessmentStatus, CampaignStatus, RaterRole
 
 
 async def create_campaign(
@@ -208,6 +208,7 @@ def build_pairs(
     parent_ids_by_student: dict[int, list[int]],
     teacher_ids: list[int],
     include_peers: bool = False,
+    teacher_ids_by_student: dict[int, list[int]] | None = None,
 ) -> dict[tuple[int, int], RaterRole]:
     """Чистое доменное ядро: строит пары (respondent_id, subject_id) → роль
     для ОДНОГО класса. Без БД — юнит-тестируется на голых числах.
@@ -216,6 +217,9 @@ def build_pairs(
       • самооценка:    (s, s)                 ВСЕГДА, для каждого ученика s
       • родители:      (parent, s)            для каждого родителя ученика s
       • учителя:       (teacher, s)           для каждого учителя класса
+                       (либо только для назначенных ему учеников, если задан
+                       teacher_ids_by_student — режим деления, см.
+                       split_students_between_teachers)
       • одноклассники: (other, s)             ТОЛЬКО если include_peers=True
 
     Возвращаем dict, а не set: роль оценивающего нужна дальше — она
@@ -236,7 +240,13 @@ def build_pairs(
         put(s, s, RaterRole.SELF)
         for p in parent_ids_by_student.get(s, []):
             put(p, s, RaterRole.PARENT)
-        for t in teacher_ids:
+        # teacher_ids_by_student задан — учителя берутся ПО УЧЕНИКУ (режим
+        # деления класса между 2–4 учителями), иначе прежнее правило «каждый
+        # выбранный учитель оценивает каждого ученика».
+        teachers_of_s = (
+            teacher_ids if teacher_ids_by_student is None else teacher_ids_by_student.get(s, [])
+        )
+        for t in teachers_of_s:
             put(t, s, RaterRole.TEACHER)
 
     if include_peers:
@@ -262,6 +272,32 @@ def merge_pairs(
         current = target.get(pair)
         if current is None or _RATER_ROLE_PRIORITY[role] < _RATER_ROLE_PRIORITY[current]:
             target[pair] = role
+
+
+def split_students_between_teachers(
+    student_ids: list[int], teacher_ids: list[int]
+) -> dict[int, list[int]]:
+    """Чистая функция: раздать учеников по учителям поровну — каждому ученику
+    РОВНО ОДИН оценивающий учитель.
+
+    Второй режим генерации рядом с прежним «каждый выбранный учитель
+    оценивает каждого ученика»: в школе бывает наоборот — двое учителей
+    делят класс пополам, и каждый пишет про свою половину. 12 учеников и
+    2 учителя → по 6 анкет на учителя вместо 24 на двоих.
+
+    Раздача — по кругу (round-robin) по ОТСОРТИРОВАННЫМ спискам, а не в
+    порядке прихода из БД. Порядок обязан быть детерминированным: генерация
+    идемпотентна и запускается повторно, а при плавающем порядке второй
+    прогон построил бы другую раскладку и досоздал бы анкеты второму
+    учителю про тех же учеников.
+
+    Учителей нет вовсе — у каждого ученика пустой список (учительских анкет
+    не будет), а не деление на ноль.
+    """
+    if not teacher_ids:
+        return {s: [] for s in student_ids}
+    ordered = sorted(teacher_ids)
+    return {s: [ordered[i % len(ordered)]] for i, s in enumerate(sorted(student_ids))}
 
 
 def _teachers_for_class(
@@ -307,6 +343,8 @@ async def generate_assessments(
     teacher_ids_by_class: dict[int, list[int]] | None = None,
     case_ids: list[int] | None = None,
     teacher_ids_by_case: dict[int, list[int]] | None = None,
+    split_class_ids: list[int] | None = None,
+    split_case_ids: list[int] | None = None,
 ) -> tuple[Campaign, int]:
     """Оркестрация: грузит классы из БД, строит матрицу через build_pairs,
     идемпотентно вставляет НОВЫЕ анкеты, переводит кампанию в ACTIVE.
@@ -326,10 +364,19 @@ async def generate_assessments(
     основаниям, пары просто сольются через merge_pairs, а на анкете
     проставятся ОБА снапшота (subject_class_id и subject_case_id).
 
+    `split_class_ids`/`split_case_ids` — источники, где учеников ДЕЛЯТ между
+    выбранными учителями (каждого ученика оценивает ровно один из них), а не
+    отдают каждому учителю весь класс. Второй способ, которым школа проводит
+    диагностику; раскладка — детерминированная round-robin
+    (split_students_between_teachers), иначе повторный запуск досоздал бы
+    анкеты по другой раскладке.
+
     Верхней границы на число учителей нет намеренно: 2–4 — это практика, а не
     инвариант данных, и упереться в неё школа может по своим причинам.
     Предупреждает UI, запрещать нечего.
     """
+    split_classes = set(split_class_ids or ())
+    split_cases = set(split_case_ids or ())
 
     campaign = await db.get(Campaign, campaign_id)
     if not campaign:
@@ -352,6 +399,13 @@ async def generate_assessments(
     # он оказаться не может.
     class_id_by_subject: dict[int, int] = {}
 
+    # Основание выдачи каждой пары (AssessmentBasis) — четвёртый снапшот
+    # анкеты рядом с ролью и двумя группами. По снапшотам его не восстановить:
+    # у ученика, попавшего в кампанию и классом, и кейсом, пары сливаются в
+    # одну анкету с обоими снапшотами, и покрытие показывало его только в
+    # строке кейса. Класс выигрывает у кейса — см. AssessmentBasis.
+    basis_by_pair: dict[tuple[int, int], AssessmentBasis] = {}
+
     for cls in classes_sample.scalars():
         student_ids = [s.id for s in cls.students]
         parent_ids_by_student = {s.id: [p.id for p in s.parents] for s in cls.students}
@@ -359,10 +413,22 @@ async def generate_assessments(
 
         class_id_by_subject.update({s.id: cls.id for s in cls.students})
 
-        merge_pairs(
-            all_pairs,
-            build_pairs(student_ids, parent_ids_by_student, teacher_ids, include_peers),
+        class_pairs = build_pairs(
+            student_ids,
+            parent_ids_by_student,
+            teacher_ids,
+            include_peers,
+            teacher_ids_by_student=split_students_between_teachers(student_ids, teacher_ids)
+            if cls.id in split_classes
+            else None,
         )
+        # Основание выдачи фиксируем ЗДЕСЬ, до слияния с кейсами: класс
+        # приоритетнее, поэтому кейсовый цикл ниже ставит своё основание
+        # только парам, которых классы не породили (setdefault).
+        for pair in class_pairs:
+            basis_by_pair.setdefault(pair, AssessmentBasis.CLASS)
+
+        merge_pairs(all_pairs, class_pairs)
 
     # Кейс субъекта на момент генерации — второй снапшот рядом с классом.
     # Ученик состоит РОВНО в одном кейсе (FK users.case_id), поэтому коллизий
@@ -393,13 +459,22 @@ async def generate_assessments(
                 if student.school_class_id is not None:
                     class_id_by_subject.setdefault(student.id, student.school_class_id)
 
-            merge_pairs(
-                all_pairs,
+            case_pairs = build_pairs(
+                student_ids,
+                parent_ids_by_student,
+                teacher_ids,
                 # include_peers не пробрасываем: «одноклассники» — это про
                 # класс. Оценка участниками кружка друг друга — отдельное
                 # доменное правило, которого школа не заказывала.
-                build_pairs(student_ids, parent_ids_by_student, teacher_ids, include_peers=False),
+                include_peers=False,
+                teacher_ids_by_student=split_students_between_teachers(student_ids, teacher_ids)
+                if kase.id in split_cases
+                else None,
             )
+            for pair in case_pairs:
+                basis_by_pair.setdefault(pair, AssessmentBasis.CASE)
+
+            merge_pairs(all_pairs, case_pairs)
 
     existing_pairs = await db.execute(
         select(Assessment.respondent_id, Assessment.subject_id).where(
@@ -418,6 +493,7 @@ async def generate_assessments(
                 rater_role=role,
                 subject_class_id=class_id_by_subject.get(s),
                 subject_case_id=case_id_by_subject.get(s),
+                issued_for=basis_by_pair.get((r, s)),
             )
             for (r, s), role in new_pairs.items()
         ]

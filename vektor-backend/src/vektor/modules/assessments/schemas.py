@@ -78,6 +78,12 @@ class GenerateIn(BaseModel):
     # семантика ключей та же, что у teacher_ids_by_class.
     case_ids: list[int] = Field(default_factory=list)
     teacher_ids_by_case: dict[int, list[int]] | None = None
+    # Источники, где учеников ДЕЛЯТ между выбранными учителями: каждого
+    # ученика оценивает ровно один из них (12 учеников и 2 учителя → по 6
+    # анкет на учителя). Класса (кейса) нет в списке → прежнее поведение:
+    # каждый выбранный учитель оценивает весь класс.
+    split_class_ids: list[int] = Field(default_factory=list)
+    split_case_ids: list[int] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _at_least_one_source(self) -> "GenerateIn":

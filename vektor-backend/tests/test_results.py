@@ -1799,6 +1799,64 @@ async def test_coverage_student_appears_in_both_class_and_case_rows(
     assert sum(g["total"] for g in body["groups"]) == body["total"]
 
 
+async def test_coverage_splits_one_student_between_class_and_case_rows(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    """Ученик, попавший в кампанию и классом, и кейсом ОДНОЙ генерацией, виден
+    в обеих строках: самооценка, родитель и учитель класса — в строке класса,
+    руководитель кружка — в строке кейса.
+
+    Регрессия на жалобу заказчика: пары обоих оснований сливаются в одну
+    анкету с двумя снапшотами, и по правилу «есть кейс — строка кейса» вся
+    диагностика ученика уезжала в кружок, а в своём классе он не числился
+    вовсе.
+    """
+    ids = class_scenario["ids"]
+    ct = await _register(client, "case_only_teacher@vektor.ru", "teacher")
+    kase = (
+        await client.post("/cases", json={"name": "Кружок основания"}, headers=admin_headers)
+    ).json()
+    await client.post(
+        f"/cases/{kase['id']}/students", json={"user_ids": [ids["s1"]]}, headers=admin_headers
+    )
+    await client.post(
+        f"/cases/{kase['id']}/teachers", json={"user_ids": [ct]}, headers=admin_headers
+    )
+
+    campaign_id = (
+        await client.post(
+            "/campaigns",
+            json={"title": "Класс и кейс разом", "period_year": 2026, "period_month": 9},
+            headers=admin_headers,
+        )
+    ).json()["id"]
+    # Одной генерацией — так это делает панель «Кто кого оценивает».
+    await client.post(
+        f"/campaigns/{campaign_id}/generate",
+        json={"class_ids": [class_scenario["class_id"]], "case_ids": [kase["id"]]},
+        headers=admin_headers,
+    )
+
+    body = (
+        await client.get(f"/results/campaigns/{campaign_id}/coverage", headers=admin_headers)
+    ).json()
+    class_row = next(g for g in body["groups"] if g["kind"] == "class")
+    case_row = next(g for g in body["groups"] if g["kind"] == "case")
+
+    class_students = {st["subject"]["id"]: st for st in class_row["students"]}
+    case_students = {st["subject"]["id"]: st for st in case_row["students"]}
+    assert ids["s1"] in class_students and ids["s1"] in case_students
+    # В классе у него самооценка, родитель и учитель класса; в кейсе — только
+    # руководитель кружка, и самооценки там нет (её выдал класс).
+    assert class_students[ids["s1"]]["self_status"] is not None
+    assert class_students[ids["s1"]]["teachers"]["total"] == 1
+    assert class_students[ids["s1"]]["parents"]["total"] == 1
+    assert case_students[ids["s1"]]["self_status"] is None
+    assert {r["id"] for r in case_students[ids["s1"]]["teachers"]["raters"]} == {ct}
+    # Анкета по-прежнему лежит ровно в одной строке — сумма сходится с итогом.
+    assert sum(g["total"] for g in body["groups"]) == body["total"]
+
+
 # --- Профиль кейса (Этап 8): те же правила, что у класса, но состав из разных классов ---
 
 

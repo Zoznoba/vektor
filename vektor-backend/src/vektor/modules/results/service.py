@@ -632,6 +632,8 @@ async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
 
     Группируем по ОСНОВАНИЮ выдачи (coverage_key): анкета попадает ровно в
     одну строку, поэтому сумма строк равна общему числу анкет кампании.
+    Ученик, попавший в кампанию и классом, и кейсом, виден в ОБЕИХ строках —
+    в каждой со своими анкетами (см. coverage_key).
     Анкеты без снапшотов вовсе (субъект вне класса, пилотная кампания на
     учителях) попадают в строку kind="none", а не выбрасываются: иначе итог
     не сходился бы.
@@ -654,10 +656,10 @@ async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
     groups: dict[CoverageKey, dict] = {}
     total_all = 0
     completed_all = 0
-    for class_id, case_id, total, done, grade, section, case_name in rows:
+    for class_id, case_id, issued_for, total, done, grade, section, case_name in rows:
         total_all += total
         completed_all += done
-        key = coverage_key(class_id, case_id)
+        key = coverage_key(class_id, case_id, issued_for)
         group = groups.get(key)
         if group is None:
             kind, _ = key

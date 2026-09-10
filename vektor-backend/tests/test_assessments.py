@@ -1334,3 +1334,172 @@ async def test_generate_by_class_and_case_merges_without_duplicates(
     # На анкетах про s1 стоят ОБА снапшота: он в кампании и как ученик класса,
     # и как участник кружка.
     assert set(snapshots.all()) == {(scenario["class_id"], case_scenario["case_id"])}
+
+
+# --- Режим деления учеников между учителями + основание выдачи ---
+
+from vektor.modules.assessments.service import (  # noqa: E402
+    split_students_between_teachers,
+)
+from vektor.shared.enums import AssessmentBasis  # noqa: E402
+
+
+def test_split_students_between_teachers_deals_evenly() -> None:
+    """Ученики раздаются по кругу: каждому ровно один учитель, нагрузка ровная."""
+    assert split_students_between_teachers([4, 1, 3, 2], [20, 10]) == {
+        1: [10],
+        2: [20],
+        3: [10],
+        4: [20],
+    }
+
+
+def test_split_students_between_teachers_is_order_independent() -> None:
+    """Порядок прихода из БД на раскладку не влияет — иначе повторный запуск
+    генерации досоздал бы анкеты второму учителю про тех же учеников."""
+    assert split_students_between_teachers([3, 1, 2], [7, 5]) == split_students_between_teachers(
+        [2, 3, 1], [5, 7]
+    )
+
+
+def test_split_students_between_teachers_without_teachers() -> None:
+    """Учителей нет — пустой список у каждого ученика, а не деление на ноль."""
+    assert split_students_between_teachers([1, 2], []) == {1: [], 2: []}
+
+
+async def test_generate_splits_class_between_teachers(
+    client: AsyncClient, scenario, db_session
+) -> None:
+    """split_class_ids: двое учителей делят класс, а не пишут каждый про всех.
+
+    В классе 2 ученика; со вторым учителем без деления учительских анкет было
+    бы 4, с делением — 2, по одной на учителя.
+    """
+    headers = scenario["headers"]
+    t2 = await _register(client, "t2split@vektor.ru", "teacher")
+    await client.post(
+        f"/classes/{scenario['class_id']}/teachers", json={"teacher_ids": [t2]}, headers=headers
+    )
+    cid = await _create_campaign(client, headers)
+
+    response = await client.post(
+        f"/campaigns/{cid}/generate",
+        json={
+            "class_ids": [scenario["class_id"]],
+            "teacher_ids_by_class": {str(scenario["class_id"]): [scenario["ids"]["t1"], t2]},
+            "split_class_ids": [scenario["class_id"]],
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    # self(2) + parent(1) + teacher(2, а не 4) = 5.
+    assert response.json()["created"] == 5
+
+    rows = await db_session.execute(
+        select(Assessment.respondent_id, Assessment.subject_id).where(
+            (Assessment.campaign_id == cid) & (Assessment.rater_role == RaterRole.TEACHER)
+        )
+    )
+    pairs = list(rows.all())
+    assert len(pairs) == 2
+    # Каждому учителю достался ровно один ученик, каждому ученику — один учитель.
+    assert len({r for r, _ in pairs}) == 2
+    assert len({s for _, s in pairs}) == 2
+
+
+async def test_generate_split_is_idempotent(client: AsyncClient, scenario) -> None:
+    """Повторный запуск с тем же выбором не досоздаёт анкеты: раскладка
+    детерминированная, иначе второй учитель получил бы тех же учеников."""
+    headers = scenario["headers"]
+    t2 = await _register(client, "t2idem@vektor.ru", "teacher")
+    await client.post(
+        f"/classes/{scenario['class_id']}/teachers", json={"teacher_ids": [t2]}, headers=headers
+    )
+    cid = await _create_campaign(client, headers)
+    payload = {
+        "class_ids": [scenario["class_id"]],
+        "teacher_ids_by_class": {str(scenario["class_id"]): [scenario["ids"]["t1"], t2]},
+        "split_class_ids": [scenario["class_id"]],
+    }
+
+    await client.post(f"/campaigns/{cid}/generate", json=payload, headers=headers)
+    again = await client.post(f"/campaigns/{cid}/generate", json=payload, headers=headers)
+
+    assert again.json()["created"] == 0
+
+
+async def test_generate_without_split_keeps_every_teacher_on_every_student(
+    client: AsyncClient, scenario
+) -> None:
+    """Источник не в split_class_ids — прежнее поведение, каждый учитель
+    оценивает весь класс."""
+    headers = scenario["headers"]
+    t2 = await _register(client, "t2all@vektor.ru", "teacher")
+    await client.post(
+        f"/classes/{scenario['class_id']}/teachers", json={"teacher_ids": [t2]}, headers=headers
+    )
+    cid = await _create_campaign(client, headers)
+
+    response = await client.post(
+        f"/campaigns/{cid}/generate",
+        json={
+            "class_ids": [scenario["class_id"]],
+            "teacher_ids_by_class": {str(scenario["class_id"]): [scenario["ids"]["t1"], t2]},
+        },
+        headers=headers,
+    )
+
+    # self(2) + parent(1) + teacher(2 учителя × 2 ученика = 4) = 7.
+    assert response.json()["created"] == 7
+
+
+async def test_generate_records_issued_for(client: AsyncClient, scenario, db_session) -> None:
+    """Основание выдачи пишется на анкете — по нему покрытие раскладывает
+    анкеты по строкам, снапшотов для этого недостаточно."""
+    cid = await _create_campaign(client, scenario["headers"])
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]]},
+        headers=scenario["headers"],
+    )
+
+    rows = await db_session.execute(
+        select(Assessment.issued_for).where(Assessment.campaign_id == cid)
+    )
+    assert set(rows.scalars()) == {AssessmentBasis.CLASS}
+
+
+async def test_class_wins_over_case_as_issue_basis(
+    client: AsyncClient, scenario, case_scenario, db_session
+) -> None:
+    """Ученик в классе И в кейсе: самооценка, родители и учителя класса —
+    анкеты КЛАССА, руководитель кружка — анкета КЕЙСА.
+
+    Регрессия: пары обоих оснований сливаются в одну анкету с двумя
+    снапшотами, и покрытие по правилу «есть кейс — строка кейса» уносило туда
+    всю диагностику ученика, а из своего класса он пропадал вовсе.
+    """
+    headers = scenario["headers"]
+    s1 = scenario["ids"]["s1"]
+    await client.post(
+        f"/cases/{case_scenario['case_id']}/students", json={"user_ids": [s1]}, headers=headers
+    )
+    cid = await _create_campaign(client, headers)
+
+    await client.post(
+        f"/campaigns/{cid}/generate",
+        json={"class_ids": [scenario["class_id"]], "case_ids": [case_scenario["case_id"]]},
+        headers=headers,
+    )
+
+    rows = await db_session.execute(
+        select(Assessment.respondent_id, Assessment.issued_for).where(
+            (Assessment.campaign_id == cid) & (Assessment.subject_id == s1)
+        )
+    )
+    basis_by_respondent = dict(rows.all())
+    assert basis_by_respondent[s1] == AssessmentBasis.CLASS
+    assert basis_by_respondent[scenario["ids"]["p1"]] == AssessmentBasis.CLASS
+    assert basis_by_respondent[scenario["ids"]["t1"]] == AssessmentBasis.CLASS
+    assert basis_by_respondent[case_scenario["ids"]["ct1"]] == AssessmentBasis.CASE

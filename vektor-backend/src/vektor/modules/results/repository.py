@@ -262,6 +262,7 @@ async def campaign_students_by_group(
         select(
             Assessment.subject_class_id,
             Assessment.subject_case_id,
+            Assessment.issued_for,
             Assessment.subject_id,
             Assessment.respondent_id,
             Assessment.rater_role,
@@ -281,9 +282,10 @@ async def campaign_students_by_group(
     }
 
     # Ключ — ПАРА (группа, ученик), а не один ученик: один и тот же ребёнок
-    # может попасть в кампанию и классом, и кейсом (пары сливаются, но анкеты
-    # остаются разными — см. generate_assessments). Тогда он показывается в
-    # ОБЕИХ строках, и в каждой считаются только её собственные анкеты.
+    # может попасть в кампанию и классом, и кейсом. Его анкеты расходятся по
+    # ОСНОВАНИЮ выдачи (самооценка, родители и учителя класса — в класс,
+    # руководители кружка — в кейс), поэтому он показывается в ОБЕИХ строках,
+    # и в каждой считаются только её собственные анкеты.
     # С ключом по ученику первая же встреченная анкета «застолбила» бы группу,
     # а строка кейса осталась бы с ненулевым счётчиком и пустым списком —
     # то есть не раскрывалась бы вовсе.
@@ -292,6 +294,7 @@ async def campaign_students_by_group(
     for (
         class_id,
         case_id,
+        issued_for,
         subject_id,
         respondent_id,
         rater_role,
@@ -299,7 +302,7 @@ async def campaign_students_by_group(
         subject,
         respondent_name,
     ) in rows.all():
-        key = (coverage_key(class_id, case_id), subject_id)
+        key = (coverage_key(class_id, case_id, issued_for), subject_id)
         row = students.get(key)
         if row is None:
             row = students[key] = {
@@ -557,10 +560,14 @@ async def load_case_with_teachers(db: AsyncSession, case_id: int) -> Case | None
 
 
 async def coverage_rows_by_snapshot(db: AsyncSession, campaign_id: int) -> list[tuple]:
-    """Сырые счётчики покрытия: (class_id, case_id, total, completed, grade,
-    section, case_name) по парам снапшотов.
+    """Сырые счётчики покрытия: (class_id, case_id, issued_for, total,
+    completed, grade, section, case_name) по тройкам «снапшоты + основание».
 
-    Схлопывать пары в группы — задача вызывающего: у анкет одного кейса
+    Основание выдачи (issued_for) идёт наравне со снапшотами: строку выбирает
+    оно, а не наличие кейса (см. coverage_key), и анкеты одного и того же
+    ученика могут разойтись по строке класса и строке кейса.
+
+    Схлопывать группы — задача вызывающего: у анкет одного кейса
     subject_class_id разный (ученики кружка из разных классов), поэтому на
     одну группу GROUP BY даёт несколько строк.
     """
@@ -569,6 +576,7 @@ async def coverage_rows_by_snapshot(db: AsyncSession, campaign_id: int) -> list[
         select(
             Assessment.subject_class_id,
             Assessment.subject_case_id,
+            Assessment.issued_for,
             func.count().label("total"),
             completed.label("completed"),
             SchoolClass.grade,
@@ -581,6 +589,7 @@ async def coverage_rows_by_snapshot(db: AsyncSession, campaign_id: int) -> list[
         .group_by(
             Assessment.subject_class_id,
             Assessment.subject_case_id,
+            Assessment.issued_for,
             SchoolClass.grade,
             SchoolClass.section,
             Case.name,

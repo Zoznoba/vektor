@@ -25,7 +25,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vektor.core.database import Base
 from vektor.modules.cases.models import Case  # noqa: F401
-from vektor.shared.enums import AssessmentStatus, CampaignStatus, RaterRole
+from vektor.shared.enums import AssessmentBasis, AssessmentStatus, CampaignStatus, RaterRole
 
 if TYPE_CHECKING:
     from vektor.modules.classes.models import SchoolClass
@@ -162,6 +162,16 @@ class Assessment(Base):
     # эта анкета». Nullable: у анкеты, выданной по классу, кейса нет.
     subject_case_id: Mapped[int | None] = mapped_column(ForeignKey("cases.id"))
     subject_case: Mapped["Case | None"] = relationship()
+
+    # По какому основанию выдана эта анкета — класс или кейс (AssessmentBasis).
+    # Снапшотов мало: subject_class_id стоит и у кейсовой анкеты (от него
+    # зависит видимость возрастных вопросов), поэтому «есть кейс — значит
+    # кейсовая» врёт для ученика, состоящего и в классе, и в кружке: пары
+    # сливаются в одну анкету, и по такому правилу вся его диагностика
+    # (самооценка, родители, учителя класса) уезжала в строку кейса.
+    # Nullable: у анкет, выданных до появления колонки, основание проставлено
+    # backfill'ом по снапшотам, а у анкет вовсе без снапшотов его нет.
+    issued_for: Mapped[AssessmentBasis | None] = mapped_column(_enum_col(AssessmentBasis))
 
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
