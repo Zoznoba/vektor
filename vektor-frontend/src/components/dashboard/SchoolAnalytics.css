@@ -1,0 +1,86 @@
+.school-analytics__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.school-analytics__period {
+  padding: 6px 10px;
+  border: 0.5px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font: inherit;
+  font-size: 13px;
+}
+
+/* Сильнее/слабее всего — рядом: это две половины одного ответа, и на разных
+   экранных высотах их сравнивать неудобно. */
+.school-analytics__columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 8px 24px;
+}
+
+.school-classes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.school-classes__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.school-classes__label {
+  width: 42px;
+  color: var(--ink-soft);
+}
+
+.school-classes__track {
+  flex: 1;
+  min-width: 0;
+  height: 10px;
+  border-radius: var(--r-pill);
+  background: var(--fog);
+  overflow: hidden;
+}
+
+.school-classes__bar {
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--blue);
+}
+
+.school-classes__bar--below {
+  background: var(--ink-faint);
+}
+
+.school-classes__value {
+  width: 38px;
+  text-align: right;
+  font-family: var(--font-d);
+  font-weight: 600;
+}
+
+.school-classes__count {
+  width: 54px;
+  text-align: right;
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
+/* Таблица шире узкого экрана — прокручивается сама, страница не едет вбок. */
+.school-table__scroll {
+  overflow-x: auto;
+}
+
+.school-table td:not(:first-child),
+.school-table th:not(:first-child) {
+  text-align: right;
+  white-space: nowrap;
+}

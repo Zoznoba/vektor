@@ -228,3 +228,56 @@ export interface GroupDynamics {
 
   competencies: CompetencyDynamics[];
 }
+
+/* --- Аналитика по школе: GET /results/school (только админ) --- */
+
+/** Точка ряда по годам. `average` — по всем критериям своего периода,
+ *  `core_average` — по общему ядру ряда; на график идёт второе, иначе линия
+ *  дёргалась бы от смены состава критериев, а не от роста школы. */
+export interface SchoolPeriod {
+  period_year: number;
+  period_month: number;
+  students_with_results: number;
+  average: number;
+  core_average: number | null;
+}
+
+export interface SchoolCompetency {
+  competency_id: number;
+  code: string;
+  name: string;
+  avg: number | null;
+  self_avg: number | null;
+  others_avg: number | null;
+  previous_avg: number | null;
+  /** null у критериев вне общего ядра пары периодов — прироста не существует. */
+  delta: number | null;
+}
+
+export interface SchoolClassRow {
+  class_id: number;
+  class_label: string;
+  students_with_results: number;
+  average: number;
+}
+
+export interface SchoolPeriodDetail {
+  period_year: number;
+  period_month: number;
+  previous_period_year: number | null;
+  previous_period_month: number | null;
+  students_with_results: number;
+  campaigns_count: number;
+  average: number;
+  core_average_delta: number | null;
+  competencies: SchoolCompetency[];
+  classes: SchoolClassRow[];
+}
+
+export interface SchoolResults {
+  /** Пустой ряд и current === null — в школе нет ни одной завершённой
+   *  кампании. Это штатное состояние, а не ошибка. */
+  periods: SchoolPeriod[];
+  core_competencies: { competency_id: number; code: string }[];
+  current: SchoolPeriodDetail | null;
+}

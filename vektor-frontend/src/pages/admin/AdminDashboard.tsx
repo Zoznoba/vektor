@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
+import { SchoolAnalytics } from '../../components/dashboard/SchoolAnalytics';
 import { useApi } from '../../hooks/useApi';
 import { useAuth } from '../../auth/AuthContext';
 import { fetchUsers } from '../../api/users';
@@ -65,6 +66,13 @@ export function AdminDashboard() {
         {metric(counts.classes, 'Классов', '/admin/classes')}
         {metric(counts.cases, 'Кейсов', '/admin/cases')}
       </div>
+
+      {/* Аналитика школы — ниже счётчиков состава и выше кампаний: сводка
+          отвечает сначала «кто в школе», потом «как школа выглядит», и только
+          потом «что сейчас идёт». */}
+      <Panel title="Аналитика по школе">
+        <SchoolAnalytics />
+      </Panel>
 
       <Panel title="Активные кампании 360°">
         {campaigns.loading ? (

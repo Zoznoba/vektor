@@ -2067,3 +2067,160 @@ async def test_case_dynamics_available_to_case_teacher(
     body = response.json()
     assert body["case_name"] == "Робототехника"
     assert body["previous_campaign_id"] is None
+
+
+# --- Школьная статистика (сводка админа) ---
+
+
+@pytest.fixture
+async def school_scenario(client: AsyncClient, admin_headers: dict[str, str], db_session) -> dict:
+    """Школа за ДВА периода: июнь 2025 и июнь 2026, один класс 5-1.
+
+    Критерий A мерили в обоих годах (2.0 → 4.0), критерий B появился только в
+    2026-м (5.0) — на нём проверяется, что ряд по годам считается по общему
+    ядру, а не по всем критериям периода.
+    """
+    s1 = await _register(client, "sch1@vektor.ru", "student")
+    s2 = await _register(client, "sch2@vektor.ru", "student")
+
+    cls = (
+        await client.post("/classes", json={"grade": 5, "section": "1"}, headers=admin_headers)
+    ).json()
+    await client.post(
+        f"/classes/{cls['id']}/students", json={"student_ids": [s1, s2]}, headers=admin_headers
+    )
+
+    comp_a = await _seed_competency(db_session, "sch_a", order=1)
+    comp_b = await _seed_competency(db_session, "sch_b", order=2)
+    q_a = await _question_id_for(db_session, comp_a)
+    q_b = await _question_id_for(db_session, comp_b)
+
+    campaigns: dict[int, int] = {}
+    for year, value_a in ((2025, 2), (2026, 4)):
+        campaign_id = (
+            await client.post(
+                "/campaigns",
+                json={"title": f"360 · {year}", "period_year": year, "period_month": 6},
+                headers=admin_headers,
+            )
+        ).json()["id"]
+        campaigns[year] = campaign_id
+        await client.post(
+            f"/campaigns/{campaign_id}/generate",
+            json={"class_ids": [cls["id"]]},
+            headers=admin_headers,
+        )
+        for email, sid in (("sch1@vektor.ru", s1), ("sch2@vektor.ru", s2)):
+            aid = await db_session.scalar(
+                select(Assessment.id).where(
+                    Assessment.campaign_id == campaign_id,
+                    Assessment.respondent_id == sid,
+                    Assessment.subject_id == sid,
+                )
+            )
+            await _post_answer(client, db_session, email, aid, q_a, value_a)
+            if year == 2026:
+                await _post_answer(client, db_session, email, aid, q_b, 5)
+
+    return {
+        "class_id": cls["id"],
+        "comp_a": comp_a,
+        "comp_b": comp_b,
+        "campaigns": campaigns,
+        "ids": {"s1": s1, "s2": s2},
+    }
+
+
+async def test_school_results_lists_periods_with_results(
+    client: AsyncClient, admin_headers, school_scenario
+) -> None:
+    """Ряд периодов — под переключатель: год, охват и итог самого периода
+    (по всем ЕГО критериям, поэтому 2026-й это (4 + 5) / 2)."""
+    assert school_scenario["comp_b"]
+    body = (await client.get("/results/school", headers=admin_headers)).json()
+
+    assert [(p["period_year"], p["period_month"]) for p in body["periods"]] == [
+        (2025, 6),
+        (2026, 6),
+    ]
+    assert body["periods"][0]["average"] == pytest.approx(2.0)
+    assert body["periods"][1]["average"] == pytest.approx(4.5)
+    assert body["periods"][1]["students_with_results"] == 2
+
+
+async def test_school_results_current_period_and_deltas(
+    client: AsyncClient, admin_headers, school_scenario
+) -> None:
+    """По умолчанию открыт последний период; дельта — по общему ядру ПАРЫ
+    периодов, у появившегося критерия её нет вовсе."""
+    body = (await client.get("/results/school", headers=admin_headers)).json()
+    current = body["current"]
+
+    assert (current["period_year"], current["period_month"]) == (2026, 6)
+    assert (current["previous_period_year"], current["previous_period_month"]) == (2025, 6)
+    assert current["core_average_delta"] == pytest.approx(2.0)
+
+    by_id = {c["competency_id"]: c for c in current["competencies"]}
+    comp_a = by_id[school_scenario["comp_a"]]
+    assert comp_a["avg"] == pytest.approx(4.0)
+    assert comp_a["previous_avg"] == pytest.approx(2.0)
+    assert comp_a["delta"] == pytest.approx(2.0)
+    # Критерий появился в этом периоде — прироста не существует, а не ноль.
+    comp_b = by_id[school_scenario["comp_b"]]
+    assert comp_b["previous_avg"] is None
+    assert comp_b["delta"] is None
+    # Слои: отвечали только сами ученики, окружающих нет.
+    assert comp_a["self_avg"] == pytest.approx(4.0)
+    assert comp_a["others_avg"] is None
+
+
+async def test_school_results_explicit_period(
+    client: AsyncClient, admin_headers, school_scenario
+) -> None:
+    """Явный период открывает архив, и предыдущего у самого раннего нет."""
+    body = (
+        await client.get("/results/school?period_year=2025&period_month=6", headers=admin_headers)
+    ).json()
+
+    assert (body["current"]["period_year"], body["current"]["period_month"]) == (2025, 6)
+    assert body["current"]["previous_period_year"] is None
+    assert body["current"]["core_average_delta"] is None
+
+
+async def test_school_results_classes_breakdown(
+    client: AsyncClient, admin_headers, school_scenario
+) -> None:
+    """Разрез по классам — по снапшоту анкет, каждый ученик весит одинаково."""
+    body = (await client.get("/results/school", headers=admin_headers)).json()
+
+    assert body["current"]["classes"] == [
+        {
+            "class_id": school_scenario["class_id"],
+            "class_label": "5-1",
+            "students_with_results": 2,
+            "average": pytest.approx(4.5),
+        }
+    ]
+
+
+async def test_school_results_empty_when_no_closed_campaigns(
+    client: AsyncClient, admin_headers
+) -> None:
+    """Школа без завершённых кампаний — пустой ряд, а не 404: для новой школы
+    это штатное состояние, а ошибка на сводке читалась бы как поломка."""
+    body = (await client.get("/results/school", headers=admin_headers)).json()
+
+    assert body["periods"] == []
+    assert body["current"] is None
+
+
+async def test_school_results_forbidden_for_teacher(
+    client: AsyncClient, admin_headers, school_scenario
+) -> None:
+    """Школа целиком — только админу: учителю доступен его класс и кейс."""
+    t = await _register(client, "school-teacher@vektor.ru", "teacher")
+    assert t
+    headers = await _login(client, "school-teacher@vektor.ru")
+
+    response = await client.get("/results/school", headers=headers)
+    assert response.status_code == 403

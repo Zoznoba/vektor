@@ -12,6 +12,7 @@ from vektor.modules.results.schemas import (
     DynamicsOut,
     GroupDynamicsOut,
     ResultsOut,
+    SchoolResultsOut,
     SubjectCampaignOut,
 )
 from vektor.modules.users.models import User
@@ -175,6 +176,26 @@ async def get_campaign_coverage(
     # Покрытие по всей школе — админский экран кампании, поэтому роль жёстко
     # ADMIN, а не «учитель своего класса», как у профиля класса.
     return await service.get_campaign_coverage(db, campaign_id)
+
+
+@router.get(
+    "/school",
+    response_model=SchoolResultsOut,
+    summary="Аналитика по школе",
+    description="Профиль школы за период (средние по критериям и слоям, "
+    "разрез по классам) плюс ряд по всем завершённым периодам для графика "
+    "динамики. Единица наблюдения — ПЕРИОД, а не кампания: кампанию заводят "
+    "на каждый класс отдельно. Без period_year/period_month берётся последний "
+    "период с результатами; завершённых кампаний нет вовсе — пустой ряд и "
+    "current=null, а не 404. Только админ.",
+)
+async def get_school_results(
+    period_year: int | None = None,
+    period_month: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_role(UserRole.ADMIN)),
+) -> SchoolResultsOut:
+    return await service.get_school_results(db, period_year, period_month)
 
 
 @router.get(

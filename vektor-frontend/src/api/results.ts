@@ -4,6 +4,7 @@ import type {
   GroupDynamics,
   ClassResults,
   ClassRoster,
+  SchoolResults,
   SubjectDynamics,
   SubjectResults,
 } from '../types/results';
@@ -79,4 +80,19 @@ export function fetchGroupDynamics(
 ): Promise<GroupDynamics> {
   const query = campaignId !== undefined ? `?campaign_id=${campaignId}` : '';
   return apiRequest<GroupDynamics>(`/results/${kind}/${groupId}/dynamics${query}`);
+}
+
+/**
+ * Аналитика по школе целиком: профиль за период + ряд по годам. Только админ.
+ *
+ * Период необязателен — без него бэкенд берёт последний период с
+ * результатами. Пустая школа отдаёт `periods: []` и `current: null`, а не
+ * 404: для новой школы это штатное состояние.
+ */
+export function fetchSchoolResults(period?: {
+  year: number;
+  month: number;
+}): Promise<SchoolResults> {
+  const query = period ? `?period_year=${period.year}&period_month=${period.month}` : '';
+  return apiRequest<SchoolResults>(`/results/school${query}`);
 }

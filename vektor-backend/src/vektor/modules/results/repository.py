@@ -602,3 +602,60 @@ async def load_users(db: AsyncSession, user_ids: set[int]) -> list[User]:
     """Пользователи пачкой по id — для раскладки имён в строках экрана."""
     rows = await db.execute(select(User).where(User.id.in_(user_ids)))
     return list(rows.scalars())
+
+
+# ---------- Школьные агрегаты (сводка админа) ----------
+
+
+async def closed_campaigns_by_period(db: AsyncSession) -> dict[tuple[int, int], set[int]]:
+    """Все ЗАВЕРШЁННЫЕ кампании школы, сгруппированные по периоду
+    (год, месяц) → множество id.
+
+    Период, а не кампания, — единица школьной статистики по той же причине,
+    по которой «школа» в профиле группы это весь период: в боевых данных
+    кампанию заводят на каждый класс отдельно (12 кампаний на июнь 2026),
+    и «школа за кампанию» выродилась бы в один класс.
+
+    Только closed: незавершённые кампании собраны наполовину, и любой агрегат
+    по ним — случайное число (см. load_completed_campaign).
+    """
+    rows = await db.execute(
+        select(Campaign.period_year, Campaign.period_month, Campaign.id).where(
+            Campaign.status == CampaignStatus.CLOSED
+        )
+    )
+    periods: dict[tuple[int, int], set[int]] = {}
+    for year, month, campaign_id in rows.all():
+        periods.setdefault((year, month), set()).add(campaign_id)
+    return periods
+
+
+async def class_snapshot_rows(
+    db: AsyncSession, campaign_ids: set[int]
+) -> list[tuple[int, int, int | None, int | None, str | None]]:
+    """(campaign_id, subject_id, class_id, grade, section) по снапшоту анкет.
+
+    Именно снапшот `Assessment.subject_class_id`, а не текущий класс ученика:
+    перевод в следующий класс — ежегодное событие, и по текущей привязке
+    прошлогодние баллы переехали бы в новый класс, исказив оба.
+
+    Подпись класса приходит тем же запросом (outer join), чтобы сервис не
+    ходил за классами вторым разом; None в grade/section — у анкет без
+    класса вовсе.
+    """
+    if not campaign_ids:
+        return []
+
+    rows = await db.execute(
+        select(
+            Assessment.campaign_id,
+            Assessment.subject_id,
+            Assessment.subject_class_id,
+            SchoolClass.grade,
+            SchoolClass.section,
+        )
+        .outerjoin(SchoolClass, SchoolClass.id == Assessment.subject_class_id)
+        .where(Assessment.campaign_id.in_(campaign_ids))
+        .distinct()
+    )
+    return list(rows.all())
