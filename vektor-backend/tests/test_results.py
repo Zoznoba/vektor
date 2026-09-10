@@ -1217,6 +1217,102 @@ async def test_class_results_forbidden_for_student_and_parent(
         assert response.status_code == 403, email
 
 
+async def test_class_profile_stitches_current_students_from_different_campaigns(
+    client: AsyncClient, admin_headers, class_scenario, db_session
+) -> None:
+    """Профиль класса по умолчанию считается по НЫНЕШНИМ ученикам, у каждого —
+    его последняя диагностика, даже если общей кампании у класса нет вовсе.
+
+    Так собирается 10-й класс: из двух девятых, и диагностику эти дети
+    проходили в разных кампаниях под разными ярлыками. Пока профиль требовал
+    одну кампанию, такой класс показывал половину состава или не открывался.
+    """
+    s1, s2 = class_scenario["ids"]["s1"], class_scenario["ids"]["s2"]
+    q_a = await _question_id_for(db_session, class_scenario["comp_a"])
+
+    # s2 успел пройти ЕЩЁ ОДНУ диагностику — свою, в другом классе и другой
+    # кампании. Именно она у него последняя.
+    other_class_id = (
+        await client.post("/classes", json={"grade": 9, "section": "2"}, headers=admin_headers)
+    ).json()["id"]
+    await client.post(
+        f"/classes/{other_class_id}/students", json={"student_ids": [s2]}, headers=admin_headers
+    )
+    other_campaign_id = (
+        await client.post(
+            "/campaigns",
+            json={"title": "360 · 9-2", "period_year": 2026, "period_month": 9},
+            headers=admin_headers,
+        )
+    ).json()["id"]
+    await client.post(
+        f"/campaigns/{other_campaign_id}/generate",
+        json={"class_ids": [other_class_id]},
+        headers=admin_headers,
+    )
+    await _answer_in_campaign(
+        client, db_session, "cs2@vektor.ru", s2, s2, other_campaign_id, q_a, 3
+    )
+
+    # Оба собраны в новый класс — общей кампании у него нет ни одной.
+    merged_class_id = (
+        await client.post("/classes", json={"grade": 10, "section": ""}, headers=admin_headers)
+    ).json()["id"]
+    await client.post(
+        f"/classes/{merged_class_id}/students",
+        json={"student_ids": [s1, s2]},
+        headers=admin_headers,
+    )
+
+    profile = await client.get(f"/results/class/{merged_class_id}", headers=admin_headers)
+    assert profile.status_code == 200
+    body = profile.json()
+    # Оба ученика в профиле, хотя пришли из разных кампаний.
+    assert body["students_total"] == 2
+    assert body["students_with_results"] == 2
+    # Одной кампании у сшитого профиля нет — и подставлять чужую нельзя.
+    assert body["campaign_id"] is None
+
+    # У s2 взята ПОСЛЕДНЯЯ его диагностика (сентябрьская, 3.0), а не июньская
+    # (4.0): иначе средний балл класса считался бы по устаревшим данным.
+    scores = {c["competency_id"]: c["class_avg"] for c in body["competencies"]}
+    assert scores[class_scenario["comp_a"]] == pytest.approx((2.0 + 3.0) / 2)
+
+
+async def test_class_profile_skips_campaign_of_previous_cohort(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    """Профиль класса по умолчанию не открывает кампанию чужой когорты.
+
+    То же правило, что у ростера, и по той же причине: строки классов школа
+    переиспользует из года в год. Без него админ на странице класса видел бы
+    радар и «зоны роста» детей, которых в этом классе давно нет, — причём
+    экран выглядел бы совершенно рабочим.
+    """
+    class_id = class_scenario["class_id"]
+    for student_id in (class_scenario["ids"]["s1"], class_scenario["ids"]["s2"]):
+        await client.delete(f"/classes/{class_id}/students/{student_id}", headers=admin_headers)
+    newcomer = await _register(client, "cs6@vektor.ru", "student")
+    await client.post(
+        f"/classes/{class_id}/students", json={"student_ids": [newcomer]}, headers=admin_headers
+    )
+
+    profile = await client.get(f"/results/class/{class_id}", headers=admin_headers)
+    assert profile.status_code == 404
+    assert profile.json()["code"] == "class_has_no_diagnostics"
+
+    dynamics = await client.get(f"/results/class/{class_id}/dynamics", headers=admin_headers)
+    assert dynamics.status_code == 404
+
+    # Явный campaign_id по-прежнему открывает архив — данные не потеряны.
+    archived = await client.get(
+        f"/results/class/{class_id}?campaign_id={class_scenario['campaign_id']}",
+        headers=admin_headers,
+    )
+    assert archived.status_code == 200
+    assert archived.json()["students_with_results"] == 2
+
+
 async def test_class_results_unknown_class_404(client: AsyncClient, admin_headers) -> None:
     response = await client.get("/results/class/99999", headers=admin_headers)
     assert response.status_code == 404
@@ -1512,13 +1608,15 @@ async def test_roster_rows_carry_progress_and_scores(
 
 
 async def test_roster_includes_current_student_without_assessments(
-    client: AsyncClient, admin_headers, class_scenario
+    client: AsyncClient, admin_headers, class_scenario, db_session
 ) -> None:
-    """Ученик, добавленный в класс после генерации, обязан быть в списке.
+    """Ученик, добавленный в класс после генерации, обязан быть в списке
+    ИДУЩЕЙ кампании.
 
     Иначе учитель просто не увидит, что диагностика по нему не выдана:
     строка не появится вовсе, и отсутствие прочитается как «всё в порядке».
     """
+    await _set_campaign_status(db_session, class_scenario["campaign_id"], CampaignStatus.ACTIVE)
     s3 = await _register(client, "cs3@vektor.ru", "student")
     await client.post(
         f"/classes/{class_scenario['class_id']}/students",
@@ -1539,6 +1637,158 @@ async def test_roster_includes_current_student_without_assessments(
     assert rows[s3]["assessments_total"] == 0
     assert rows[s3]["overall_avg"] is None
     assert body["students_count"] == 3
+
+
+async def test_roster_of_closed_campaign_is_snapshot_only(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    """В ЗАКРЫТОЙ кампании состав — ровно её снапшот, без нынешних учеников.
+
+    Школа переиспользует строки классов из года в год: перевод в следующий
+    класс не заводит новый SchoolClass, а меняет ученику school_class_id.
+    Поэтому «класс 8-1» в кампании прошлого июня и «класс 8-1» сегодня — это
+    ДВА РАЗНЫХ набора детей, и подмешивание сегодняшнего списка к прошлой
+    диагностике давало ростер из двух когорт разом: прошлогодние восьмиклассники
+    со своими баллами и нынешние — пустыми строками, потому что тогда они были
+    семиклассниками и попали в снапшот другого класса.
+
+    Довод «показать, по кому анкету не выдали» относится к идущей кампании
+    (тест выше): в закрытой выдавать уже нечего.
+    """
+    s3 = await _register(client, "cs4@vektor.ru", "student")
+    await client.post(
+        f"/classes/{class_scenario['class_id']}/students",
+        json={"student_ids": [s3]},
+        headers=admin_headers,
+    )
+
+    response = await client.get(
+        f"/results/class/{class_scenario['class_id']}/roster", headers=admin_headers
+    )
+    body = response.json()
+
+    assert body["campaign_status"] == "closed"
+    assert s3 not in {row["subject"]["id"] for row in body["students"]}
+    assert body["students_count"] == 2
+
+
+async def test_roster_skips_campaign_of_previous_cohort(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    """Кампания прошлой когорты той же СТРОКИ класса по умолчанию не берётся.
+
+    Школа переиспользует классы из года в год: перевод меняет ученику
+    school_class_id, а не заводит новый SchoolClass. Поэтому после перевода
+    старого состава в другой класс и набора нового «последняя кампания класса»
+    указывает на детей, которых в нём давно нет, — включая выбывших из школы.
+    Учителю нового состава такое открывать незачем; архив остаётся доступен
+    явным campaign_id.
+    """
+    class_id = class_scenario["class_id"]
+    old_ids = list(class_scenario["ids"].values())[:2]
+
+    # Прошлая когорта ушла из класса, пришёл новый ученик.
+    for student_id in old_ids:
+        await client.delete(f"/classes/{class_id}/students/{student_id}", headers=admin_headers)
+    newcomer = await _register(client, "cs5@vektor.ru", "student")
+    await client.post(
+        f"/classes/{class_id}/students", json={"student_ids": [newcomer]}, headers=admin_headers
+    )
+
+    response = await client.get(f"/results/class/{class_id}/roster", headers=admin_headers)
+    assert response.status_code == 404
+    assert response.json()["code"] == "class_has_no_diagnostics"
+
+    # Но по явному id архив открывается — данные никуда не делись.
+    archived = await client.get(
+        f"/results/class/{class_id}/roster?campaign_id={class_scenario['campaign_id']}",
+        headers=admin_headers,
+    )
+    assert archived.status_code == 200
+    assert {row["subject"]["id"] for row in archived.json()["students"]} == set(old_ids)
+
+
+async def test_roster_shows_own_students_history_under_previous_class(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    """Кампания, пройденная нынешними учениками под ДРУГИМ классом, открывается
+    их составом, а не пустым экраном.
+
+    Так выглядит история любого класса: сегодняшний 8-1 год назад проходил
+    диагностику как 7-1, и его анкеты лежат со снапшотом 7-1. Если бы ростер
+    смотрел только на снапшот запрошенного класса, выбор прошлого периода в
+    переключателе давал бы пустую таблицу.
+    """
+    old_class_id = class_scenario["class_id"]
+    s1, s2 = class_scenario["ids"]["s1"], class_scenario["ids"]["s2"]
+
+    # Класс «перешёл» в следующий: те же дети, новая строка класса.
+    new_class_id = (
+        await client.post("/classes", json={"grade": 8, "section": "к"}, headers=admin_headers)
+    ).json()["id"]
+    await client.post(
+        f"/classes/{new_class_id}/students", json={"student_ids": [s1, s2]}, headers=admin_headers
+    )
+
+    campaigns = await client.get(f"/results/class/{new_class_id}/campaigns", headers=admin_headers)
+    assert campaigns.status_code == 200
+    # Прошлогодняя кампания в списке есть, хотя её снапшот — ПРЕЖНИЙ класс.
+    assert class_scenario["campaign_id"] in {c["campaign_id"] for c in campaigns.json()}
+
+    roster = await client.get(
+        f"/results/class/{new_class_id}/roster?campaign_id={class_scenario['campaign_id']}",
+        headers=admin_headers,
+    )
+    assert roster.status_code == 200
+    assert {row["subject"]["id"] for row in roster.json()["students"]} == {s1, s2}
+    assert roster.json()["class_id"] == new_class_id
+    # Прежний класс при этом ничего не потерял.
+    old = await client.get(
+        f"/results/class/{old_class_id}/roster?campaign_id={class_scenario['campaign_id']}",
+        headers=admin_headers,
+    )
+    assert {row["subject"]["id"] for row in old.json()["students"]} == {s1, s2}
+
+
+async def test_class_campaigns_mark_previous_cohort(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    """Период помечен флагом, чья это когорта: пока в классе те же дети —
+    is_current_cohort=True, после смены состава та же кампания становится
+    архивом прошлого набора.
+
+    Флаг нужен экрану: строка класса переиспользуется из года в год, и без
+    пометки диагностика чужих детей стоит в списке наравне с историей своих.
+    """
+    class_id = class_scenario["class_id"]
+    campaign_id = class_scenario["campaign_id"]
+
+    def flag(body: list[dict]) -> bool:
+        return next(c["is_current_cohort"] for c in body if c["campaign_id"] == campaign_id)
+
+    before = await client.get(f"/results/class/{class_id}/campaigns", headers=admin_headers)
+    assert before.status_code == 200
+    assert flag(before.json()) is True
+
+    # Класс переиспользован под новый набор: прежние ученики откреплены.
+    for student_id in list(class_scenario["ids"].values())[:2]:
+        await client.delete(f"/classes/{class_id}/students/{student_id}", headers=admin_headers)
+
+    after = await client.get(f"/results/class/{class_id}/campaigns", headers=admin_headers)
+    # Кампания из списка не исчезла — она по-прежнему выдана по этой строке
+    # класса, просто про других детей.
+    assert flag(after.json()) is False
+
+
+async def test_class_campaigns_forbidden_for_outsiders(client: AsyncClient, class_scenario) -> None:
+    """Список периодов закрыт так же, как сам экран: иначе он рассказывал бы
+    постороннему, когда класс проходил диагностику."""
+    for email in ("cs1@vektor.ru", "cp1@vektor.ru"):
+        headers = await _login(client, email)
+        response = await client.get(
+            f"/results/class/{class_scenario['class_id']}/campaigns", headers=headers
+        )
+        assert response.status_code == 403, email
 
 
 async def test_roster_unknown_class_404(client: AsyncClient, admin_headers) -> None:

@@ -4,3 +4,6 @@ CLAUDE.md
 # Персональные данные учеников/родителей — не коммитим
 vektor-backend/data/
 *.xlsx
+
+# lock-файлы LibreOffice
+.~lock.*#

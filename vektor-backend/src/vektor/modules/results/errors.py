@@ -30,3 +30,13 @@ class NotAllowedToViewResults(DomainError):
     status_code = 403
     code = "not_allowed_to_view_results"
     message = "Нет доступа к этим результатам"
+
+
+class ClassHasNoDiagnostics(DomainError):
+    """У класса нет ни одной кампании, в которой участвовали бы его нынешние
+    ученики. Не «данных нет вообще»: архив прошлой когорты той же строки
+    класса может существовать и открывается явным campaign_id."""
+
+    status_code = 404
+    code = "class_has_no_diagnostics"
+    message = "У класса ещё не было диагностики"

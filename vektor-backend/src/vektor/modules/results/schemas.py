@@ -60,6 +60,19 @@ class SubjectCampaignOut(BaseModel):
     status: CampaignStatus
 
 
+class ClassCampaignOut(SubjectCampaignOut):
+    """Период под переключатель на экране класса.
+
+    `is_current_cohort` — участвовал ли в этой кампании кто-то из НЫНЕШНИХ
+    учеников класса. Флаг обязателен именно здесь: строки классов школа
+    переиспользует из года в год, поэтому в списке рядом стоят диагностика
+    этих детей и диагностика прошлого набора той же строки. Без пометки
+    учитель открывает архив и видит незнакомый состав, считая это ошибкой.
+    """
+
+    is_current_cohort: bool
+
+
 class CompetencyDynamicsOut(BaseModel):
     competency_id: int
     code: str
@@ -146,13 +159,24 @@ class GroupSelfGapOut(BaseModel):
 
 
 class ClassResultsOut(BaseModel):
+    """Профиль класса.
+
+    Кампания НЕОБЯЗАТЕЛЬНА: без явного периода экран считает нынешний состав
+    по последним диагностикам каждого ученика, а они у разных детей разные —
+    у класса, собранного из двух прежних, общей кампании нет вовсе. Пустой
+    `campaign_id` и есть признак этого режима.
+    """
+
     class_id: int
     class_label: str
-    campaign_id: int
-    campaign_title: str
-    campaign_period_year: int
-    campaign_period_month: int
+    campaign_id: int | None
+    campaign_title: str | None
+    campaign_period_year: int | None
+    campaign_period_month: int | None
 
+    # Сколько учеников в группе вообще и у скольких есть результаты: без
+    # знаменателя «средний балл по 7 ученикам» читается как балл всего класса.
+    students_total: int
     students_with_results: int
     class_average: float | None
     school_average: float | None
@@ -188,11 +212,12 @@ class CaseSchoolGapOut(BaseModel):
 class CaseResultsOut(BaseModel):
     case_id: int
     case_name: str
-    campaign_id: int
-    campaign_title: str
-    campaign_period_year: int
-    campaign_period_month: int
+    campaign_id: int | None
+    campaign_title: str | None
+    campaign_period_year: int | None
+    campaign_period_month: int | None
 
+    students_total: int
     students_with_results: int
     case_average: float | None
     school_average: float | None
@@ -220,10 +245,13 @@ class GroupDynamicsOut(BaseModel):
     case_id: int | None = None
     case_name: str | None = None
 
-    campaign_id: int
-    campaign_title: str
-    campaign_period_year: int
-    campaign_period_month: int
+    # Как и в профиле группы, кампания необязательна: в режиме нынешнего
+    # состава у учеников разные последние кампании, и в ярлыке стоит самая
+    # свежая из них — либо ничего, если диагностики нет ни у кого.
+    campaign_id: int | None
+    campaign_title: str | None
+    campaign_period_year: int | None
+    campaign_period_month: int | None
 
     # None — предыдущего периода нет вовсе (пятиклассники). Это штатное
     # состояние, а не ошибка: отдаём текущие баллы без дельт.
@@ -378,6 +406,11 @@ class ClassRosterOut(BaseModel):
     campaign_title: str
     campaign_period_year: int
     campaign_period_month: int
+    # Закрытая кампания = состав по снапшоту, без нынешних учеников класса:
+    # строки классов школа переиспользует из года в год, поэтому подмешивать
+    # к прошлой диагностике сегодняшний список значило бы склеить два разных
+    # набора детей (см. get_class_roster).
+    campaign_status: CampaignStatus
 
     # Метрики шапки экрана. Считаются здесь, а не на фронте: покрытие берётся
     # по снапшоту subject_class_id, и второе место подсчёта разошлось бы с

@@ -2,6 +2,7 @@
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import text
 
 
 async def _register(client: AsyncClient, email: str, role: str, full_name: str) -> int:
@@ -314,3 +315,38 @@ async def test_me_exposes_case_name(
 
     assert response.status_code == 200
     assert response.json()["case_name"] == "Хор"
+
+
+async def test_list_users_hides_placeholder_accounts(
+    client: AsyncClient, admin_headers: dict[str, str], db_engine, roster: dict
+) -> None:
+    """Служебные слоты импорта не люди — в админском списке их быть не должно.
+
+    Регистрацией такую учётку не завести (флаг ставит только импорт), поэтому
+    помечаем существующую напрямую в БД.
+    """
+    async with db_engine.begin() as conn:
+        await conn.execute(
+            text("UPDATE users SET is_placeholder = true WHERE id = :id"),
+            {"id": roster["teacher"]},
+        )
+
+    response = await client.get("/users", headers=admin_headers)
+
+    assert response.status_code == 200
+    assert roster["teacher"] not in {u["id"] for u in response.json()}
+
+
+async def test_list_users_returns_deactivated(
+    client: AsyncClient, admin_headers: dict[str, str], roster: dict
+) -> None:
+    """Деактивированных список отдаёт: скрывает их фильтр статуса на клиенте."""
+    await client.patch(
+        f"/users/{roster['petrov']}/active", json={"is_active": False}, headers=admin_headers
+    )
+
+    response = await client.get("/users", headers=admin_headers)
+
+    assert response.status_code == 200
+    petrov = next(u for u in response.json() if u["id"] == roster["petrov"])
+    assert petrov["is_active"] is False
