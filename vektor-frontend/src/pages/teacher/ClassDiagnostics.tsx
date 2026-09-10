@@ -18,6 +18,7 @@ import {
   fetchGroupDynamics,
 } from '../../api/results';
 import { fetchMyAssessments } from '../../api/assessments';
+import { defaultCampaignId } from '../../data/period';
 import type { ClassRosterRow } from '../../types/results';
 import type { AssessmentListItem } from '../../types/assessment';
 
@@ -102,33 +103,42 @@ export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
   const [filter, setFilter] = useState<FilterKey>('all');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
-  // undefined — «как решит бэкенд»: последняя кампания, где участвовали
-  // нынешние ученики. Явное значение — выбор в переключателе периодов.
-  // Сбрасывать при смене класса не нужно: родитель пересоздаёт блок по
-  // key={classId}, и состояние уезжает вместе со старым классом.
-  const [campaignId, setCampaignId] = useState<number | undefined>(undefined);
+  // Явный выбор в переключателе периодов. Пока его нет — умолчание из
+  // defaultCampaignId: самая свежая кампания НЫНЕШНЕГО состава, ЛЮБОГО
+  // статуса (этот экран — мониторинг, ради идущей диагностики его и
+  // открывают). Сбрасывать при смене класса не нужно: родитель пересоздаёт
+  // блок по key={classId}, и состояние уезжает вместе со старым классом.
+  const [pickedCampaignId, setPickedCampaignId] = useState<number | undefined>(undefined);
 
   // useApi требует стабильную ссылку — иначе effect уходит в цикл запросов.
-  const loadRoster = useCallback(() => fetchClassRoster(classId, campaignId), [classId, campaignId]);
   const loadCampaigns = useCallback(() => fetchClassCampaigns(classId), [classId]);
-  const roster = useApi(loadRoster);
   const campaigns = useApi(loadCampaigns);
+  const campaignId = pickedCampaignId ?? defaultCampaignId(campaigns.data ?? []);
+  const selectedCampaign = campaigns.data?.find((c) => c.campaign_id === campaignId);
 
-  // Профиль и динамику ведём за ЯВНЫМ выбором периода, а не за ростером.
-  // Без выбора бэкенд считает их по нынешнему составу, сшивая последние
-  // диагностики каждого ученика, — а ростер в том же случае показывает одну
-  // кампанию. Привязав профиль к ней, мы бы у класса, собранного из двух
-  // прежних (10-й — из двух девятых), нарисовали радар по половине состава.
-  const profileCampaignId = campaignId;
+  // Пока период не выбран (список ещё грузится или своей диагностики у
+  // состава не было), запрашивать нечего: «класс» без периода не определяет
+  // группу людей.
+  const loadRoster = useCallback(() => fetchClassRoster(classId, campaignId), [classId, campaignId]);
+  const roster = useApi(loadRoster, { skip: campaignId === undefined });
+
+  // Профиль и динамика идут за ТЕМ ЖЕ периодом, что и состав выше: иначе
+  // таблица показывала бы одних детей, а радар под ней — других.
+  //
+  // По идущей кампании баллов нет вовсе (бэкенд отвечает 409): пока она не
+  // закрыта, профиль не запрашиваем и пишем об этом словами. Раньше в этом
+  // случае рисовался профиль, сшитый из прошлых диагностик каждого ученика, —
+  // и он молча выдавал прошлогодние числа за результат идущей.
+  const scoresReady = selectedCampaign?.status === 'closed';
   const loadResults = useCallback(
-    () => fetchClassResults(classId, profileCampaignId),
-    [classId, profileCampaignId],
+    () => fetchClassResults(classId, campaignId as number),
+    [classId, campaignId],
   );
   const loadDynamics = useCallback(
-    () => fetchGroupDynamics('class', classId, profileCampaignId),
-    [classId, profileCampaignId],
+    () => fetchGroupDynamics('class', classId, campaignId),
+    [classId, campaignId],
   );
-  const results = useApi(loadResults);
+  const results = useApi(loadResults, { skip: !scoresReady });
   // Свои анкеты нужны, чтобы кнопка «Оценить» вела в конкретную анкету.
   // Отдельным полем в ростере это не отдаём: ростер — про класс, а «моя
   // анкета про ученика» зависит от того, кто смотрит, и админ получил бы
@@ -206,7 +216,7 @@ export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
     [students],
   );
 
-  if (roster.loading) {
+  if (campaigns.loading || roster.loading) {
     return (
       <Panel>
         <div className="app-main__sub">Загрузка…</div>
@@ -234,7 +244,7 @@ export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
     <PeriodSelect
       campaigns={campaigns.data ?? []}
       value={campaignId}
-      onChange={setCampaignId}
+      onChange={setPickedCampaignId}
     />
   );
 
@@ -401,15 +411,24 @@ export function ClassDiagnostics({ classId, roleNote }: ClassDiagnosticsProps) {
       ) : (
         <Panel>
           <div className="app-main__sub">
-            {roster.status === 404
-              ? 'Диагностика по этому составу класса ещё не выдавалась. Ниже — профиль по последним диагностикам этих учеников; архив прошлых наборов доступен в списке периодов.'
+            {roster.status === 404 || campaignId === undefined
+              ? 'Диагностика по нынешнему составу класса ещё не выдавалась — выберите период выше, чтобы посмотреть архив прошлых наборов.'
               : (roster.error ?? 'Загрузка…')}
           </div>
         </Panel>
       )}
 
       <Panel title="Средний профиль класса">
-        {results.loading ? (
+        {!scoresReady ? (
+          /* Баллы существуют только у закрытой кампании: пока диагностика
+             идёт, часть анкет не заполнена, и средние по ним — не результат
+             класса, а промежуточный срез сбора. */
+          <div className="app-main__sub">
+            {campaignId === undefined
+              ? 'Профиль появится, когда по классу пройдёт диагностика.'
+              : 'Диагностика ещё идёт — профиль появится после её завершения. Прошлые периоды доступны в списке выше.'}
+          </div>
+        ) : results.loading ? (
           <div className="app-main__sub">Загрузка…</div>
         ) : results.data ? (
           <>

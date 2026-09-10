@@ -5,17 +5,14 @@ import './PeriodSelect.css';
 interface PeriodSelectProps {
   /** Периоды группы, свежие сверху (как их отдаёт бэкенд). */
   campaigns: CampaignRef[];
-  /** undefined — «как решит бэкенд», см. defaultLabel. */
-  value: number | undefined;
-  onChange: (campaignId: number | undefined) => void;
   /**
-   * Подпись варианта «без явного выбора». Он не косметический: без периода
-   * профиль считается по НЫНЕШНЕМУ составу, беря у каждого ученика его
-   * последнюю диагностику, — а это не то же самое, что «самый свежий период
-   * из списка». Список к тому же шире: в нём есть архив прошлых наборов той
-   * же строки класса.
+   * Выбранный период. undefined бывает ровно в одном случае — у нынешнего
+   * состава своей диагностики ещё не было (см. defaultCampaignId), и тогда
+   * селект стоит на заглушке: подставлять вместо этого архив прошлого набора
+   * нельзя, а пустой экран без объяснения читался бы как поломка.
    */
-  defaultLabel?: string;
+  value: number | undefined;
+  onChange: (campaignId: number) => void;
 }
 
 /**
@@ -28,12 +25,7 @@ interface PeriodSelectProps {
  * Пустой список не рендерится: строка «Период» с единственным вариантом
  * читалась бы как сломанный фильтр.
  */
-export function PeriodSelect({
-  campaigns,
-  value,
-  onChange,
-  defaultLabel = 'Последние диагностики этого состава',
-}: PeriodSelectProps) {
+export function PeriodSelect({ campaigns, value, onChange }: PeriodSelectProps) {
   if (campaigns.length === 0) return null;
 
   const own = campaigns.filter((c) => c.is_current_cohort);
@@ -54,11 +46,13 @@ export function PeriodSelect({
         <select
           className="period-select__control"
           value={value ?? ''}
-          onChange={(event) =>
-            onChange(event.target.value ? Number(event.target.value) : undefined)
-          }
+          onChange={(event) => onChange(Number(event.target.value))}
         >
-          <option value="">{defaultLabel}</option>
+          {value === undefined && (
+            <option value="" disabled>
+              Выберите период
+            </option>
+          )}
           {/* Группы рисуем, только когда есть обе: заголовок над единственной
               группой ничего не разделяет, а место занимает. */}
           {own.length > 0 && archive.length > 0 ? (

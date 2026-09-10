@@ -14,14 +14,23 @@ interface ApiState<T> {
 }
 
 const INITIAL = { data: null, loading: true, error: null, status: null };
+/** То же, но без loading: запрос сознательно не отправлен (см. skip). */
+const INITIAL_SKIPPED = { data: null, loading: false, error: null, status: null };
 
 /**
  * Загрузка данных при монтировании + ручной reload.
  * fn обязана быть стабильной ссылкой (модульная функция из src/api/* или
  * useCallback) — она в зависимостях effect, нестабильная ссылка даст цикл
  * запросов.
+ *
+ * `skip` — «запрашивать пока нечего»: параметр запроса ещё не выбран (период
+ * диагностики) или запрос по нему заведомо не имеет смысла (баллы по идущей
+ * кампании). Отдельная опция, а не «не монтировать компонент», потому что
+ * хук часто стоит рядом с другими на том же экране; состояние при этом
+ * пустое и НЕ loading — иначе экран навсегда застывал бы на «Загрузка…».
  */
-export function useApi<T>(fn: () => Promise<T>): ApiState<T> {
+export function useApi<T>(fn: () => Promise<T>, options: { skip?: boolean } = {}): ApiState<T> {
+  const skip = options.skip ?? false;
   const [state, setState] = useState<{
     data: T | null;
     loading: boolean;
@@ -48,6 +57,7 @@ export function useApi<T>(fn: () => Promise<T>): ApiState<T> {
   }
 
   useEffect(() => {
+    if (skip) return;
     let cancelled = false;
 
     fn()
@@ -68,11 +78,11 @@ export function useApi<T>(fn: () => Promise<T>): ApiState<T> {
     return () => {
       cancelled = true;
     };
-  }, [fn, version]);
+  }, [fn, version, skip]);
 
   const reload = useCallback(() => {
     setVersion((v) => v + 1);
   }, []);
 
-  return { ...state, reload };
+  return { ...(skip ? INITIAL_SKIPPED : state), reload };
 }

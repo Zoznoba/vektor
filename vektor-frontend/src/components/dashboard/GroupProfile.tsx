@@ -201,28 +201,15 @@ export function GroupAnalytics({
 
   return (
     <>
-      {/* Подпись говорит, ЧЕЙ это профиль, и она разная у двух режимов.
-          Без периода профиль сшит по сегодняшним ученикам (у каждого его
-          последняя диагностика), с периодом — это снапшот той кампании, где
-          состав другой. Ниже на странице стоит вкладка «Ученики · N» с
-          сегодняшним составом, и без оговорки два разных числа рядом
-          читаются как ошибка (7-1 прошлого года — 11 человек в диагностике и
-          2 в классе сейчас). */}
+      {/* Подпись говорит, ЧЕЙ это профиль: состав берётся на момент выбранной
+          кампании, а не сегодняшний. Ниже на странице стоит вкладка
+          «Ученики · N» с сегодняшним составом, и без оговорки два разных числа
+          рядом читаются как ошибка (в диагностике 7-1 прошлого года 11
+          человек, а в классе сейчас 2). */}
       <div className="app-main__sub">
-        {data.campaignTitle === null ? (
-          <>
-            Нынешний состав · {data.studentsWithResults} из {data.studentsTotal} учеников с
-            диагностикой (у каждого — его последняя)
-          </>
-        ) : (
-          <>
-            {data.campaignTitle}
-            {data.periodYear !== null && data.periodMonth !== null && (
-              <> · {formatPeriod(data.periodYear, data.periodMonth)}</>
-            )}{' '}
-            · {data.studentsWithResults} учеников в диагностике (состав на момент кампании)
-          </>
-        )}
+        {data.campaignTitle} · {formatPeriod(data.periodYear, data.periodMonth)} ·{' '}
+        {data.studentsWithResults} из {data.studentsTotal} учеников в диагностике (состав на
+        момент кампании)
       </div>
 
       <div className="group-analytics__tiles">
@@ -301,8 +288,8 @@ export function GroupDynamicsSection({
         competencies={scored}
         previousLabel={previousLabel}
         currentLabel={
-          // В режиме нынешнего состава кампании у учеников разные, и в ярлыке
-          // стоит самая свежая; период может отсутствовать вовсе.
+          // Период может отсутствовать, если в сравнение не попал никто:
+          // ярлык тогда собирать не из чего.
           data.campaign_period_year !== null && data.campaign_period_month !== null
             ? formatPeriod(data.campaign_period_year, data.campaign_period_month)
             : 'сейчас'

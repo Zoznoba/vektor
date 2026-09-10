@@ -15,10 +15,10 @@ import type { CaseResults, ClassResults } from '../types/results';
 /** Профиль группы, приведённый к общему виду: класс и кейс отдают одни и те
  *  же числа под разными именами полей (`class_avg` / `case_avg`). */
 export interface GroupAnalyticsData {
-  /** null — профиль сшит по нынешнему составу, одной кампании у него нет. */
-  campaignTitle: string | null;
-  periodYear: number | null;
-  periodMonth: number | null;
+  /** Профиль всегда за одну кампанию — ту, что выбрана в переключателе. */
+  campaignTitle: string;
+  periodYear: number;
+  periodMonth: number;
   studentsTotal: number;
   studentsWithResults: number;
   average: number | null;

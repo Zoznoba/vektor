@@ -90,15 +90,11 @@ export interface GroupSelfGap {
 export interface ClassResults {
   class_id: number;
   class_label: string;
-  /**
-   * null — профиль сшит по НЫНЕШНЕМУ составу: у каждого ученика взята его
-   * последняя диагностика, и общей кампании у класса нет (10-й собран из двух
-   * девятых). Так отвечает запрос без campaign_id.
-   */
-  campaign_id: number | null;
-  campaign_title: string | null;
-  campaign_period_year: number | null;
-  campaign_period_month: number | null;
+  /** Профиль всегда за ОДНУ кампанию — ту, что выбрана в переключателе. */
+  campaign_id: number;
+  campaign_title: string;
+  campaign_period_year: number;
+  campaign_period_month: number;
   /** Учеников в группе всего — знаменатель к students_with_results. */
   students_total: number;
   students_with_results: number;
@@ -124,10 +120,11 @@ export interface CompetencyCaseScore {
 export interface CaseResults {
   case_id: number;
   case_name: string;
-  campaign_id: number | null;
-  campaign_title: string | null;
-  campaign_period_year: number | null;
-  campaign_period_month: number | null;
+  /** Профиль всегда за ОДНУ кампанию — как у класса. */
+  campaign_id: number;
+  campaign_title: string;
+  campaign_period_year: number;
+  campaign_period_month: number;
   students_total: number;
   students_with_results: number;
   case_average: number | null;

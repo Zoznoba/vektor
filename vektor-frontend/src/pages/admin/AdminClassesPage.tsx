@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import { Collapsible } from '../../components/ui/Collapsible';
 import { PeriodSelect } from '../../components/ui/PeriodSelect';
+import { defaultCampaignId } from '../../data/period';
 import { Icon } from '../../components/icons/Icon';
 import { ActionMenu } from '../../components/ui/ActionMenu';
 import type { ActionMenuItem } from '../../components/ui/ActionMenu';
@@ -106,21 +107,36 @@ export function AdminClassesPage() {
   // уходит в цикл запросов.
   const selectedClassId = selected?.id;
 
-  // Период аналитики. undefined — «как решит бэкенд»: последняя завершённая
-  // кампания, где участвовал кто-то из НЫНЕШНИХ учеников. Явное значение —
-  // выбор в переключателе: строки классов школа переиспользует из года в год,
-  // и архив прошлой когорты («5-2 · 2026» у нынешнего 5-2) достижим только так.
-  const [analyticsCampaignId, setAnalyticsCampaignId] = useState<number | undefined>(undefined);
+  // Период аналитики. Пока в переключателе ничего не выбрано, берётся
+  // умолчание — самая свежая ЗАВЕРШЁННАЯ кампания нынешнего состава
+  // (defaultCampaignId): по идущей баллы не считаются вовсе, а «последняя
+  // кампания класса» без оговорки про состав — это чужие дети, школа
+  // переиспользует строки классов из года в год. Архив прошлого набора
+  // («5-2 · 2026» у нынешнего 5-2) достижим только явным выбором.
+  // Выбор хранится ВМЕСТЕ с классом, для которого он сделан: страница одна на
+  // все классы, и без этой пары выбранный период переезжал бы на следующий
+  // открытый класс. Кампании у классов разные, поэтому чужой период давал бы
+  // пустой профиль — а после перезагрузки страницы всё «чинилось» само.
+  // Сравнением в рендере, а не сбросом в эффекте: эффект отработал бы ПОСЛЕ
+  // рендера, и один кадр запрос всё равно уходил бы с чужим периодом.
+  const [picked, setPicked] = useState<{ classId: number; campaignId: number } | null>(null);
+  // picked && ..., а не picked?.classId === selectedClassId: пока класс не
+  // выбран, обе части были бы undefined, условие давало бы true — и обращение
+  // к picked.campaignId роняло бы всю страницу в белый экран.
+  const pickedCampaignId =
+    picked !== null && picked.classId === selectedClassId ? picked.campaignId : undefined;
   const loadClassCampaigns = useCallback(
     () => (selectedClassId ? fetchClassCampaigns(selectedClassId) : Promise.resolve([])),
     [selectedClassId],
   );
   const classCampaigns = useApi(loadClassCampaigns);
+  const analyticsCampaignId =
+    pickedCampaignId ?? defaultCampaignId(classCampaigns.data ?? [], { closedOnly: true });
 
   const loadClassAnalytics = useCallback(
     async () =>
       classResultsToAnalytics(
-        await fetchClassResults(selectedClassId as number, analyticsCampaignId),
+        await fetchClassResults(selectedClassId as number, analyticsCampaignId as number),
       ),
     [selectedClassId, analyticsCampaignId],
   );
@@ -201,16 +217,36 @@ export function AdminClassesPage() {
               <PeriodSelect
                 campaigns={classCampaigns.data ?? []}
                 value={analyticsCampaignId}
-                onChange={setAnalyticsCampaignId}
+                onChange={(campaignId) =>
+                  setPicked({ classId: selectedClassId as number, campaignId })
+                }
               />
-              <GroupAnalytics
-                label={classLabel(selected)}
-                averageLabel="Средний балл класса"
-                groupNoun="класс"
-                load={loadClassAnalytics}
-                loadDynamics={loadClassDynamics}
-                emptyText="У нынешнего состава класса завершённой диагностики ещё не было — выберите период выше, чтобы посмотреть архив."
-              />
+              {/* Без выбранного периода запрос не уходит вовсе: считать
+                  «профиль класса вообще» нечем — период и определяет, о каких
+                  детях речь. Список периодов при этом не пуст (в нём архив
+                  прошлых наборов), поэтому переключатель выше остаётся. */}
+              {analyticsCampaignId === undefined ? (
+                <div className="admin-empty">
+                  {/* Список периодов грузится при каждой смене класса, и
+                      «периодов нет» на это время — неправда: пока запрос не
+                      вернулся, класс без диагностики неотличим от любого
+                      другого. */}
+                  {classCampaigns.loading
+                    ? 'Загрузка…'
+                    : classCampaigns.data?.length
+                      ? 'У нынешнего состава класса завершённой диагностики ещё не было — выберите период выше, чтобы посмотреть архив.'
+                      : 'Диагностика по этому классу ещё не проводилась.'}
+                </div>
+              ) : (
+                <GroupAnalytics
+                  label={classLabel(selected)}
+                  averageLabel="Средний балл класса"
+                  groupNoun="класс"
+                  load={loadClassAnalytics}
+                  loadDynamics={loadClassDynamics}
+                  emptyText="По выбранному периоду результатов нет."
+                />
+              )}
             </Collapsible>
           )}
 

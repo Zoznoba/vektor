@@ -30,11 +30,14 @@ export function fetchSubjectResults(
 /**
  * Средний профиль класса, сравнение со школой и зоны роста класса.
  * Доступно админу и учителю ЭТОГО класса — остальным 403.
- * Без campaignId бэкенд берёт последнюю кампанию класса; если кампаний нет — 404.
+ *
+ * campaignId ОБЯЗАТЕЛЕН: строки классов школа переиспользует из года в год,
+ * поэтому «класс» без периода не определяет группу людей. Период выбирает
+ * экран — список даёт fetchClassCampaigns, значение по умолчанию считает
+ * defaultCampaignId (data/period).
  */
-export function fetchClassResults(classId: number, campaignId?: number): Promise<ClassResults> {
-  const query = campaignId !== undefined ? `?campaign_id=${campaignId}` : '';
-  return apiRequest<ClassResults>(`/results/class/${classId}${query}`);
+export function fetchClassResults(classId: number, campaignId: number): Promise<ClassResults> {
+  return apiRequest<ClassResults>(`/results/class/${classId}?campaign_id=${campaignId}`);
 }
 
 /**
@@ -90,6 +93,10 @@ export function fetchGroupDynamics(
   groupId: number,
   campaignId?: number,
 ): Promise<GroupDynamics> {
+  // У класса период обязателен (см. fetchClassResults), у кейса — нет: кружок
+  // живёт со своим именем и составом, и «последняя кампания кейса» — это он
+  // же и есть. Поэтому параметр остаётся опциональным на уровне подписи, а
+  // обязательность класса держит вызывающая сторона.
   const query = campaignId !== undefined ? `?campaign_id=${campaignId}` : '';
   return apiRequest<GroupDynamics>(`/results/${kind}/${groupId}/dynamics${query}`);
 }
