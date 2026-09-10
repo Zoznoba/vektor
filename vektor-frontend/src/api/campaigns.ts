@@ -29,12 +29,19 @@ export function createCampaign(data: CreateCampaignIn): Promise<Campaign> {
  * {classId: [teacherId]}. Класса (кейса) нет в объекте → участвуют ВСЕ его
  * учителя (прежнее поведение); пустой массив → учительских анкет по нему не
  * будет вовсе.
+ *
+ * splitClassIds / splitCaseIds — источники, где учеников ДЕЛЯТ между
+ * выбранными учителями: каждого ученика оценивает ровно один из них
+ * (12 учеников и 2 учителя → по 6 анкет на учителя). Источника нет в списке
+ * → каждый выбранный учитель оценивает весь класс (кейс).
  */
 export interface GenerateSources {
   classIds?: number[];
   teacherIdsByClass?: Record<number, number[]>;
   caseIds?: number[];
   teacherIdsByCase?: Record<number, number[]>;
+  splitClassIds?: number[];
+  splitCaseIds?: number[];
 }
 
 export function generateAssessments(
@@ -48,6 +55,8 @@ export function generateAssessments(
       teacher_ids_by_class: sources.teacherIdsByClass ?? {},
       case_ids: sources.caseIds ?? [],
       teacher_ids_by_case: sources.teacherIdsByCase ?? {},
+      split_class_ids: sources.splitClassIds ?? [],
+      split_case_ids: sources.splitCaseIds ?? [],
     },
   });
 }

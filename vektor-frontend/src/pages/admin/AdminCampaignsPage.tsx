@@ -253,10 +253,13 @@ function CoveragePanel({
       cancelled = true;
     };
     // completed_assessments в зависимостях — перечитать покрытие после того,
-    // как кто-то из учеников/учителей завершил анкету. campaign.id меняться
+    // как кто-то из учеников/учителей завершил анкету; total_assessments —
+    // после генерации: она добавляет анкеты, но ни одной не завершает,
+    // поэтому по одному completed эффект не срабатывал и покрытие
+    // обновлялось только перезагрузкой страницы. campaign.id меняться
     // здесь не может — родитель монтирует панель заново через key={campaign.id},
     // сброс loading/error/coverage к начальным значениям делает сам ремоунт.
-  }, [campaign.id, campaign.completed_assessments]);
+  }, [campaign.id, campaign.completed_assessments, campaign.total_assessments]);
 
   const handleClose = async () => {
     setError(null);
@@ -652,6 +655,8 @@ interface GenerateSource {
   id: number;
   label: string;
   sublabel: string;
+  /** Сколько учеников в источнике — для подсказки «по N анкет на учителя». */
+  studentCount: number;
   teachers: { id: number; name: string; note: string }[];
   /** Текст, когда учителей у источника нет вовсе. */
   emptyTeachers: string;
@@ -662,6 +667,7 @@ function classSource(c: SchoolClass): GenerateSource {
     id: c.id,
     label: classLabel(c),
     sublabel: `${c.students.length} учеников`,
+    studentCount: c.students.length,
     teachers: c.teachers.map((link) => ({
       id: link.teacher.id,
       name: link.teacher.full_name,
@@ -676,6 +682,7 @@ function caseSource(kase: Case): GenerateSource {
     id: kase.id,
     label: kase.name,
     sublabel: `${kase.students.length} учеников`,
+    studentCount: kase.students.length,
     teachers: kase.teachers.map((t) => ({ id: t.id, name: t.full_name, note: 'руководитель' })),
     emptyTeachers: 'К кейсу не привязан ни один учитель',
   };
@@ -703,6 +710,11 @@ function GeneratePanel({
   // ровно то, что админ видел на экране.
   const [teachersByClass, setTeachersByClass] = useState<Record<number, Set<number>>>({});
   const [teachersByCase, setTeachersByCase] = useState<Record<number, Set<number>>>({});
+  // Режим раздачи — СВОЙ у каждого источника: в одной кампании 5-1 можно
+  // поделить между двумя учителями, а 8-1 отдать каждому целиком. Здесь
+  // только id тех, кого делят; остальные работают по-прежнему.
+  const [splitClassIds, setSplitClassIds] = useState<Set<number>>(new Set());
+  const [splitCaseIds, setSplitCaseIds] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -730,6 +742,20 @@ function GeneratePanel({
     });
   };
 
+  const setSplit = (
+    sourceId: number,
+    split: boolean,
+    setSplitIds: Dispatch<SetStateAction<Set<number>>>,
+  ) => {
+    setResult(null);
+    setSplitIds((prev) => {
+      const next = new Set(prev);
+      if (split) next.add(sourceId);
+      else next.delete(sourceId);
+      return next;
+    });
+  };
+
   const toggleTeacher = (
     sourceId: number,
     teacherId: number,
@@ -745,11 +771,20 @@ function GeneratePanel({
   };
 
   const checkedSources = [
-    ...classSources.filter((s) => checkedClassIds.has(s.id)).map((s) => ({ s, by: teachersByClass })),
-    ...caseSources.filter((s) => checkedCaseIds.has(s.id)).map((s) => ({ s, by: teachersByCase })),
+    ...classSources
+      .filter((s) => checkedClassIds.has(s.id))
+      .map((s) => ({ s, by: teachersByClass, split: splitClassIds.has(s.id) })),
+    ...caseSources
+      .filter((s) => checkedCaseIds.has(s.id))
+      .map((s) => ({ s, by: teachersByCase, split: splitCaseIds.has(s.id) })),
   ];
   const withoutTeachers = checkedSources.filter(({ s, by }) => (by[s.id]?.size ?? 0) === 0);
-  const overLimit = checkedSources.filter(({ s, by }) => (by[s.id]?.size ?? 0) > 4);
+  // Порог «2–4 учителя» — про режим «каждый оценивает всех»: там число
+  // учителей умножается на число учеников. В режиме деления учителей может
+  // быть сколько угодно — нагрузка от их числа только падает.
+  const overLimit = checkedSources.filter(
+    ({ s, by, split }) => !split && (by[s.id]?.size ?? 0) > 4,
+  );
   const nothingChecked = checkedClassIds.size === 0 && checkedCaseIds.size === 0;
 
   const handleGenerate = async () => {
@@ -768,6 +803,10 @@ function GeneratePanel({
         teacherIdsByClass: byClass,
         caseIds: [...checkedCaseIds],
         teacherIdsByCase: byCase,
+        // Отмеченные, но не выбранные источники в списках деления не нужны —
+        // отправляем пересечение с тем, что реально идёт в кампанию.
+        splitClassIds: [...checkedClassIds].filter((id) => splitClassIds.has(id)),
+        splitCaseIds: [...checkedCaseIds].filter((id) => splitCaseIds.has(id)),
       });
       setResult(
         res.created > 0
@@ -803,7 +842,8 @@ function GeneratePanel({
           <div className="rater-rule__text">
             <div className="rater-rule__label">Учителя</div>
             <div className="rater-rule__note">
-              Выбранные ниже — они оценивают всех учеников своего класса или кейса
+              Выбранные ниже — каждый оценивает всех учеников источника либо учеников делят между
+              ними поровну
             </div>
           </div>
           <span className="rater-rule__badge">По выбору</span>
@@ -816,10 +856,12 @@ function GeneratePanel({
         sources={classSources}
         checkedIds={checkedClassIds}
         teachersBySource={teachersByClass}
+        splitIds={splitClassIds}
         onToggleSource={(id) => toggleSource(id, setCheckedClassIds, setTeachersByClass)}
         onToggleTeacher={(sourceId, teacherId) =>
           toggleTeacher(sourceId, teacherId, setTeachersByClass)
         }
+        onSetSplit={(sourceId, split) => setSplit(sourceId, split, setSplitClassIds)}
       />
 
       {/* Кейсы — второе основание для выдачи анкет. Блок показываем, только
@@ -832,10 +874,12 @@ function GeneratePanel({
           sources={caseSources}
           checkedIds={checkedCaseIds}
           teachersBySource={teachersByCase}
+          splitIds={splitCaseIds}
           onToggleSource={(id) => toggleSource(id, setCheckedCaseIds, setTeachersByCase)}
           onToggleTeacher={(sourceId, teacherId) =>
             toggleTeacher(sourceId, teacherId, setTeachersByCase)
           }
+          onSetSplit={(sourceId, split) => setSplit(sourceId, split, setSplitCaseIds)}
         />
       )}
 
@@ -871,16 +915,20 @@ function SourcePicker({
   sources,
   checkedIds,
   teachersBySource,
+  splitIds,
   onToggleSource,
   onToggleTeacher,
+  onSetSplit,
 }: {
   title: string;
   emptyText: string;
   sources: GenerateSource[];
   checkedIds: Set<number>;
   teachersBySource: Record<number, Set<number>>;
+  splitIds: Set<number>;
   onToggleSource: (id: number) => void;
   onToggleTeacher: (sourceId: number, teacherId: number) => void;
+  onSetSplit: (sourceId: number, split: boolean) => void;
 }) {
   return (
     <div className="class-picker">
@@ -903,8 +951,14 @@ function SourcePicker({
 
               {checkedIds.has(source.id) && (
                 <div className="teacher-picker">
+                  <TeacherModeSwitch
+                    split={splitIds.has(source.id)}
+                    onChange={(split) => onSetSplit(source.id, split)}
+                  />
                   <div className="teacher-picker__hint">
-                    Кто из учителей оценивает — обычно 2–4 человека
+                    {splitIds.has(source.id)
+                      ? splitHint(source.studentCount, teachersBySource[source.id]?.size ?? 0)
+                      : 'Кто из учителей оценивает — обычно 2–4 человека'}
                   </div>
                   {source.teachers.length === 0 ? (
                     <div className="admin-empty">{source.emptyTeachers}</div>
@@ -931,6 +985,51 @@ function SourcePicker({
   );
 }
 
+
+/** Переключатель режима раздачи учеников по учителям — на КАЖДОМ источнике:
+ *  школа проводит диагностику обоими способами, и в одной кампании они могут
+ *  сочетаться. */
+function TeacherModeSwitch({
+  split,
+  onChange,
+}: {
+  split: boolean;
+  onChange: (split: boolean) => void;
+}) {
+  return (
+    <div className="teacher-mode" role="radiogroup" aria-label="Как учителя оценивают учеников">
+      <button
+        type="button"
+        role="radio"
+        aria-checked={!split}
+        className={`teacher-mode__option${!split ? ' teacher-mode__option--active' : ''}`}
+        onClick={() => onChange(false)}
+      >
+        Каждый оценивает всех
+      </button>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={split}
+        className={`teacher-mode__option${split ? ' teacher-mode__option--active' : ''}`}
+        onClick={() => onChange(true)}
+      >
+        Поделить учеников
+      </button>
+    </div>
+  );
+}
+
+/** Подсказка режима деления: сколько анкет достанется каждому учителю.
+ *  Раздача по кругу, поэтому при неровном делении у части учителей на одного
+ *  ученика больше — так и пишем, чтобы число на экране сходилось с фактом. */
+function splitHint(students: number, teachers: number): string {
+  if (teachers === 0) return 'Выберите учителей — учеников поделим между ними поровну';
+  const base = Math.floor(students / teachers);
+  const rest = students % teachers;
+  const perTeacher = rest === 0 ? `по ${base}` : `по ${base}–${base + 1}`;
+  return `Каждого ученика оценит один учитель: ${perTeacher} ученик(ов) на учителя`;
+}
 
 function CreateCampaignModal({
   onClose,
