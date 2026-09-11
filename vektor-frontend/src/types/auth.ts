@@ -3,7 +3,7 @@
  * Контракт: UserOut и TokenOut. Менять синхронно с бэкендом.
  */
 
-export type UserRole = 'student' | 'teacher' | 'parent' | 'admin';
+export type UserRole = "student" | "teacher" | "parent" | "admin";
 
 export interface User {
   id: number;
@@ -11,6 +11,11 @@ export interface User {
   full_name: string;
   role: UserRole;
   is_active: boolean;
+  /**
+   * Дата рождения, ISO `YYYY-MM-DD`. null у всех, кого завели из выгрузки МО
+   * (там её нет вовсе) и у взрослых — школа собирает её только по ученикам.
+   */
+  birth_date?: string | null;
   /**
    * Кейс (профильная группа) — идентификатором, а не названием: бэкенд отдаёт
    * его в каждом UserOut как обычную колонку. Название экраны берут из
@@ -37,17 +42,17 @@ export interface TokenResponse {
 }
 
 export const ROLE_LABELS: Record<UserRole, string> = {
-  student: 'Ученик',
-  teacher: 'Учитель',
-  parent: 'Родитель',
-  admin: 'Администратор',
+  student: "Ученик",
+  teacher: "Учитель",
+  parent: "Родитель",
+  admin: "Администратор",
 };
 
 /** Цвет бейджа роли. Лежит рядом с подписями: список пользователей и карточка
  *  пользователя обязаны красить одну и ту же роль одинаково. */
-export const ROLE_BADGE: Record<UserRole, 'sage' | 'blue' | 'gray'> = {
-  student: 'sage',
-  teacher: 'blue',
-  parent: 'gray',
-  admin: 'gray',
+export const ROLE_BADGE: Record<UserRole, "sage" | "blue" | "gray"> = {
+  student: "sage",
+  teacher: "blue",
+  parent: "gray",
+  admin: "gray",
 };

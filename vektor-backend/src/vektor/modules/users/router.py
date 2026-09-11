@@ -22,6 +22,7 @@ from vektor.modules.users.schemas import (
     ParentWithChildrenOut,
     ResetPasswordOut,
     SetUserActiveIn,
+    UserUpdateIn,
 )
 from vektor.shared.academic_year import academic_year_label
 from vektor.shared.class_label import class_label
@@ -57,6 +58,7 @@ async def read_me(
         role=user.role,
         is_active=user.is_active,
         class_label=class_label(school_class.grade, school_class.section) if school_class else None,
+        birth_date=user.birth_date,
         case_name=kase.name if kase else None,
         academic_year=academic_year_label(date.today()),
     )
@@ -107,6 +109,28 @@ async def get_all_users(
         query = query.where(User.case_id.is_(None))
     all_users = (await db.execute(query)).scalars().all()
     return all_users
+
+
+@router.patch(
+    "/{user_id}",
+    response_model=UserOut,
+    summary="Правка данных пользователя",
+    description="Поправить анкетные данные человека: имя, email, дату "
+    "рождения. Частичная правка — отсутствующий ключ не трогается, "
+    "`birth_date: null` стирает дату. Роль, статус, класс и кейс здесь НЕ "
+    "меняются: у статуса свой эндпоинт, класс и кейс правятся со своих "
+    "экранов, а смена роли ломает уже собранную диагностику (роль "
+    "оценивающего — снапшот на анкете). Занятый email — 409. Только админ.",
+)
+async def update_user(
+    user_id: int,
+    data: UserUpdateIn,
+    db: AsyncSession = Depends(get_db),
+    _admin_user: User = Depends(require_role(UserRole.ADMIN)),
+) -> User:
+    # exclude_unset: именно он превращает «поля не было в теле» в «не трогать»
+    # — иначе форма, где заполнено одно поле, стирала бы остальные.
+    return await service.update_user(db, user_id, data.model_dump(exclude_unset=True))
 
 
 @router.patch(

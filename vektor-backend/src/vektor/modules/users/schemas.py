@@ -1,7 +1,9 @@
 # Pydantic-схемы users, которых нет в auth: связь родитель—ребёнок
 # и массовая загрузка пользователей (Этап 3.7).
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from datetime import date
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from vektor.modules.auth.schemas import UserOut
 from vektor.shared.enums import UserRole
@@ -9,6 +11,45 @@ from vektor.shared.enums import UserRole
 
 class AssignChildrenIn(BaseModel):
     child_ids: list[int]
+
+
+class UserUpdateIn(BaseModel):
+    """Правка анкетных данных человека админом.
+
+    Частичная: сервис получает только реально пришедшие поля
+    (`model_dump(exclude_unset=True)` в роутере), поэтому отсутствие ключа —
+    «не трогать», а явный `"birth_date": null` — «стереть дату». Тот же
+    приём, что у PATCH предметной роли учителя в классе (7m).
+
+    Чего здесь НЕТ и почему:
+    - `role` — от неё зависит всё: кто кого оценивает, чьи ответы попадают в
+      слой teacher/parent, кому виден класс. Уже собранные анкеты при смене
+      роли не переписываются (роль ратора — снапшот, Этап 5a), и человек
+      оказался бы наполовину в прошлой роли. Заводится заново, а старая
+      учётка деактивируется.
+    - `is_active` — у него свой эндпоинт с защитой от самоблокировки
+      (`PATCH /users/{id}/active`), и дублировать её здесь значило бы держать
+      два места в согласии.
+    - класс и кейс — правятся со своих экранов, там же, где видно состав
+      целиком; здесь они были бы вторым способом сделать то же самое.
+    """
+
+    email: EmailStr | None = None
+    full_name: str | None = Field(default=None, min_length=1, max_length=255)
+    birth_date: date | None = None
+
+    @field_validator("email", "full_name")
+    @classmethod
+    def _reject_explicit_null(cls, value: str | None) -> str:
+        """`null` стирает значение — и это осмысленно только для даты
+        рождения. Без email нельзя войти, без имени человека не найти, так
+        что явный null здесь — ошибка клиента, а не «стереть». Валидатор
+        срабатывает только на реально присланном поле: значения по умолчанию
+        pydantic не валидирует.
+        """
+        if value is None:
+            raise ValueError("Поле нельзя стереть — пришлите значение или не присылайте ключ")
+        return value
 
 
 class SetUserActiveIn(BaseModel):

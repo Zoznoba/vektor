@@ -5,6 +5,8 @@
 # Выход: то, что мы ГОТОВЫ показать. hashed_password не должен оказаться
 # ни там, ни там.
 
+from datetime import date
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from vektor.shared.enums import UserRole
@@ -36,6 +38,10 @@ class UserOut(BaseModel):
     full_name: str
     role: UserRole
     is_active: bool
+    # Дата рождения — обычная колонка, как case_id ниже: отдаём всем, кому
+    # отдаём UserOut. None штатно у всех, кого завели до списков состава
+    # 2026–2027 (в выгрузке МО даты рождения нет) и у взрослых.
+    birth_date: date | None = None
     # Кейс отдаём ИДЕНТИФИКАТОРОМ, а не названием: это обычная колонка, её
     # видно без дозагрузки связи, тогда как name потребовал бы selectinload в
     # каждом месте, где UserOut собирается из ORM-объекта (а таких мест

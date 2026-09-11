@@ -2,6 +2,7 @@
 # Права проверяет роутер (require_role(ADMIN)), здесь — только доменные правила.
 
 from collections import Counter
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,6 +66,42 @@ async def assign_children(db: AsyncSession, parent_id: int, child_ids: list[int]
     await db.commit()
     await db.refresh(parent, attribute_names=["children"])
     return parent
+
+
+async def update_user(db: AsyncSession, user_id: int, changes: dict[str, Any]) -> User:
+    """Поправить анкетные данные человека: имя, email, дату рождения.
+
+    `changes` — только реально пришедшие поля (роутер: exclude_unset), поэтому
+    отсутствие ключа = «не трогать», а `birth_date: null` = «стереть дату»
+    (email и full_name стереть нельзя, это режет схема).
+
+    Email проверяем ЗАРАНЕЕ отдельным select'ом, а не ловим падение
+    unique-констрейнта, — ровно по той же причине, что в bulk_create_users:
+    исключение БД прилетает в середине flush'а и разбирать его текст ради
+    человеческого сообщения дороже, чем спросить.
+
+    Роль, статус, класс и кейс сюда не входят — почему, написано в
+    UserUpdateIn.
+    """
+    user = await db.get(User, user_id)
+    if user is None:
+        raise UserNotFound(f"Пользователь {user_id} не найден")
+
+    new_email = changes.get("email", user.email)
+    if new_email != user.email:
+        taken = await db.execute(select(User.id).where(User.email == new_email))
+        if taken.scalar_one_or_none() is not None:
+            raise EmailsAlreadyTaken(f"Email уже занят: {new_email}")
+        user.email = new_email
+
+    if "full_name" in changes:
+        user.full_name = changes["full_name"]
+    if "birth_date" in changes:
+        user.birth_date = changes["birth_date"]
+
+    await db.commit()
+    await db.refresh(user)
+    return user
 
 
 async def set_user_active(

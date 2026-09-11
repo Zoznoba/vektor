@@ -1,17 +1,20 @@
-import { useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { AdminShell } from './AdminShell';
-import { Panel } from '../../components/ui/Panel';
-import { Badge } from '../../components/ui/Badge';
-import { Button } from '../../components/ui/Button';
-import { Modal } from '../../components/ui/Modal';
-import { Icon } from '../../components/icons/Icon';
-import { ActionMenu } from '../../components/ui/ActionMenu';
-import type { ActionMenuItem } from '../../components/ui/ActionMenu';
-import { SelectAllCheckbox, SelectionBar } from '../../components/ui/SelectionBar';
-import { useApi } from '../../hooks/useApi';
-import { useRowSelection } from '../../hooks/useRowSelection';
+import { useMemo, useState } from "react";
+import type { FormEvent } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { AdminShell } from "./AdminShell";
+import { Panel } from "../../components/ui/Panel";
+import { Badge } from "../../components/ui/Badge";
+import { Button } from "../../components/ui/Button";
+import { Modal } from "../../components/ui/Modal";
+import { Icon } from "../../components/icons/Icon";
+import { ActionMenu } from "../../components/ui/ActionMenu";
+import type { ActionMenuItem } from "../../components/ui/ActionMenu";
+import {
+  SelectAllCheckbox,
+  SelectionBar,
+} from "../../components/ui/SelectionBar";
+import { useApi } from "../../hooks/useApi";
+import { useRowSelection } from "../../hooks/useRowSelection";
 import {
   fetchUsers,
   createUser,
@@ -19,36 +22,46 @@ import {
   assignChildren,
   setUserActive,
   resetPassword,
-} from '../../api/users';
-import type { BulkUserIn } from '../../api/users';
-import { fetchClasses } from '../../api/classes';
-import { fetchCases, assignCaseStudents, assignCaseTeachers } from '../../api/cases';
-import { ApiError } from '../../api/client';
-import { useAuth } from '../../auth/AuthContext';
-import { ROLE_BADGE, ROLE_LABELS } from '../../types/auth';
-import type { User, UserRole } from '../../types/auth';
-import { classLabel } from '../../types/school';
-import type { SchoolClass } from '../../types/school';
-import type { Case } from '../../types/case';
-import { parseRoster, rosterErrorCount } from './roster';
-import { RosterInput } from './RosterInput';
-import './admin.css';
+  updateUser,
+} from "../../api/users";
+import type { BulkUserIn, UserUpdateIn } from "../../api/users";
+import { fetchClasses } from "../../api/classes";
+import {
+  fetchCases,
+  assignCaseStudents,
+  assignCaseTeachers,
+} from "../../api/cases";
+import { ApiError } from "../../api/client";
+import { useAuth } from "../../auth/AuthContext";
+import { ROLE_BADGE, ROLE_LABELS } from "../../types/auth";
+import type { User, UserRole } from "../../types/auth";
+import { classLabel } from "../../types/school";
+import type { SchoolClass } from "../../types/school";
+import type { Case } from "../../types/case";
+import { parseRoster, rosterErrorCount } from "./roster";
+import { RosterInput } from "./RosterInput";
+import "./admin.css";
 
-type RoleFilter = UserRole | 'all';
+type RoleFilter = UserRole | "all";
 // «Неактивен» в этой системе — единственная форма удаления (7l): вход
 // заблокирован, история цела. Таких набирается больше, чем действующих людей
 // (выпускники прошлых лет), поэтому по умолчанию список показывает активных, а
 // выбывшие достаются отдельным режимом, а не тонут в общей таблице.
-type StatusFilter = 'active' | 'inactive' | 'all';
+type StatusFilter = "active" | "inactive" | "all";
 
 /** Колонка сортировки таблицы пользователей. */
-type SortKey = 'name' | 'email' | 'role' | 'class' | 'case' | 'status';
-type SortDir = 'asc' | 'desc';
+type SortKey = "name" | "email" | "role" | "class" | "case" | "status";
+type SortDir = "asc" | "desc";
 
-const ROLE_ORDER: Record<UserRole, number> = { admin: 0, teacher: 1, parent: 2, student: 3 };
+const ROLE_ORDER: Record<UserRole, number> = {
+  admin: 0,
+  teacher: 1,
+  parent: 2,
+  student: 3,
+};
 
 /** Массовое действие над выделенными строками. */
-type BulkAction = 'case' | 'parent' | 'deactivate';
+type BulkAction = "case" | "parent" | "deactivate";
 
 /** id пользователя → метка класса(ов): ученику — его класс, учителю — список. */
 function buildClassIndex(classes: SchoolClass[] | null): Map<number, string> {
@@ -58,7 +71,10 @@ function buildClassIndex(classes: SchoolClass[] | null): Map<number, string> {
     const label = classLabel(cls);
     for (const s of cls.students) index.set(s.id, label);
     for (const { teacher } of cls.teachers) {
-      index.set(teacher.id, index.has(teacher.id) ? `${index.get(teacher.id)}, ${label}` : label);
+      index.set(
+        teacher.id,
+        index.has(teacher.id) ? `${index.get(teacher.id)}, ${label}` : label,
+      );
     }
   }
   return index;
@@ -71,7 +87,8 @@ function buildCaseIndex(cases: Case[] | null): Map<number, string> {
   const index = new Map<number, string>();
   if (!cases) return index;
   for (const kase of cases) {
-    for (const member of [...kase.students, ...kase.teachers]) index.set(member.id, kase.name);
+    for (const member of [...kase.students, ...kase.teachers])
+      index.set(member.id, kase.name);
   }
   return index;
 }
@@ -79,7 +96,8 @@ function buildCaseIndex(cases: Case[] | null): Map<number, string> {
 function peopleCountLabel(n: number): string {
   const mod10 = n % 10;
   const mod100 = n % 100;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${n} человека`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14))
+    return `${n} человека`;
   return `${n} человек`;
 }
 
@@ -108,30 +126,35 @@ export function AdminUsersPage() {
 
   // Приход со «Сводки» по клику на тайл — сразу с нужным фильтром роли.
   const initialRoleFilter =
-    (location.state as { roleFilter?: RoleFilter } | null)?.roleFilter ?? 'all';
+    (location.state as { roleFilter?: RoleFilter } | null)?.roleFilter ?? "all";
   const [roleFilter, setRoleFilter] = useState<RoleFilter>(initialRoleFilter);
   const [classFilter, setClassFilter] = useState<number | null>(null);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
-  const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('name');
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [showCreate, setShowCreate] = useState(false);
   const [showBulkCreate, setShowBulkCreate] = useState(false);
   const [bulkAction, setBulkAction] = useState<BulkAction | null>(null);
   const [resetPasswordFor, setResetPasswordFor] = useState<User | null>(null);
+  const [editing, setEditing] = useState<User | null>(null);
   // Деактивация одного из дропдауна строки и пачки из выделения — путь общий,
   // как у открепления в «Классах»: одна модалка, на входе список.
   const [deactivating, setDeactivating] = useState<User[] | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const classIndex = useMemo(() => buildClassIndex(classes.data), [classes.data]);
+  const classIndex = useMemo(
+    () => buildClassIndex(classes.data),
+    [classes.data],
+  );
   const caseIndex = useMemo(() => buildCaseIndex(cases.data), [cases.data]);
 
   const allUsers = useMemo(() => users.data ?? [], [users.data]);
 
   // Возврат со страницы пользователя по прямой ссылке подсвечивает строку, с
   // которой всё началось (state кладут «Классы», «Кейсы» и сам профиль).
-  const highlightedId = (location.state as { userId?: number } | null)?.userId ?? null;
+  const highlightedId =
+    (location.state as { userId?: number } | null)?.userId ?? null;
 
   // Фильтр по классу считаем по составу класса (ученики + учителя), а не по
   // колонке-подписи: подпись у учителя склеена из нескольких классов и на
@@ -141,9 +164,9 @@ export function AdminUsersPage() {
   // 138 действующих читается как ошибка — та же причина, что у класса ниже.
   const scoped = useMemo(() => {
     const byStatus =
-      statusFilter === 'all'
+      statusFilter === "all"
         ? allUsers
-        : allUsers.filter((u) => u.is_active === (statusFilter === 'active'));
+        : allUsers.filter((u) => u.is_active === (statusFilter === "active"));
     if (classFilter === null) return byStatus;
     const cls = (classes.data ?? []).find((c) => c.id === classFilter);
     if (!cls) return byStatus;
@@ -157,9 +180,12 @@ export function AdminUsersPage() {
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return scoped.filter((u) => {
-      if (roleFilter !== 'all' && u.role !== roleFilter) return false;
+      if (roleFilter !== "all" && u.role !== roleFilter) return false;
       if (!query) return true;
-      return u.full_name.toLowerCase().includes(query) || u.email.toLowerCase().includes(query);
+      return (
+        u.full_name.toLowerCase().includes(query) ||
+        u.email.toLowerCase().includes(query)
+      );
     });
   }, [scoped, roleFilter, search]);
 
@@ -179,20 +205,20 @@ export function AdminUsersPage() {
 
   // Сортировка — поверх фильтра, целиком на клиенте: список уже весь в памяти.
   const sorted = useMemo(() => {
-    const dir = sortDir === 'asc' ? 1 : -1;
+    const dir = sortDir === "asc" ? 1 : -1;
     const value = (u: User): string | number => {
       switch (sortKey) {
-        case 'name':
+        case "name":
           return u.full_name.toLowerCase();
-        case 'email':
+        case "email":
           return u.email.toLowerCase();
-        case 'role':
+        case "role":
           return ROLE_ORDER[u.role];
-        case 'class':
-          return classIndex.get(u.id) ?? '￿';
-        case 'case':
-          return caseIndex.get(u.id) ?? '￿';
-        case 'status':
+        case "class":
+          return classIndex.get(u.id) ?? "￿";
+        case "case":
+          return caseIndex.get(u.id) ?? "￿";
+        case "status":
           return u.is_active ? 0 : 1;
       }
     };
@@ -201,15 +227,17 @@ export function AdminUsersPage() {
       const bv = value(b);
       if (av < bv) return -dir;
       if (av > bv) return dir;
-      return a.full_name.toLowerCase().localeCompare(b.full_name.toLowerCase(), 'ru');
+      return a.full_name
+        .toLowerCase()
+        .localeCompare(b.full_name.toLowerCase(), "ru");
     });
   }, [filtered, sortKey, sortDir, classIndex, caseIndex]);
 
   const toggleSort = (key: SortKey) => {
-    if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else {
       setSortKey(key);
-      setSortDir('asc');
+      setSortDir("asc");
     }
   };
 
@@ -218,7 +246,7 @@ export function AdminUsersPage() {
   // выборки, иначе массовое действие уедет на людей, которых на экране нет.
   const selection = useRowSelection(
     rowIds,
-    `${roleFilter}:${classFilter ?? 'all'}:${statusFilter}:${search.trim().toLowerCase()}`,
+    `${roleFilter}:${classFilter ?? "all"}:${statusFilter}:${search.trim().toLowerCase()}`,
   );
   const selectedUsers = useMemo(
     () => sorted.filter((u) => selection.selectedIds.includes(u.id)),
@@ -227,17 +255,20 @@ export function AdminUsersPage() {
 
   // Что можно делать с выделением, зависит от его состава — кнопки не
   // прячем, а гасим с подсказкой: исчезающая кнопка читается как поломка.
-  const caseEligible = selectedUsers.every((u) => u.role === 'student' || u.role === 'teacher');
+  const caseEligible = selectedUsers.every(
+    (u) => u.role === "student" || u.role === "teacher",
+  );
   const parentEligible =
-    selectedUsers.length > 0 && selectedUsers.every((u) => u.role === 'student');
+    selectedUsers.length > 0 &&
+    selectedUsers.every((u) => u.role === "student");
   const selectionHasSelf = selectedUsers.some((u) => u.id === currentUser?.id);
 
   const filters: { key: RoleFilter; label: string }[] = [
-    { key: 'all', label: 'Все' },
-    { key: 'student', label: 'Ученики' },
-    { key: 'teacher', label: 'Учителя' },
-    { key: 'parent', label: 'Родители' },
-    { key: 'admin', label: 'Админ' },
+    { key: "all", label: "Все" },
+    { key: "student", label: "Ученики" },
+    { key: "teacher", label: "Учителя" },
+    { key: "parent", label: "Родители" },
+    { key: "admin", label: "Админ" },
   ];
 
   const handleActivate = async (user: User) => {
@@ -247,7 +278,9 @@ export function AdminUsersPage() {
       users.reload();
     } catch (err) {
       setActionError(
-        err instanceof ApiError ? err.message : 'Не удалось активировать пользователя',
+        err instanceof ApiError
+          ? err.message
+          : "Не удалось активировать пользователя",
       );
     }
   };
@@ -255,28 +288,33 @@ export function AdminUsersPage() {
   const rowActions = (user: User): ActionMenuItem[] => {
     const items: ActionMenuItem[] = [
       {
-        key: 'profile',
-        label: 'Открыть профиль',
+        key: "profile",
+        label: "Открыть профиль",
         onSelect: () => navigate(`/admin/users/${user.id}`),
       },
     ];
     items.push({
-      key: 'password',
-      label: 'Сбросить пароль',
+      key: "edit",
+      label: "Редактировать",
+      onSelect: () => setEditing(user),
+    });
+    items.push({
+      key: "password",
+      label: "Сбросить пароль",
       onSelect: () => setResetPasswordFor(user),
     });
     if (user.is_active) {
       items.push({
-        key: 'deactivate',
-        label: 'Деактивировать',
+        key: "deactivate",
+        label: "Деактивировать",
         danger: true,
         disabled: user.id === currentUser?.id,
         onSelect: () => setDeactivating([user]),
       });
     } else {
       items.push({
-        key: 'activate',
-        label: 'Активировать',
+        key: "activate",
+        label: "Активировать",
         onSelect: () => void handleActivate(user),
       });
     }
@@ -291,7 +329,7 @@ export function AdminUsersPage() {
           {filters.map((f) => (
             <button
               key={f.key}
-              className={`filter-chip ${roleFilter === f.key ? 'filter-chip--active' : ''}`.trim()}
+              className={`filter-chip ${roleFilter === f.key ? "filter-chip--active" : ""}`.trim()}
               onClick={() => setRoleFilter(f.key)}
             >
               {f.label} · {countByRole[f.key]}
@@ -301,8 +339,10 @@ export function AdminUsersPage() {
         <div className="admin-toolbar__spacer" />
         <select
           className="admin-select"
-          value={classFilter ?? ''}
-          onChange={(e) => setClassFilter(e.target.value ? Number(e.target.value) : null)}
+          value={classFilter ?? ""}
+          onChange={(e) =>
+            setClassFilter(e.target.value ? Number(e.target.value) : null)
+          }
         >
           <option value="">Все классы</option>
           {(classes.data ?? []).map((cls) => (
@@ -349,13 +389,13 @@ export function AdminUsersPage() {
             trigger={<Icon name="plus" size={16} />}
             items={[
               {
-                key: 'one',
-                label: 'Одного',
+                key: "one",
+                label: "Одного",
                 onSelect: () => setShowCreate(true),
               },
               {
-                key: 'many',
-                label: 'Списком',
+                key: "many",
+                label: "Списком",
                 onSelect: () => setShowBulkCreate(true),
               },
             ]}
@@ -371,23 +411,35 @@ export function AdminUsersPage() {
           <Button
             variant="secondary"
             disabled={!caseEligible}
-            title={caseEligible ? undefined : 'В кейс можно добавить только учеников и учителей'}
-            onClick={() => setBulkAction('case')}
+            title={
+              caseEligible
+                ? undefined
+                : "В кейс можно добавить только учеников и учителей"
+            }
+            onClick={() => setBulkAction("case")}
           >
             Добавить в кейс
           </Button>
           <Button
             variant="secondary"
             disabled={!parentEligible}
-            title={parentEligible ? undefined : 'Привязать к родителю можно только учеников'}
-            onClick={() => setBulkAction('parent')}
+            title={
+              parentEligible
+                ? undefined
+                : "Привязать к родителю можно только учеников"
+            }
+            onClick={() => setBulkAction("parent")}
           >
             Привязать к родителю
           </Button>
           <Button
             variant="danger"
             disabled={selectionHasSelf}
-            title={selectionHasSelf ? 'В выделении ваша собственная учётная запись' : undefined}
+            title={
+              selectionHasSelf
+                ? "В выделении ваша собственная учётная запись"
+                : undefined
+            }
             onClick={() => setDeactivating(selectedUsers)}
           >
             Деактивировать
@@ -405,12 +457,48 @@ export function AdminUsersPage() {
                 <th className="admin-table__select-col">
                   <SelectAllCheckbox selection={selection} />
                 </th>
-                <SortableTh label="Имя" col="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <SortableTh label="Email" col="email" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <SortableTh label="Роль" col="role" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <SortableTh label="Класс" col="class" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <SortableTh label="Кейс" col="case" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-                <SortableTh label="Статус" col="status" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortableTh
+                  label="Имя"
+                  col="name"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                />
+                <SortableTh
+                  label="Email"
+                  col="email"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                />
+                <SortableTh
+                  label="Роль"
+                  col="role"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                />
+                <SortableTh
+                  label="Класс"
+                  col="class"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                />
+                <SortableTh
+                  label="Кейс"
+                  col="case"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                />
+                <SortableTh
+                  label="Статус"
+                  col="status"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                />
                 <th className="admin-table__actions-col" />
               </tr>
             </thead>
@@ -418,7 +506,9 @@ export function AdminUsersPage() {
               {sorted.map((u) => (
                 <tr
                   key={u.id}
-                  className={u.id === highlightedId ? 'admin-table__row--selected' : ''}
+                  className={
+                    u.id === highlightedId ? "admin-table__row--selected" : ""
+                  }
                   onClick={() => {
                     if (window.getSelection()?.toString()) return;
                     navigate(`/admin/users/${u.id}`);
@@ -438,13 +528,17 @@ export function AdminUsersPage() {
                   <td>{u.full_name}</td>
                   <td>{u.email}</td>
                   <td>
-                    <Badge variant={ROLE_BADGE[u.role]}>{ROLE_LABELS[u.role]}</Badge>
+                    <Badge variant={ROLE_BADGE[u.role]}>
+                      {ROLE_LABELS[u.role]}
+                    </Badge>
                   </td>
-                  <td>{classIndex.get(u.id) ?? '—'}</td>
-                  <td>{caseIndex.get(u.id) ?? '—'}</td>
+                  <td>{classIndex.get(u.id) ?? "—"}</td>
+                  <td>{caseIndex.get(u.id) ?? "—"}</td>
                   <td>
-                    <span className={`status-dot ${u.is_active ? 'status-dot--on' : ''}`.trim()} />
-                    {u.is_active ? 'Активен' : 'Неактивен'}
+                    <span
+                      className={`status-dot ${u.is_active ? "status-dot--on" : ""}`.trim()}
+                    />
+                    {u.is_active ? "Активен" : "Неактивен"}
                   </td>
                   <td className="admin-table__actions-col">
                     <ActionMenu
@@ -484,7 +578,7 @@ export function AdminUsersPage() {
         />
       )}
 
-      {bulkAction === 'case' && (
+      {bulkAction === "case" && (
         <AssignToCaseModal
           users={selectedUsers}
           cases={cases.data ?? []}
@@ -498,10 +592,10 @@ export function AdminUsersPage() {
         />
       )}
 
-      {bulkAction === 'parent' && (
+      {bulkAction === "parent" && (
         <AssignToParentModal
           students={selectedUsers}
-          parents={allUsers.filter((u) => u.role === 'parent' && u.is_active)}
+          parents={allUsers.filter((u) => u.role === "parent" && u.is_active)}
           onClose={() => setBulkAction(null)}
           onAssigned={() => {
             setBulkAction(null);
@@ -517,6 +611,17 @@ export function AdminUsersPage() {
           onDone={() => {
             setDeactivating(null);
             selection.clear();
+            users.reload();
+          }}
+        />
+      )}
+
+      {editing && (
+        <EditUserModal
+          user={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
             users.reload();
           }}
         />
@@ -548,21 +653,143 @@ function SortableTh({
   const active = sortKey === col;
   return (
     <th
-      className={`admin-table__sortable ${active ? 'admin-table__sortable--active' : ''}`.trim()}
-      aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      className={`admin-table__sortable ${active ? "admin-table__sortable--active" : ""}`.trim()}
+      aria-sort={
+        active ? (sortDir === "asc" ? "ascending" : "descending") : "none"
+      }
       onClick={() => onSort(col)}
     >
       {label}
-      <span className="admin-table__sort-caret">{active ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span>
+      <span className="admin-table__sort-caret">
+        {active ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+      </span>
     </th>
   );
 }
 
-function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState<UserRole>('student');
+/**
+ * Правка анкетных данных человека: имя, email, дата рождения.
+ *
+ * Чего в форме нет и почему: роль не меняется вовсе (от неё зависит уже
+ * собранная диагностика — роль оценивающего фиксируется на анкете), статус
+ * переключают кнопки рядом, а класс и кейс правятся со своих экранов, где
+ * виден весь состав. Форма присылает ТОЛЬКО изменённые поля: бэкенд
+ * частичный, и отправлять неизменённый email значит зря проверять его на
+ * занятость.
+ */
+export function EditUserModal({
+  user,
+  onClose,
+  onSaved,
+}: {
+  user: User;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [fullName, setFullName] = useState(user.full_name);
+  const [email, setEmail] = useState(user.email);
+  const [birthDate, setBirthDate] = useState(user.birth_date ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const changes: UserUpdateIn = {};
+  if (fullName.trim() !== user.full_name) changes.full_name = fullName.trim();
+  if (email.trim() !== user.email) changes.email = email.trim();
+  // Пустое поле = «стереть дату», и именно явный null отличает это от «не
+  // трогать» (ключа в теле нет вовсе).
+  const normalizedBirthDate = birthDate || null;
+  if (normalizedBirthDate !== (user.birth_date ?? null))
+    changes.birth_date = normalizedBirthDate;
+  const hasChanges = Object.keys(changes).length > 0;
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await updateUser(user.id, changes);
+      onSaved();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setError("Такой email уже занят другим пользователем");
+      } else if (err instanceof ApiError && err.status === 422) {
+        setError("Проверьте поля: имя не пустое, email корректный");
+      } else {
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : "Не удалось сохранить изменения",
+        );
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal title={`Редактирование — ${user.full_name}`} onClose={onClose}>
+      <form onSubmit={handleSubmit} noValidate>
+        <label className="form-field">
+          <span>Имя и фамилия</span>
+          <input
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            required
+          />
+        </label>
+        <label className="form-field">
+          <span>Email</span>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </label>
+        <label className="form-field">
+          <span>Дата рождения</span>
+          <input
+            type="date"
+            value={birthDate}
+            max={new Date().toISOString().slice(0, 10)}
+            onChange={(e) => setBirthDate(e.target.value)}
+          />
+        </label>
+
+        {/* Смена email меняет и логин: другого ключа входа в системе нет. */}
+        {changes.email !== undefined && (
+          <div className="form-hint">
+            Email — это логин: после сохранения входить нужно будет по новому
+            адресу.
+          </div>
+        )}
+
+        {error && <div className="form-error">{error}</div>}
+
+        <div className="modal__actions">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Отмена
+          </Button>
+          <Button type="submit" disabled={submitting || !hasChanges}>
+            {submitting ? "Сохраняем…" : "Сохранить"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function CreateUserModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<UserRole>("student");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -580,11 +807,15 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
       onCreated();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        setError('Пользователь с таким email уже существует');
+        setError("Пользователь с таким email уже существует");
       } else if (err instanceof ApiError && err.status === 422) {
-        setError('Проверьте поля: пароль от 8 символов, корректный email');
+        setError("Проверьте поля: пароль от 8 символов, корректный email");
       } else {
-        setError(err instanceof ApiError ? err.message : 'Не удалось создать пользователя');
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : "Не удалось создать пользователя",
+        );
       }
     } finally {
       setSubmitting(false);
@@ -596,7 +827,11 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
       <form onSubmit={handleSubmit} noValidate>
         <label className="form-field">
           <span>Имя и фамилия</span>
-          <input value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+          <input
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            required
+          />
         </label>
         <label className="form-field">
           <span>Email</span>
@@ -620,7 +855,10 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
         </label>
         <label className="form-field">
           <span>Роль</span>
-          <select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as UserRole)}
+          >
             <option value="student">Ученик</option>
             <option value="teacher">Учитель</option>
             <option value="parent">Родитель</option>
@@ -635,7 +873,7 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
             Отмена
           </Button>
           <Button type="submit" disabled={submitting}>
-            {submitting ? 'Создаём…' : 'Создать'}
+            {submitting ? "Создаём…" : "Создать"}
           </Button>
         </div>
       </form>
@@ -664,10 +902,10 @@ function BulkCreateUsersModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [role, setRole] = useState<UserRole>('student');
+  const [role, setRole] = useState<UserRole>("student");
   const [classId, setClassId] = useState<number | null>(null);
   const [caseId, setCaseId] = useState<number | null>(null);
-  const [roster, setRoster] = useState('');
+  const [roster, setRoster] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -675,7 +913,10 @@ function BulkCreateUsersModal({
     () => new Set(allUsers.map((u) => u.email.toLowerCase())),
     [allUsers],
   );
-  const rows = useMemo(() => parseRoster(roster, existingEmails), [roster, existingEmails]);
+  const rows = useMemo(
+    () => parseRoster(roster, existingEmails),
+    [roster, existingEmails],
+  );
   const errorCount = rosterErrorCount(rows);
   const canSubmit = rows.length > 0 && errorCount === 0;
 
@@ -691,23 +932,29 @@ function BulkCreateUsersModal({
       }));
       await bulkCreateUsers(
         users,
-        role === 'student' ? classId : null,
-        role === 'student' || role === 'teacher' ? caseId : null,
+        role === "student" ? classId : null,
+        role === "student" || role === "teacher" ? caseId : null,
       );
       onCreated();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        setError('Некоторые email уже заняты — поправьте список и попробуйте снова');
+        setError(
+          "Некоторые email уже заняты — поправьте список и попробуйте снова",
+        );
       } else if (err instanceof ApiError && err.status === 422) {
         // Бэк (Pydantic EmailStr) строже нашего превью: режет зарезервированные
         // домены (.test, example.com), которые формально «похожи» на email.
         setError(
-          'Бэкенд отклонил один из адресов как недопустимый email — обычно это ' +
-            'зарезервированный домен вроде «@test.test» или «@example.com». ' +
-            'Используйте реальный домен и попробуйте снова.',
+          "Бэкенд отклонил один из адресов как недопустимый email — обычно это " +
+            "зарезервированный домен вроде «@test.test» или «@example.com». " +
+            "Используйте реальный домен и попробуйте снова.",
         );
       } else {
-        setError(err instanceof ApiError ? err.message : 'Не удалось завести пользователей');
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : "Не удалось завести пользователей",
+        );
       }
     } finally {
       setSubmitting(false);
@@ -718,19 +965,24 @@ function BulkCreateUsersModal({
     <Modal title="Добавить пачкой" onClose={onClose}>
       <label className="form-field">
         <span>Роль (общая на всю пачку)</span>
-        <select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
+        <select
+          value={role}
+          onChange={(e) => setRole(e.target.value as UserRole)}
+        >
           <option value="student">Ученики</option>
           <option value="teacher">Учителя</option>
           <option value="parent">Родители</option>
         </select>
       </label>
 
-      {role === 'student' && (
+      {role === "student" && (
         <label className="form-field">
           <span>Сразу в класс (необязательно)</span>
           <select
-            value={classId ?? ''}
-            onChange={(e) => setClassId(e.target.value ? Number(e.target.value) : null)}
+            value={classId ?? ""}
+            onChange={(e) =>
+              setClassId(e.target.value ? Number(e.target.value) : null)
+            }
           >
             <option value="">— не привязывать —</option>
             {classes.map((cls) => (
@@ -742,12 +994,14 @@ function BulkCreateUsersModal({
         </label>
       )}
 
-      {(role === 'student' || role === 'teacher') && (
+      {(role === "student" || role === "teacher") && (
         <label className="form-field">
           <span>Сразу в кейс (необязательно)</span>
           <select
-            value={caseId ?? ''}
-            onChange={(e) => setCaseId(e.target.value ? Number(e.target.value) : null)}
+            value={caseId ?? ""}
+            onChange={(e) =>
+              setCaseId(e.target.value ? Number(e.target.value) : null)
+            }
           >
             <option value="">— не привязывать —</option>
             {cases.map((kase) => (
@@ -759,7 +1013,12 @@ function BulkCreateUsersModal({
         </label>
       )}
 
-      <RosterInput value={roster} onChange={setRoster} rows={rows} errorCount={errorCount} />
+      <RosterInput
+        value={roster}
+        onChange={setRoster}
+        rows={rows}
+        errorCount={errorCount}
+      />
 
       {error && <div className="form-error">{error}</div>}
 
@@ -768,7 +1027,7 @@ function BulkCreateUsersModal({
           Отмена
         </Button>
         <Button onClick={handleSubmit} disabled={submitting || !canSubmit}>
-          {submitting ? 'Создаём…' : `Создать ${rows.length}`}
+          {submitting ? "Создаём…" : `Создать ${rows.length}`}
         </Button>
       </div>
     </Modal>
@@ -808,8 +1067,8 @@ function AssignToCaseModal({
 
   const free = users.filter((u) => !inSomeCase.has(u.id));
   const skipped = users.length - free.length;
-  const students = free.filter((u) => u.role === 'student').map((u) => u.id);
-  const teachers = free.filter((u) => u.role === 'teacher').map((u) => u.id);
+  const students = free.filter((u) => u.role === "student").map((u) => u.id);
+  const teachers = free.filter((u) => u.role === "teacher").map((u) => u.id);
 
   const handleSubmit = async () => {
     if (caseId === null || free.length === 0) return;
@@ -820,7 +1079,9 @@ function AssignToCaseModal({
       if (teachers.length > 0) await assignCaseTeachers(caseId, teachers);
       onAssigned();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Не удалось добавить в кейс');
+      setError(
+        err instanceof ApiError ? err.message : "Не удалось добавить в кейс",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -829,14 +1090,18 @@ function AssignToCaseModal({
   return (
     <Modal title="Добавить в кейс" onClose={onClose}>
       {cases.length === 0 ? (
-        <div className="admin-empty">Кейсов пока нет — создайте кейс в разделе «Кейсы»</div>
+        <div className="admin-empty">
+          Кейсов пока нет — создайте кейс в разделе «Кейсы»
+        </div>
       ) : (
         <>
           <label className="form-field">
             <span>Кейс</span>
             <select
-              value={caseId ?? ''}
-              onChange={(e) => setCaseId(e.target.value ? Number(e.target.value) : null)}
+              value={caseId ?? ""}
+              onChange={(e) =>
+                setCaseId(e.target.value ? Number(e.target.value) : null)
+              }
             >
               {cases.map((kase) => (
                 <option key={kase.id} value={kase.id}>
@@ -847,15 +1112,17 @@ function AssignToCaseModal({
           </label>
 
           <p>
-            Будут добавлены: {students.length > 0 && `учеников — ${students.length}`}
-            {students.length > 0 && teachers.length > 0 && ', '}
+            Будут добавлены:{" "}
+            {students.length > 0 && `учеников — ${students.length}`}
+            {students.length > 0 && teachers.length > 0 && ", "}
             {teachers.length > 0 && `учителей — ${teachers.length}`}
-            {free.length === 0 && 'никто'}.
+            {free.length === 0 && "никто"}.
           </p>
           {skipped > 0 && (
             <p className="roster-hint">
-              Пропущено: {skipped} — эти люди уже состоят в другом кейсе. Членство в кейсе одно,
-              перевод делается через открепление в разделе «Кейсы».
+              Пропущено: {skipped} — эти люди уже состоят в другом кейсе.
+              Членство в кейсе одно, перевод делается через открепление в
+              разделе «Кейсы».
             </p>
           )}
 
@@ -877,8 +1144,11 @@ function AssignToCaseModal({
         <Button type="button" variant="secondary" onClick={onClose}>
           Отмена
         </Button>
-        <Button onClick={handleSubmit} disabled={submitting || caseId === null || free.length === 0}>
-          {submitting ? 'Добавляем…' : `Добавить (${free.length})`}
+        <Button
+          onClick={handleSubmit}
+          disabled={submitting || caseId === null || free.length === 0}
+        >
+          {submitting ? "Добавляем…" : `Добавить (${free.length})`}
         </Button>
       </div>
     </Modal>
@@ -901,8 +1171,10 @@ function AssignToParentModal({
   onClose: () => void;
   onAssigned: () => void;
 }) {
-  const [parentId, setParentId] = useState<number | null>(parents[0]?.id ?? null);
-  const [search, setSearch] = useState('');
+  const [parentId, setParentId] = useState<number | null>(
+    parents[0]?.id ?? null,
+  );
+  const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -910,7 +1182,9 @@ function AssignToParentModal({
     const query = search.trim().toLowerCase();
     if (!query) return parents;
     return parents.filter(
-      (p) => p.full_name.toLowerCase().includes(query) || p.email.toLowerCase().includes(query),
+      (p) =>
+        p.full_name.toLowerCase().includes(query) ||
+        p.email.toLowerCase().includes(query),
     );
   }, [parents, search]);
 
@@ -925,7 +1199,9 @@ function AssignToParentModal({
       );
       onAssigned();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Не удалось привязать детей');
+      setError(
+        err instanceof ApiError ? err.message : "Не удалось привязать детей",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -934,8 +1210,8 @@ function AssignToParentModal({
   return (
     <Modal title="Привязать к родителю" onClose={onClose}>
       <p>
-        Выбранные ученики ({students.length}) станут детьми одного родителя:{' '}
-        {students.map((s) => s.full_name).join(', ')}.
+        Выбранные ученики ({students.length}) станут детьми одного родителя:{" "}
+        {students.map((s) => s.full_name).join(", ")}.
       </p>
 
       {parents.length === 0 ? (
@@ -974,8 +1250,11 @@ function AssignToParentModal({
         <Button type="button" variant="secondary" onClick={onClose}>
           Отмена
         </Button>
-        <Button onClick={handleSubmit} disabled={submitting || parentId === null}>
-          {submitting ? 'Привязываем…' : 'Привязать'}
+        <Button
+          onClick={handleSubmit}
+          disabled={submitting || parentId === null}
+        >
+          {submitting ? "Привязываем…" : "Привязать"}
         </Button>
       </div>
     </Modal>
@@ -1010,7 +1289,7 @@ export function DeactivateModal({
         await setUserActive(user.id, false);
       } catch (err) {
         errors.push(
-          `${user.full_name}: ${err instanceof ApiError ? err.message : 'неизвестная ошибка'}`,
+          `${user.full_name}: ${err instanceof ApiError ? err.message : "неизвестная ошибка"}`,
         );
       }
     }
@@ -1021,13 +1300,20 @@ export function DeactivateModal({
 
   return (
     <Modal
-      title={users.length === 1 ? 'Деактивировать пользователя' : 'Деактивировать пользователей'}
+      title={
+        users.length === 1
+          ? "Деактивировать пользователя"
+          : "Деактивировать пользователей"
+      }
       onClose={onClose}
     >
       <p>
-        {users.length === 1 ? users[0].full_name : `Выбранные (${users.length})`} потеряют доступ
-        к системе: вход будет заблокирован. История (ответы анкет, привязки к классу или детям)
-        сохранится, действие можно отменить в любой момент кнопкой «Активировать».
+        {users.length === 1
+          ? users[0].full_name
+          : `Выбранные (${users.length})`}{" "}
+        потеряют доступ к системе: вход будет заблокирован. История (ответы
+        анкет, привязки к классу или детям) сохранится, действие можно отменить
+        в любой момент кнопкой «Активировать».
       </p>
 
       {users.length > 1 && (
@@ -1042,23 +1328,34 @@ export function DeactivateModal({
 
       {failed && (
         <div className="form-error">
-          Не удалось деактивировать: {failed.join('; ')}. Остальные деактивированы.
+          Не удалось деактивировать: {failed.join("; ")}. Остальные
+          деактивированы.
         </div>
       )}
 
       <div className="modal__actions">
-        <Button type="button" variant="secondary" onClick={failed ? onDone : onClose}>
-          {failed ? 'Закрыть' : 'Отмена'}
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={failed ? onDone : onClose}
+        >
+          {failed ? "Закрыть" : "Отмена"}
         </Button>
         <Button variant="danger" onClick={handleConfirm} disabled={submitting}>
-          {submitting ? 'Деактивируем…' : 'Деактивировать'}
+          {submitting ? "Деактивируем…" : "Деактивировать"}
         </Button>
       </div>
     </Modal>
   );
 }
 
-export function ResetPasswordModal({ user, onClose }: { user: User; onClose: () => void }) {
+export function ResetPasswordModal({
+  user,
+  onClose,
+}: {
+  user: User;
+  onClose: () => void;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [newPassword, setNewPassword] = useState<string | null>(null);
@@ -1070,7 +1367,9 @@ export function ResetPasswordModal({ user, onClose }: { user: User; onClose: () 
       const result = await resetPassword(user.id);
       setNewPassword(result.new_password);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Не удалось сбросить пароль');
+      setError(
+        err instanceof ApiError ? err.message : "Не удалось сбросить пароль",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -1080,8 +1379,8 @@ export function ResetPasswordModal({ user, onClose }: { user: User; onClose: () 
     return (
       <Modal title="Пароль сброшен" onClose={onClose}>
         <p>
-          Новый пароль для {user.full_name} — передайте его прямо сейчас: повторно показать
-          нельзя, только сбросить ещё раз.
+          Новый пароль для {user.full_name} — передайте его прямо сейчас:
+          повторно показать нельзя, только сбросить ещё раз.
         </p>
         <div className="password-reveal">{newPassword}</div>
         <div className="modal__actions">
@@ -1094,8 +1393,9 @@ export function ResetPasswordModal({ user, onClose }: { user: User; onClose: () 
   return (
     <Modal title="Сбросить пароль" onClose={onClose}>
       <p>
-        {user.full_name} больше не сможет войти со старым паролем. Новый пароль будет показан
-        один раз сразу после сброса — почтовой рассылки в системе пока нет.
+        {user.full_name} больше не сможет войти со старым паролем. Новый пароль
+        будет показан один раз сразу после сброса — почтовой рассылки в системе
+        пока нет.
       </p>
 
       {error && <div className="form-error">{error}</div>}
@@ -1105,7 +1405,7 @@ export function ResetPasswordModal({ user, onClose }: { user: User; onClose: () 
           Отмена
         </Button>
         <Button variant="danger" onClick={handleConfirm} disabled={submitting}>
-          {submitting ? 'Сбрасываем…' : 'Сбросить пароль'}
+          {submitting ? "Сбрасываем…" : "Сбросить пароль"}
         </Button>
       </div>
     </Modal>

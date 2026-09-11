@@ -1,5 +1,5 @@
-import { apiRequest } from './client';
-import type { User, UserRole } from '../types/auth';
+import { apiRequest } from "./client";
+import type { User, UserRole } from "../types/auth";
 
 export interface FetchUsersParams {
   role?: UserRole;
@@ -12,13 +12,14 @@ export interface FetchUsersParams {
 
 export function fetchUsers(params: FetchUsersParams = {}): Promise<User[]> {
   const query = new URLSearchParams();
-  if (params.role) query.set('role', params.role);
-  if (params.search) query.set('search', params.search);
-  if (params.classId !== undefined) query.set('class_id', String(params.classId));
-  if (params.caseId !== undefined) query.set('case_id', String(params.caseId));
-  if (params.withoutCase) query.set('without_case', 'true');
+  if (params.role) query.set("role", params.role);
+  if (params.search) query.set("search", params.search);
+  if (params.classId !== undefined)
+    query.set("class_id", String(params.classId));
+  if (params.caseId !== undefined) query.set("case_id", String(params.caseId));
+  if (params.withoutCase) query.set("without_case", "true");
   const qs = query.toString();
-  return apiRequest<User[]>(`/users${qs ? `?${qs}` : ''}`);
+  return apiRequest<User[]>(`/users${qs ? `?${qs}` : ""}`);
 }
 
 export interface CreateUserIn {
@@ -34,7 +35,7 @@ export interface CreateUserIn {
  * бэкенда, Этап 7); фронт уже ходит как «админ создаёт учётку».
  */
 export function createUser(data: CreateUserIn): Promise<User> {
-  return apiRequest<User>('/auth/register', { method: 'POST', body: data });
+  return apiRequest<User>("/auth/register", { method: "POST", body: data });
 }
 
 export interface BulkUserIn {
@@ -65,9 +66,34 @@ export function bulkCreateUsers(
   classId?: number | null,
   caseId?: number | null,
 ): Promise<BulkCreateResult> {
-  return apiRequest<BulkCreateResult>('/users/bulk', {
-    method: 'POST',
+  return apiRequest<BulkCreateResult>("/users/bulk", {
+    method: "POST",
     body: { class_id: classId ?? null, case_id: caseId ?? null, users },
+  });
+}
+
+export interface UserUpdateIn {
+  full_name?: string;
+  email?: string;
+  /** ISO `YYYY-MM-DD`; явный null стирает дату. */
+  birth_date?: string | null;
+}
+
+/**
+ * Правка анкетных данных человека админом. Частичная: присылаем только те
+ * ключи, что реально меняем, — отсутствующий бэкенд не трогает.
+ *
+ * Роли, статуса, класса и кейса здесь нет: статус меняет setUserActive,
+ * класс и кейс — свои экраны, а роль не меняется вовсе (от неё зависит уже
+ * собранная диагностика).
+ */
+export function updateUser(
+  userId: number,
+  changes: UserUpdateIn,
+): Promise<User> {
+  return apiRequest<User>(`/users/${userId}`, {
+    method: "PATCH",
+    body: changes,
   });
 }
 
@@ -76,9 +102,12 @@ export function bulkCreateUsers(
  * скрывает его и блокирует вход, но сохраняет всю историю (ответы анкет,
  * привязки к классу/детям).
  */
-export function setUserActive(userId: number, isActive: boolean): Promise<User> {
+export function setUserActive(
+  userId: number,
+  isActive: boolean,
+): Promise<User> {
   return apiRequest<User>(`/users/${userId}/active`, {
-    method: 'PATCH',
+    method: "PATCH",
     body: { is_active: isActive },
   });
 }
@@ -87,19 +116,27 @@ export function setUserActive(userId: number, isActive: boolean): Promise<User> 
  * Сбросить пароль пользователя. Почтовой рассылки в системе нет — новый
  * пароль приходит в ответе один раз, показать его повторно нельзя.
  */
-export function resetPassword(userId: number): Promise<{ new_password: string }> {
-  return apiRequest<{ new_password: string }>(`/users/${userId}/reset-password`, {
-    method: 'POST',
-  });
+export function resetPassword(
+  userId: number,
+): Promise<{ new_password: string }> {
+  return apiRequest<{ new_password: string }>(
+    `/users/${userId}/reset-password`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function fetchChildren(parentId: number): Promise<User[]> {
   return apiRequest<User[]>(`/users/${parentId}/children`);
 }
 
-export function assignChildren(parentId: number, childIds: number[]): Promise<unknown> {
+export function assignChildren(
+  parentId: number,
+  childIds: number[],
+): Promise<unknown> {
   return apiRequest(`/users/${parentId}/children`, {
-    method: 'POST',
+    method: "POST",
     body: { child_ids: childIds },
   });
 }

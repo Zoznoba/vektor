@@ -88,6 +88,19 @@
   margin-bottom: 14px;
 }
 
+/* Предупреждение в форме: не ошибка, а следствие правки, о котором стоит
+   знать до сохранения. Отличается от .form-error нейтральным фоном —
+   красный здесь означал бы, что что-то уже пошло не так. */
+.form-hint {
+  background: var(--soft);
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.45;
+  border-radius: var(--r-sm);
+  padding: 9px 13px;
+  margin-bottom: 14px;
+}
+
 .modal__actions {
   display: flex;
   justify-content: flex-end;

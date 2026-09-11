@@ -350,3 +350,136 @@ async def test_list_users_returns_deactivated(
     assert response.status_code == 200
     petrov = next(u for u in response.json() if u["id"] == roster["petrov"])
     assert petrov["is_active"] is False
+
+
+# --- Правка анкетных данных (PATCH /users/{id}) ---
+
+
+async def test_update_user_changes_name_email_and_birth_date(
+    client: AsyncClient, admin_headers: dict[str, str], roster: dict
+) -> None:
+    response = await client.patch(
+        f"/users/{roster['ivanova']}",
+        json={
+            "full_name": "Иванова Полина Сергеевна",
+            "email": "ivanova.polina@vektor.ru",
+            "birth_date": "2011-04-17",
+        },
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["full_name"] == "Иванова Полина Сергеевна"
+    assert body["email"] == "ivanova.polina@vektor.ru"
+    assert body["birth_date"] == "2011-04-17"
+
+    # Новый email — рабочий ключ входа, старый больше не подходит.
+    assert (
+        await client.post(
+            "/auth/login",
+            json={"email": "ivanova.polina@vektor.ru", "password": "password123"},
+        )
+    ).status_code == 200
+    assert (
+        await client.post(
+            "/auth/login", json={"email": "ivanova@vektor.ru", "password": "password123"}
+        )
+    ).status_code == 401
+
+
+async def test_update_user_is_partial(
+    client: AsyncClient, admin_headers: dict[str, str], roster: dict
+) -> None:
+    """Отсутствие ключа = «не трогать»: форма, где поправили одно поле, не
+    должна стирать остальные."""
+    await client.patch(
+        f"/users/{roster['petrov']}", json={"birth_date": "2010-01-02"}, headers=admin_headers
+    )
+
+    response = await client.patch(
+        f"/users/{roster['petrov']}",
+        json={"full_name": "Петров Олег Иванович"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["full_name"] == "Петров Олег Иванович"
+    assert body["email"] == "petrov@vektor.ru"
+    assert body["birth_date"] == "2010-01-02"
+
+
+async def test_update_user_clears_birth_date_with_explicit_null(
+    client: AsyncClient, admin_headers: dict[str, str], roster: dict
+) -> None:
+    await client.patch(
+        f"/users/{roster['petrov']}", json={"birth_date": "2010-01-02"}, headers=admin_headers
+    )
+
+    response = await client.patch(
+        f"/users/{roster['petrov']}", json={"birth_date": None}, headers=admin_headers
+    )
+
+    assert response.status_code == 200
+    assert response.json()["birth_date"] is None
+
+
+async def test_update_user_rejects_null_email(
+    client: AsyncClient, admin_headers: dict[str, str], roster: dict
+) -> None:
+    """Стереть email нельзя — без него не войти. Явный null это ошибка
+    клиента, а не «очистить»."""
+    response = await client.patch(
+        f"/users/{roster['petrov']}", json={"email": None}, headers=admin_headers
+    )
+
+    assert response.status_code == 422
+
+
+async def test_update_user_rejects_taken_email(
+    client: AsyncClient, admin_headers: dict[str, str], roster: dict
+) -> None:
+    response = await client.patch(
+        f"/users/{roster['petrov']}", json={"email": "ivanova@vektor.ru"}, headers=admin_headers
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "emails_already_taken"
+
+
+async def test_update_user_keeps_own_email(
+    client: AsyncClient, admin_headers: dict[str, str], roster: dict
+) -> None:
+    """Собственный email в теле — не «занят»: форма присылает все поля разом,
+    включая неизменённые."""
+    response = await client.patch(
+        f"/users/{roster['petrov']}",
+        json={"email": "petrov@vektor.ru", "full_name": "Петров Олег"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200
+
+
+async def test_update_nonexistent_user_404(
+    client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    response = await client.patch(
+        "/users/999999", json={"full_name": "Никто"}, headers=admin_headers
+    )
+
+    assert response.status_code == 404
+
+
+async def test_update_user_requires_admin(client: AsyncClient, roster: dict) -> None:
+    login = await client.post(
+        "/auth/login", json={"email": "teach@vektor.ru", "password": "password123"}
+    )
+    teacher_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    response = await client.patch(
+        f"/users/{roster['ivanova']}", json={"full_name": "Кто угодно"}, headers=teacher_headers
+    )
+
+    assert response.status_code == 403

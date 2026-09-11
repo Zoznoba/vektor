@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, Enum, ForeignKey, Integer, String, Table, false, func
+from sqlalchemy import Column, Date, Enum, ForeignKey, Integer, String, Table, false, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from vektor.core.database import Base
@@ -52,6 +52,13 @@ class User(Base):
     # существующие строки не проходят миграцию; заодно совпадает с DDL дампа,
     # иначе autogenerate вечно видел бы расхождение. См. b9d41f7c2a08.
     is_placeholder: Mapped[bool] = mapped_column(default=False, server_default=false())
+
+    # Дата рождения. Nullable и БЕЗ backfill: в выгрузке МО её нет вовсе, а
+    # в списках состава она есть только у учеников — у взрослых её неоткуда
+    # взять. Поле общее на все роли, потому что ограничение «только ученику»
+    # было бы правилом про данные, а не про схему: у родителя она тоже
+    # осмысленна, просто школа её не собирает.
+    birth_date: Mapped[date | None] = mapped_column(Date())
 
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
