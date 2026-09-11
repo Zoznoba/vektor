@@ -29,6 +29,31 @@
   fill: var(--ink-soft);
 }
 
+/* Выделенные оси: точка на вершине + подпись в тот же цвет. Цвет не
+   единственный признак — форма метки разная (залито против кольца), потому
+   что лайм и янтарь при дейтеранопии различимы на пределе. */
+.radar__mark--strong {
+  fill: var(--lime-ink);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.radar__mark--weak {
+  fill: var(--surface);
+  stroke: var(--amber-mark);
+  stroke-width: 2.5;
+}
+
+.radar__label--weak {
+  fill: var(--amber-mark);
+  font-weight: 600;
+}
+
+.radar__label--strong {
+  fill: var(--lime-ink);
+  font-weight: 600;
+}
+
 .radar__label--active {
   fill: var(--ink);
   font-weight: 600;

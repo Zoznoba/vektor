@@ -1,0 +1,325 @@
+/* Заголовок раздела внутри блока. Свой, а не .group-analytics__zones-title
+   из профиля группы: от того стиля здесь осталась одна строка, и тянуть ради
+   неё целый чужой файл значило бы связать два компонента через CSS. */
+.school-analytics__title {
+  margin-top: 18px;
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.school-analytics__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+/* Метрики сводки — две строки, а не плитки: на этом экране они контекст к
+   графикам ниже, а не содержание. Балл и прирост стоят РЯДОМ, потому что по
+   отдельности не читаются: «+0.37» без балла — не число, а изменение
+   неизвестно чего. */
+.school-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 14px;
+}
+
+.school-stats__score {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.school-stats__value {
+  font-family: var(--font-d);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--blue-ink);
+}
+
+/* Прирост — пилюля у самого балла: так видно, что это его изменение, а не
+   вторая самостоятельная цифра. */
+.school-stats__delta {
+  padding: 2px 9px;
+  border-radius: var(--r-pill);
+  background: var(--fog);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.school-stats__delta--up {
+  background: var(--lime-tint);
+  color: var(--lime-ink);
+}
+
+.school-stats__delta--down {
+  background: var(--amber-tint);
+  color: var(--amber-ink);
+}
+
+.school-stats__caption {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.school-stats__coverage {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+/* Переключатель периода — чипы-пилюли, как выбор класса у учителя и ребёнка
+   у родителя. Свои классы, а не .filter-chip со страниц админки: тянуть
+   стили конкретного экрана в общий компонент значило бы связать их через
+   CSS (то же решение, что у плиток профиля группы). */
+.school-periods {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.school-period {
+  font-family: var(--font-b);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 7px 14px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.school-period--active {
+  border-color: var(--blue);
+  background: var(--blue-tint);
+  color: var(--blue-ink);
+}
+
+/* Заголовок раздела и переключатель вида — в одну строку. */
+.school-analytics__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Две колонки: классы и профиль школы на одной линии. Радару нужно больше
+   места — он квадратный и с подписями по краям, поэтому колонка шире. */
+.school-analytics__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 10px 28px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .school-analytics__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Легенда выделенных осей — одна строка, а не блок со списком критериев:
+   названия и так подписаны на самих осях. */
+.school-radar__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+}
+
+.school-radar__legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.school-radar__key {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* Ключи легенды повторяют метки на фигуре: залито против кольца. */
+.school-radar__key--strong {
+  background: var(--lime-ink);
+}
+
+.school-radar__key--weak {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 2.5px var(--amber-mark);
+}
+
+.school-classes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.school-classes__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 4px;
+  margin: 0 -4px;
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.school-classes__row:hover {
+  background: var(--soft);
+}
+
+.school-classes__label {
+  width: 34px;
+  color: var(--ink-soft);
+}
+
+.school-classes__track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 10px;
+  border-radius: var(--r-pill);
+  background: var(--fog);
+}
+
+.school-classes__bar {
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--blue);
+}
+
+.school-classes__bar--below {
+  background: var(--ink-faint);
+}
+
+/* Лучший класс — тот же синий, но насыщеннее: выделение не вводит новый
+   цвет, а усиливает существующий. */
+.school-classes__bar--best {
+  background: var(--blue-ink);
+}
+
+/* Засечка среднего по школе. Перекрывает полосу, поэтому цвет — поверхность:
+   на закрашенной части она читается как разрыв, на пустой — как метка. */
+.school-classes__mark {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--ink);
+  opacity: 0.55;
+}
+
+.school-classes__delta {
+  width: 44px;
+  text-align: right;
+  color: var(--lime-ink);
+  font-size: 11.5px;
+}
+
+.school-classes__delta--below {
+  color: var(--ink-soft);
+}
+
+.school-classes__value {
+  width: 34px;
+  text-align: right;
+  font-family: var(--font-d);
+  font-weight: 600;
+}
+
+/* Таблица шире узкого экрана — прокручивается сама, страница не едет вбок. */
+.school-table__scroll {
+  overflow-x: auto;
+}
+
+.school-table td:not(:first-child),
+.school-table th:not(:first-child) {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Заголовок-кнопка: вся ячейка кликабельна, но выглядит как заголовок —
+   рамка и фон появились бы шестью кнопками в ряд поверх таблицы. */
+.school-table__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.school-table__sort:hover {
+  color: var(--ink);
+}
+
+.school-table__sort--active {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Стрелка держит своё место всегда: без этого заголовки дёргались бы по
+   ширине при каждом переключении сортировки. */
+.school-table__arrow {
+  display: inline-block;
+  min-width: 8px;
+  font-size: 11px;
+  color: var(--blue-ink);
+}
+
+/* Числовые колонки выровнены вправо — кнопка внутри th должна следовать за
+   выравниванием ячейки, иначе заголовок отъезжает от своих чисел. */
+.school-table th:not(:first-child) .school-table__sort {
+  flex-direction: row-reverse;
+}
+
+/* Сегментированный контрол — один на оба переключателя блока (вид профиля и
+   сортировка классов): выбор одного из двух равноправных вариантов, а не
+   включение опции. Пилюли-чипы здесь не годятся — ими выбирают ДАННЫЕ
+   (период, класс), а тут выбирают представление. */
+.school-switch {
+  display: inline-flex;
+  align-self: flex-start;
+  margin-bottom: 4px;
+  padding: 2px;
+  border-radius: var(--r-sm);
+  background: var(--fog);
+}
+
+.school-switch__option {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: calc(var(--r-sm) - 2px);
+  background: transparent;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.school-switch__option--active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(46, 42, 43, 0.12);
+}

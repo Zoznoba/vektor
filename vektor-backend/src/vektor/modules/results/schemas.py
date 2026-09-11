@@ -431,3 +431,67 @@ class ClassRosterOut(BaseModel):
     average_delta: float | None
 
     students: list[ClassRosterRowOut]
+
+
+# ---------- Школьная статистика (сводка админа) ----------
+
+
+class SchoolPeriodOut(BaseModel):
+    """Период с результатами — под переключатель периодов. `average` — по
+    всем критериям своего периода: сравнивать периоды между собой по этому
+    числу нельзя (состав критериев меняется), для сравнения есть
+    `core_average_delta`, посчитанная по общему ядру пары."""
+
+    period_year: int
+    period_month: int
+    students_with_results: int
+    average: float
+
+
+class SchoolCompetencyOut(BaseModel):
+    competency_id: int
+    code: str
+    name: str
+    # None — критерий мерили только в ПРОШЛОМ периоде (возрастной блок
+    # закрылся или критерий заархивировали). Ось на радаре остаётся, чтобы
+    # вторая серия не потеряла точку молча.
+    avg: float | None
+    # Слои — под метрику «где школа видит себя иначе, чем окружающие».
+    self_avg: float | None
+    others_avg: float | None
+    # Прошлый период и прирост. delta есть только у критериев ОБЩЕГО ЯДРА
+    # пары периодов: у появившегося в этом году прироста не существует.
+    previous_avg: float | None
+    delta: float | None
+
+
+class SchoolClassRowOut(BaseModel):
+    class_id: int
+    class_label: str
+    students_with_results: int
+    average: float
+
+
+class SchoolPeriodDetailOut(BaseModel):
+    period_year: int
+    period_month: int
+    previous_period_year: int | None
+    previous_period_month: int | None
+
+    students_with_results: int
+    # Сколько КЕЙСОВ участвовало в периоде. Отдельной строкой в разрезе их
+    # нет: ученики кружка из разных классов, и «средний балл кейса» рядом с
+    # классами сравнивался бы не с тем.
+    cases_with_results: int
+    average: float
+    # Прирост итога к предыдущему периоду — по общему ядру ПАРЫ периодов.
+    core_average_delta: float | None
+
+    competencies: list[SchoolCompetencyOut]
+    classes: list[SchoolClassRowOut]
+
+
+class SchoolResultsOut(BaseModel):
+    # Пустой ряд и current=None — штатное состояние новой школы, а не ошибка.
+    periods: list[SchoolPeriodOut]
+    current: SchoolPeriodDetailOut | None

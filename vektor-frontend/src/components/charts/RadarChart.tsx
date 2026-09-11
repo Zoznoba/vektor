@@ -20,10 +20,20 @@ export interface RadarSeries {
   dashed?: boolean;
 }
 
+/** Выделение отдельной оси точкой на вершине первой серии: 'strong' — то,
+ *  что хорошо (залитая точка), 'weak' — то, что требует внимания (кольцо).
+ *  Смысл задаёт вызывающий: у школы это «выросло за год» против «рост слабее
+ *  всего». Нужно там, где список выделенных критериев не живёт отдельным
+ *  блоком, а показан прямо на фигуре. */
+export type RadarAxisTone = 'strong' | 'weak';
+
 interface RadarChartProps {
   axes: string[];
   /** Полные названия критериев — в подсказку, где место есть. По умолчанию — `axes`. */
   axisTitles?: string[];
+  /** По одному значению на ось; null/undefined — обычная ось. Необязателен:
+   *  экраны, где выделять нечего, передают его пустым и выглядят как раньше. */
+  axisTones?: (RadarAxisTone | null)[];
   series: RadarSeries[];
   size?: number;
 }
@@ -178,7 +188,7 @@ interface HoveredAxis {
  * единственное интерактивное место — подсказка по оси. Осей столько же, сколько критериев, — форма подстраивается
  * сама (11 критериев → 11-угольник, 5 → пятиугольник).
  */
-export function RadarChart({ axes, axisTitles, series, size = 320 }: RadarChartProps) {
+export function RadarChart({ axes, axisTitles, axisTones, series, size = 320 }: RadarChartProps) {
   const [hovered, setHovered] = useState<HoveredAxis | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const { appearances, hidden } = useVisibility(root);
@@ -271,6 +281,29 @@ export function RadarChart({ axes, axisTitles, series, size = 320 }: RadarChartP
           />
         ))}
 
+        {/* Выделенные оси: точка на вершине ПЕРВОЙ серии. Берём анимированное
+            значение (grown), а не сырое, — иначе метка стояла бы на месте,
+            пока контур ещё растёт из центра.
+
+            Залитая точка против кольца — вторая, не цветовая, метка:
+            лайм и янтарь при дейтеранопии различимы на пределе (ΔE 8), и
+            одной разницы цвета для смысла «выросло / нуждается в росте»
+            мало. */}
+        {axisTones?.map((tone, index) => {
+          const value = grown[0]?.[index] ?? series[0]?.values[index];
+          if (!tone || value === null || value === undefined) return null;
+          const point = pointAt(index, value);
+          return (
+            <circle
+              key={axes[index]}
+              className={`radar__mark radar__mark--${tone}`}
+              cx={point.x}
+              cy={point.y}
+              r={5}
+            />
+          );
+        })}
+
         {/* Вершины наведённой оси — чтобы было видно, о каких точках речь. */}
         {hovered !== null &&
           series.map((item) => {
@@ -300,7 +333,9 @@ export function RadarChart({ axes, axisTitles, series, size = 320 }: RadarChartP
           return (
             <text
               key={axis}
-              className={`radar__label ${hovered?.index === index ? 'radar__label--active' : ''}`}
+              className={`radar__label ${
+                axisTones?.[index] ? `radar__label--${axisTones[index]}` : ''
+              } ${hovered?.index === index ? 'radar__label--active' : ''}`}
               x={x}
               y={y}
               textAnchor={anchor}

@@ -260,3 +260,60 @@ export interface GroupDynamics {
 
   competencies: CompetencyDynamics[];
 }
+
+/* --- Аналитика по школе: GET /results/school (только админ) --- */
+
+/** Период с результатами — под переключатель периодов. `average` считается
+ *  по всем критериям СВОЕГО периода, поэтому сравнивать периоды по нему
+ *  нельзя: состав критериев меняется. Для сравнения есть core_average_delta,
+ *  посчитанная по общему ядру пары. */
+export interface SchoolPeriod {
+  period_year: number;
+  period_month: number;
+  students_with_results: number;
+  average: number;
+}
+
+export interface SchoolCompetency {
+  competency_id: number;
+  code: string;
+  name: string;
+  /** null — критерий мерили только в ПРОШЛОМ периоде; ось на радаре при этом
+   *  остаётся, иначе вторая серия молча потеряла бы точку. */
+  avg: number | null;
+  self_avg: number | null;
+  others_avg: number | null;
+  previous_avg: number | null;
+  /** null у критериев вне общего ядра пары периодов — прироста не существует. */
+  delta: number | null;
+}
+
+export interface SchoolClassRow {
+  class_id: number;
+  class_label: string;
+  students_with_results: number;
+  average: number;
+}
+
+export interface SchoolPeriodDetail {
+  period_year: number;
+  period_month: number;
+  previous_period_year: number | null;
+  previous_period_month: number | null;
+  students_with_results: number;
+  /** Сколько кейсов участвовало в периоде. Отдельной строкой в разрезе их
+   *  нет: ученики кружка из разных классов, и «средний балл кейса» рядом с
+   *  классами сравнивался бы не с тем. */
+  cases_with_results: number;
+  average: number;
+  core_average_delta: number | null;
+  competencies: SchoolCompetency[];
+  classes: SchoolClassRow[];
+}
+
+export interface SchoolResults {
+  /** Пустой ряд и current === null — в школе нет ни одной завершённой
+   *  кампании. Это штатное состояние, а не ошибка. */
+  periods: SchoolPeriod[];
+  current: SchoolPeriodDetail | null;
+}

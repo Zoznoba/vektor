@@ -20,6 +20,7 @@ from vektor.modules.classes.errors import ClassNotFound
 from vektor.modules.results import repository as repo
 from vektor.modules.results.domain import (
     CoverageKey,
+    SubjectProfile,
     aggregate_by_competency_and_rater,
     average_profiles,
     can_view_group_results,
@@ -731,6 +732,8 @@ async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
 
     Группируем по ОСНОВАНИЮ выдачи (coverage_key): анкета попадает ровно в
     одну строку, поэтому сумма строк равна общему числу анкет кампании.
+    Ученик, попавший в кампанию и классом, и кейсом, виден в ОБЕИХ строках —
+    в каждой со своими анкетами (см. coverage_key).
     Анкеты без снапшотов вовсе (субъект вне класса, пилотная кампания на
     учителях) попадают в строку kind="none", а не выбрасываются: иначе итог
     не сходился бы.
@@ -753,10 +756,10 @@ async def get_campaign_coverage(db: AsyncSession, campaign_id: int) -> dict:
     groups: dict[CoverageKey, dict] = {}
     total_all = 0
     completed_all = 0
-    for class_id, case_id, total, done, grade, section, case_name in rows:
+    for class_id, case_id, issued_for, total, done, grade, section, case_name in rows:
         total_all += total
         completed_all += done
-        key = coverage_key(class_id, case_id)
+        key = coverage_key(class_id, case_id, issued_for)
         group = groups.get(key)
         if group is None:
             kind, _ = key
@@ -992,3 +995,195 @@ async def get_class_roster(
         "average_delta": round(sum(deltas) / len(deltas), 3) if deltas else None,
         "students": rows_out,
     }
+
+
+# ---------- Школьная статистика (сводка админа) ----------
+
+
+def _period_label_fields(period: tuple[int, int]) -> dict:
+    year, month = period
+    return {"period_year": year, "period_month": month}
+
+
+async def get_school_results(
+    db: AsyncSession,
+    period_year: int | None = None,
+    period_month: int | None = None,
+) -> dict:
+    """Аналитика по ШКОЛЕ целиком: профиль за период, ряд по годам и разрез
+    по классам — под сводку админа.
+
+    Единица наблюдения — ПЕРИОД, а не кампания: в боевых данных кампанию
+    заводят на каждый класс отдельно (12 кампаний на июнь 2026), поэтому
+    «школа за кампанию» выродилась бы в один класс. То же решение, что у
+    сравнения группы со школой в `_group_profile`.
+
+    Считаем ПОВЕРХ индивидуальных профилей (как все агрегаты с Этапа 5e):
+    правило анонимности применяется один раз, в `profile_from_answers`, и
+    ниже по цепочке протечь уже не может. Ученик весит одинаково независимо
+    от того, сколько человек его оценивало.
+
+    Периодов без результатов в ответе нет: кампания может быть закрыта пустой
+    (ни одного ответа), и «средний балл 0» по ней был бы выдумкой, а не
+    отсутствием данных.
+
+    Пустая школа (ни одной завершённой кампании) — НЕ ошибка: отдаём пустой
+    ряд и current=None. Для новой школы это штатное состояние, а 404 на
+    сводке выглядел бы поломкой.
+    """
+    campaigns_by_period = await repo.closed_campaigns_by_period(db)
+    all_campaign_ids = {cid for ids in campaigns_by_period.values() for cid in ids}
+    all_profiles = await repo.profiles_by_campaign_and_subject(db, all_campaign_ids)
+
+    # Профили периода: ученик может встретиться в нескольких кампаниях
+    # периода (класс и кейс — разные кампании), но в среднее обязан войти
+    # ОДИН раз, иначе участник кружка весил бы вдвое больше одноклассника.
+    profiles_by_period: dict[tuple[int, int], dict[int, SubjectProfile]] = {}
+    for (campaign_id, subject_id), profile in all_profiles.items():
+        if not profile.overall:
+            continue
+        for period, campaign_ids in campaigns_by_period.items():
+            if campaign_id in campaign_ids:
+                profiles_by_period.setdefault(period, {})[subject_id] = profile
+                break
+
+    scores_by_period = {
+        period: average_profiles([p.overall for p in subjects.values()])
+        for period, subjects in profiles_by_period.items()
+    }
+    ordered_periods = sorted(period for period, scores in scores_by_period.items() if scores)
+
+    if not ordered_periods:
+        return {"periods": [], "current": None}
+
+    competencies = await repo.list_competencies(db)
+
+    periods_out = [
+        {
+            **_period_label_fields(period),
+            "students_with_results": len(profiles_by_period[period]),
+            "average": sum(scores_by_period[period].values()) / len(scores_by_period[period]),
+        }
+        for period in ordered_periods
+    ]
+
+    requested = (period_year, period_month) if period_year and period_month else None
+    current_period = requested if requested in scores_by_period else ordered_periods[-1]
+    current_index = ordered_periods.index(current_period)
+    previous_period = ordered_periods[current_index - 1] if current_index > 0 else None
+
+    current_scores = scores_by_period[current_period]
+    previous_scores = scores_by_period[previous_period] if previous_period else {}
+    # Дельта — по ядру ПАРЫ периодов, а не всего ряда: сравниваются именно
+    # эти два года, и сужать их общий набор третьим годом незачем (то же
+    # правило, что в динамике ученика, 5d).
+    pair_core = shared_competencies(current_scores, previous_scores)
+    deltas = compute_deltas(current_scores, previous_scores, pair_core)
+
+    current_profiles = list(profiles_by_period[current_period].values())
+    self_scores = average_profiles([p.self_scores for p in current_profiles])
+    others_scores = average_profiles([p.others_scores for p in current_profiles])
+
+    classes_out, cases_count = await _school_groups_breakdown(
+        db,
+        campaigns_by_period[current_period],
+        profiles_by_period[current_period],
+    )
+
+    current_core_average = core_average(current_scores, pair_core)
+    previous_core_average = core_average(previous_scores, pair_core) if previous_period else None
+
+    return {
+        "periods": periods_out,
+        "current": {
+            **_period_label_fields(current_period),
+            "previous_period_year": previous_period[0] if previous_period else None,
+            "previous_period_month": previous_period[1] if previous_period else None,
+            "students_with_results": len(current_profiles),
+            # Кейсов в периоде: строки кружков в разрезе нет (участники из
+            # разных классов, «средний балл кейса» в одном ряду с классами
+            # сравнивался бы не с тем), но знать, что диагностика шла ещё и
+            # по кружкам, админу нужно.
+            "cases_with_results": cases_count,
+            "average": sum(current_scores.values()) / len(current_scores),
+            "core_average_delta": (
+                current_core_average - previous_core_average
+                if current_core_average is not None and previous_core_average is not None
+                else None
+            ),
+            "competencies": [
+                {
+                    "competency_id": comp.id,
+                    "code": comp.code,
+                    "name": comp.name,
+                    "avg": current_scores.get(comp.id),
+                    "self_avg": self_scores.get(comp.id),
+                    "others_avg": others_scores.get(comp.id),
+                    "previous_avg": previous_scores.get(comp.id),
+                    "delta": deltas.get(comp.id),
+                }
+                for comp in competencies
+                if comp.id in current_scores or comp.id in previous_scores
+            ],
+            "classes": classes_out,
+        },
+    }
+
+
+async def _school_groups_breakdown(
+    db: AsyncSession,
+    campaign_ids: set[int],
+    profiles_by_subject: dict[int, SubjectProfile],
+) -> tuple[list[dict], int]:
+    """Средний балл по классам за период («какие классы сильнее») и сколько
+    КЕЙСОВ в этом периоде дали результаты.
+
+    Состав класса берём по СНАПШОТУ анкет, а не по нынешней привязке
+    ученика: школа переиспользует строки классов из года в год, и по текущему
+    составу прошлогодние баллы приписались бы новому набору.
+
+    Ученик без класса на анкете (кампания на кейсе, ученик вне класса) в
+    разрез не попадает: строка «без класса» на этом экране ничего не
+    объясняет, а в итог школы он всё равно уже вошёл.
+    """
+    rows = await repo.group_snapshot_rows(db, campaign_ids)
+
+    grouped: dict[int, dict] = {}
+    case_ids: set[int] = set()
+    for _campaign_id, subject_id, class_id, grade, section, case_id in rows:
+        profile = profiles_by_subject.get(subject_id)
+        if profile is None:
+            continue
+        if case_id is not None:
+            case_ids.add(case_id)
+        if class_id is None:
+            continue
+        group = grouped.setdefault(
+            class_id,
+            {
+                "class_id": class_id,
+                "class_label": class_label(grade, section),
+                "grade": grade or 0,
+                "section": section or "",
+                "profiles": {},
+            },
+        )
+        # Ключ — ученик: одна и та же пара «класс + ученик» приходит несколькими
+        # строками (кампании класса и кейса в одном периоде), а весить он
+        # должен один раз.
+        group["profiles"][subject_id] = profile
+
+    out = []
+    for group in sorted(grouped.values(), key=lambda g: (g["grade"], g["section"])):
+        scores = average_profiles([p.overall for p in group["profiles"].values()])
+        if not scores:
+            continue
+        out.append(
+            {
+                "class_id": group["class_id"],
+                "class_label": group["class_label"],
+                "students_with_results": len(group["profiles"]),
+                "average": sum(scores.values()) / len(scores),
+            }
+        )
+    return out, len(case_ids)

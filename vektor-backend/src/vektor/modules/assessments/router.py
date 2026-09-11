@@ -66,7 +66,9 @@ async def list_campaigns(
     "родители — всегда; учителя — все учителя класса (кейса) либо только "
     "выбранные, если он указан в `teacher_ids_by_class` "
     "(`teacher_ids_by_case`): в школе ученика оценивают 2–4 учителя, а не "
-    "весь педсостав; одноклассники — при `include_peers`. Нужен хотя бы один "
+    "весь педсостав; одноклассники — при `include_peers`. Источник, указанный "
+    "в `split_class_ids` (`split_case_ids`), делит учеников между выбранными "
+    "учителями поровну — каждого ученика оценивает ровно один из них. Нужен хотя бы один "
     "класс или кейс. Переводит кампанию в `active`. Только админ.",
 )
 async def generate_assessments(
@@ -83,6 +85,8 @@ async def generate_assessments(
         data.teacher_ids_by_class,
         data.case_ids,
         data.teacher_ids_by_case,
+        data.split_class_ids,
+        data.split_case_ids,
     )
 
     campaign, created = assessments

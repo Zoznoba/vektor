@@ -2023,6 +2023,64 @@ async def test_coverage_student_appears_in_both_class_and_case_rows(
     assert sum(g["total"] for g in body["groups"]) == body["total"]
 
 
+async def test_coverage_splits_one_student_between_class_and_case_rows(
+    client: AsyncClient, admin_headers, class_scenario
+) -> None:
+    """Ученик, попавший в кампанию и классом, и кейсом ОДНОЙ генерацией, виден
+    в обеих строках: самооценка, родитель и учитель класса — в строке класса,
+    руководитель кружка — в строке кейса.
+
+    Регрессия на жалобу заказчика: пары обоих оснований сливаются в одну
+    анкету с двумя снапшотами, и по правилу «есть кейс — строка кейса» вся
+    диагностика ученика уезжала в кружок, а в своём классе он не числился
+    вовсе.
+    """
+    ids = class_scenario["ids"]
+    ct = await _register(client, "case_only_teacher@vektor.ru", "teacher")
+    kase = (
+        await client.post("/cases", json={"name": "Кружок основания"}, headers=admin_headers)
+    ).json()
+    await client.post(
+        f"/cases/{kase['id']}/students", json={"user_ids": [ids["s1"]]}, headers=admin_headers
+    )
+    await client.post(
+        f"/cases/{kase['id']}/teachers", json={"user_ids": [ct]}, headers=admin_headers
+    )
+
+    campaign_id = (
+        await client.post(
+            "/campaigns",
+            json={"title": "Класс и кейс разом", "period_year": 2026, "period_month": 9},
+            headers=admin_headers,
+        )
+    ).json()["id"]
+    # Одной генерацией — так это делает панель «Кто кого оценивает».
+    await client.post(
+        f"/campaigns/{campaign_id}/generate",
+        json={"class_ids": [class_scenario["class_id"]], "case_ids": [kase["id"]]},
+        headers=admin_headers,
+    )
+
+    body = (
+        await client.get(f"/results/campaigns/{campaign_id}/coverage", headers=admin_headers)
+    ).json()
+    class_row = next(g for g in body["groups"] if g["kind"] == "class")
+    case_row = next(g for g in body["groups"] if g["kind"] == "case")
+
+    class_students = {st["subject"]["id"]: st for st in class_row["students"]}
+    case_students = {st["subject"]["id"]: st for st in case_row["students"]}
+    assert ids["s1"] in class_students and ids["s1"] in case_students
+    # В классе у него самооценка, родитель и учитель класса; в кейсе — только
+    # руководитель кружка, и самооценки там нет (её выдал класс).
+    assert class_students[ids["s1"]]["self_status"] is not None
+    assert class_students[ids["s1"]]["teachers"]["total"] == 1
+    assert class_students[ids["s1"]]["parents"]["total"] == 1
+    assert case_students[ids["s1"]]["self_status"] is None
+    assert {r["id"] for r in case_students[ids["s1"]]["teachers"]["raters"]} == {ct}
+    # Анкета по-прежнему лежит ровно в одной строке — сумма сходится с итогом.
+    assert sum(g["total"] for g in body["groups"]) == body["total"]
+
+
 # --- Профиль кейса (Этап 8): те же правила, что у класса, но состав из разных классов ---
 
 
@@ -2239,3 +2297,207 @@ async def test_case_dynamics_available_to_case_teacher(
     body = response.json()
     assert body["case_name"] == "Робототехника"
     assert body["previous_campaign_id"] is None
+
+
+# --- Школьная статистика (сводка админа) ---
+
+
+@pytest.fixture
+async def school_scenario(client: AsyncClient, admin_headers: dict[str, str], db_session) -> dict:
+    """Школа за ДВА периода: июнь 2025 и июнь 2026, один класс 5-1.
+
+    Критерий A мерили в обоих годах (2.0 → 4.0), B появился только в 2026-м
+    (5.0), C наоборот мерили только в 2025-м (3.0) — на них проверяется, что
+    в ответ попадают критерии ОБОИХ периодов: радар сравнивает год с годом, и
+    ось, потерянная молча, врала бы в обе стороны.
+    """
+    s1 = await _register(client, "sch1@vektor.ru", "student")
+    s2 = await _register(client, "sch2@vektor.ru", "student")
+
+    cls = (
+        await client.post("/classes", json={"grade": 5, "section": "1"}, headers=admin_headers)
+    ).json()
+    await client.post(
+        f"/classes/{cls['id']}/students", json={"student_ids": [s1, s2]}, headers=admin_headers
+    )
+
+    comp_a = await _seed_competency(db_session, "sch_a", order=1)
+    comp_b = await _seed_competency(db_session, "sch_b", order=2)
+    comp_c = await _seed_competency(db_session, "sch_c", order=3)
+    q_a = await _question_id_for(db_session, comp_a)
+    q_b = await _question_id_for(db_session, comp_b)
+    q_c = await _question_id_for(db_session, comp_c)
+
+    campaigns: dict[int, int] = {}
+    for year, value_a in ((2025, 2), (2026, 4)):
+        campaign_id = (
+            await client.post(
+                "/campaigns",
+                json={"title": f"360 · {year}", "period_year": year, "period_month": 6},
+                headers=admin_headers,
+            )
+        ).json()["id"]
+        campaigns[year] = campaign_id
+        await client.post(
+            f"/campaigns/{campaign_id}/generate",
+            json={"class_ids": [cls["id"]]},
+            headers=admin_headers,
+        )
+        for email, sid in (("sch1@vektor.ru", s1), ("sch2@vektor.ru", s2)):
+            aid = await db_session.scalar(
+                select(Assessment.id).where(
+                    Assessment.campaign_id == campaign_id,
+                    Assessment.respondent_id == sid,
+                    Assessment.subject_id == sid,
+                )
+            )
+            await _post_answer(client, db_session, email, aid, q_a, value_a)
+            if year == 2026:
+                await _post_answer(client, db_session, email, aid, q_b, 5)
+            else:
+                await _post_answer(client, db_session, email, aid, q_c, 3)
+
+    return {
+        "class_id": cls["id"],
+        "comp_a": comp_a,
+        "comp_b": comp_b,
+        "comp_c": comp_c,
+        "campaigns": campaigns,
+        "ids": {"s1": s1, "s2": s2},
+    }
+
+
+async def test_school_results_lists_periods_with_results(
+    client: AsyncClient, admin_headers, school_scenario
+) -> None:
+    """Ряд периодов — под переключатель: год, охват и итог самого периода
+    (по всем ЕГО критериям, поэтому 2026-й это (4 + 5) / 2)."""
+    assert school_scenario["comp_b"]
+    body = (await client.get("/results/school", headers=admin_headers)).json()
+
+    assert [(p["period_year"], p["period_month"]) for p in body["periods"]] == [
+        (2025, 6),
+        (2026, 6),
+    ]
+    assert body["periods"][0]["average"] == pytest.approx(2.5)
+    assert body["periods"][1]["average"] == pytest.approx(4.5)
+    assert body["periods"][1]["students_with_results"] == 2
+
+
+async def test_school_results_current_period_and_deltas(
+    client: AsyncClient, admin_headers, school_scenario
+) -> None:
+    """По умолчанию открыт последний период; дельта — по общему ядру ПАРЫ
+    периодов, у появившегося критерия её нет вовсе."""
+    body = (await client.get("/results/school", headers=admin_headers)).json()
+    current = body["current"]
+
+    assert (current["period_year"], current["period_month"]) == (2026, 6)
+    assert (current["previous_period_year"], current["previous_period_month"]) == (2025, 6)
+    assert current["core_average_delta"] == pytest.approx(2.0)
+
+    by_id = {c["competency_id"]: c for c in current["competencies"]}
+    comp_a = by_id[school_scenario["comp_a"]]
+    assert comp_a["avg"] == pytest.approx(4.0)
+    assert comp_a["previous_avg"] == pytest.approx(2.0)
+    assert comp_a["delta"] == pytest.approx(2.0)
+    # Критерий появился в этом периоде — прироста не существует, а не ноль.
+    comp_b = by_id[school_scenario["comp_b"]]
+    assert comp_b["previous_avg"] is None
+    assert comp_b["delta"] is None
+    # Слои: отвечали только сами ученики, окружающих нет.
+    assert comp_a["self_avg"] == pytest.approx(4.0)
+    assert comp_a["others_avg"] is None
+
+
+async def test_school_results_keeps_competency_of_previous_period_only(
+    client: AsyncClient, admin_headers, school_scenario
+) -> None:
+    """Критерий, который мерили ТОЛЬКО в прошлом периоде, остаётся в списке с
+    avg=None: иначе на радаре «этот год vs прошлый» вторая серия молча
+    теряла бы ось, и школа выглядела бы ровнее, чем есть."""
+    body = (await client.get("/results/school", headers=admin_headers)).json()
+    by_id = {c["competency_id"]: c for c in body["current"]["competencies"]}
+
+    comp_c = by_id[school_scenario["comp_c"]]
+    assert comp_c["avg"] is None
+    assert comp_c["previous_avg"] == pytest.approx(3.0)
+    assert comp_c["delta"] is None
+
+
+async def test_school_results_explicit_period(
+    client: AsyncClient, admin_headers, school_scenario
+) -> None:
+    """Явный период открывает архив, и предыдущего у самого раннего нет."""
+    body = (
+        await client.get("/results/school?period_year=2025&period_month=6", headers=admin_headers)
+    ).json()
+
+    assert (body["current"]["period_year"], body["current"]["period_month"]) == (2025, 6)
+    assert body["current"]["previous_period_year"] is None
+    assert body["current"]["core_average_delta"] is None
+
+
+async def test_school_results_classes_breakdown(
+    client: AsyncClient, admin_headers, school_scenario
+) -> None:
+    """Разрез по классам — по снапшоту анкет, каждый ученик весит одинаково."""
+    body = (await client.get("/results/school", headers=admin_headers)).json()
+
+    assert body["current"]["classes"] == [
+        {
+            "class_id": school_scenario["class_id"],
+            "class_label": "5-1",
+            "students_with_results": 2,
+            "average": pytest.approx(4.5),
+        }
+    ]
+
+
+async def test_school_results_counts_cases_of_period(
+    client: AsyncClient, admin_headers, school_scenario, db_session
+) -> None:
+    """Кейсы периода считаются отдельным числом: строки в разрезе у них нет
+    (ученики кружка из разных классов, и средний балл кейса рядом с классами
+    сравнивался бы не с тем), но знать, что диагностика шла и по кружкам,
+    админу нужно."""
+    before = (await client.get("/results/school", headers=admin_headers)).json()
+    assert before["current"]["cases_with_results"] == 0
+
+    # Кейс проставляем прямо на анкетах: снапшот — это то, по какому
+    # основанию анкета выдана, и генерация его уже отработала.
+    kase = (
+        await client.post("/cases", json={"name": "Кружок счёта"}, headers=admin_headers)
+    ).json()
+    await db_session.execute(
+        sa_update(Assessment)
+        .where(Assessment.campaign_id == school_scenario["campaigns"][2026])
+        .values(subject_case_id=kase["id"])
+    )
+    await db_session.commit()
+
+    after = (await client.get("/results/school", headers=admin_headers)).json()
+    assert after["current"]["cases_with_results"] == 1
+
+
+async def test_school_results_empty_when_no_closed_campaigns(
+    client: AsyncClient, admin_headers
+) -> None:
+    """Школа без завершённых кампаний — пустой ряд, а не 404: для новой школы
+    это штатное состояние, а ошибка на сводке читалась бы как поломка."""
+    body = (await client.get("/results/school", headers=admin_headers)).json()
+
+    assert body["periods"] == []
+    assert body["current"] is None
+
+
+async def test_school_results_forbidden_for_teacher(
+    client: AsyncClient, admin_headers, school_scenario
+) -> None:
+    """Школа целиком — только админу: учителю доступен его класс и кейс."""
+    t = await _register(client, "school-teacher@vektor.ru", "teacher")
+    assert t
+    headers = await _login(client, "school-teacher@vektor.ru")
+
+    response = await client.get("/results/school", headers=headers)
+    assert response.status_code == 403
