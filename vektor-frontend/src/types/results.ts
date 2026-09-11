@@ -231,21 +231,23 @@ export interface GroupDynamics {
 
 /* --- Аналитика по школе: GET /results/school (только админ) --- */
 
-/** Точка ряда по годам. `average` — по всем критериям своего периода,
- *  `core_average` — по общему ядру ряда; на график идёт второе, иначе линия
- *  дёргалась бы от смены состава критериев, а не от роста школы. */
+/** Период с результатами — под переключатель периодов. `average` считается
+ *  по всем критериям СВОЕГО периода, поэтому сравнивать периоды по нему
+ *  нельзя: состав критериев меняется. Для сравнения есть core_average_delta,
+ *  посчитанная по общему ядру пары. */
 export interface SchoolPeriod {
   period_year: number;
   period_month: number;
   students_with_results: number;
   average: number;
-  core_average: number | null;
 }
 
 export interface SchoolCompetency {
   competency_id: number;
   code: string;
   name: string;
+  /** null — критерий мерили только в ПРОШЛОМ периоде; ось на радаре при этом
+   *  остаётся, иначе вторая серия молча потеряла бы точку. */
   avg: number | null;
   self_avg: number | null;
   others_avg: number | null;
@@ -278,6 +280,5 @@ export interface SchoolResults {
   /** Пустой ряд и current === null — в школе нет ни одной завершённой
    *  кампании. Это штатное состояние, а не ошибка. */
   periods: SchoolPeriod[];
-  core_competencies: { competency_id: number; code: string }[];
   current: SchoolPeriodDetail | null;
 }

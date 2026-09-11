@@ -920,7 +920,6 @@ async def dynamics_scenario(client: AsyncClient, admin_headers: dict[str, str], 
         "campaigns": campaigns,
         "comp_a": comp_a,
         "comp_b": comp_b,
-        "comp_c": comp_c,
         "ids": {"s1": s1, "t1": t1},
     }
 
@@ -2132,6 +2131,7 @@ async def school_scenario(client: AsyncClient, admin_headers: dict[str, str], db
         "class_id": cls["id"],
         "comp_a": comp_a,
         "comp_b": comp_b,
+        "comp_c": comp_c,
         "campaigns": campaigns,
         "ids": {"s1": s1, "s2": s2},
     }

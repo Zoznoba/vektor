@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
+import { Collapsible } from '../../components/ui/Collapsible';
 import { SchoolAnalytics } from '../../components/dashboard/SchoolAnalytics';
 import { useApi } from '../../hooks/useApi';
 import { useAuth } from '../../auth/AuthContext';
@@ -20,6 +21,8 @@ export function AdminDashboard() {
   const classes = useApi(fetchClasses);
   const cases = useApi(fetchCases);
   const campaigns = useApi(fetchCampaigns);
+
+  const [analyticsOpen, setAnalyticsOpen] = useState(true);
 
   const activeCampaigns = (campaigns.data ?? []).filter((c) => c.status === 'active');
 
@@ -69,10 +72,20 @@ export function AdminDashboard() {
 
       {/* Аналитика школы — ниже счётчиков состава и выше кампаний: сводка
           отвечает сначала «кто в школе», потом «как школа выглядит», и только
-          потом «что сейчас идёт». */}
-      <Panel title="Аналитика по школе">
+          потом «что сейчас идёт».
+
+          Сворачиваемый блок, как аналитика класса и кейса (7r): экран длинный,
+          и «что сейчас идёт» должно оставаться в досягаемости. Раскрыт по
+          умолчанию, в отличие от класса: там под ним рабочий состав, а здесь
+          аналитика и есть содержимое сводки. */}
+      <Collapsible
+        title="Аналитика по школе"
+        hint="Профиль школы, зоны роста и классы по среднему баллу"
+        open={analyticsOpen}
+        onToggle={() => setAnalyticsOpen((value) => !value)}
+      >
         <SchoolAnalytics />
-      </Panel>
+      </Collapsible>
 
       <Panel title="Активные кампании 360°">
         {campaigns.loading ? (

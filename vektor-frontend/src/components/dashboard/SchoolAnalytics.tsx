@@ -1,19 +1,29 @@
 import { useCallback, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 import { fetchSchoolResults } from '../../api/results';
 import { formatPeriod } from '../../data/period';
 import type { SchoolCompetency, SchoolResults } from '../../types/results';
-import { TrendChart } from '../charts/TrendChart';
-import { DynamicsChart } from './DynamicsChart';
-import { Collapsible } from '../ui/Collapsible';
-// Плитки и строки «критерий · балл» — те же, что у профиля группы: это одни и
-// те же элементы интерфейса, и второй набор классов под них разошёлся бы с
-// первым при первой же правке.
+import { RadarChart } from '../charts/RadarChart';
+import type { RadarAxisTone, RadarSeries } from '../charts/RadarChart';
+import { shortCompetencyName } from '../../data/competencyShortNames';
+// Плитки над чартом и заголовки разделов — те же, что у профиля группы: это
+// одни и те же элементы интерфейса, и второй набор классов под них разошёлся
+// бы с первым при первой же правке.
 import './GroupProfile.css';
 import './SchoolAnalytics.css';
 
-/** Сколько критериев показывать в «сильных сторонах» и «зонах роста». */
-const HIGHLIGHT_COUNT = 3;
+/** Сколько осей выделять с каждого края. Две, а не три: критериев всего 11,
+ *  и при трёх выделенной оказывается половина круга — выделение перестаёт
+ *  что-либо значить. */
+const HIGHLIGHT_COUNT = 2;
+
+/** Критерий, у которого есть балл за текущий период: только такие участвуют
+ *  в ранжировании. */
+type ScoredCompetency = SchoolCompetency & { avg: number };
+
+/** Чем показан профиль школы: фигурой или числами. */
+type ProfileView = 'chart' | 'table';
 
 /**
  * Аналитика по школе целиком — блок сводки админа.
@@ -22,8 +32,8 @@ const HIGHLIGHT_COUNT = 3;
  * на каждый класс, поэтому «школа за кампанию» вырождалась бы в один класс
  * (то же решение, что у сравнения группы со школой).
  *
- * Экран считает только отображение: ранжирование критериев — это сортировка
- * уже посчитанных средних, а не доменное правило. Всё, что требует правил
+ * Экран считает только отображение: выделение осей — это сортировка уже
+ * посчитанных приростов, а не доменное правило. Всё, что требует правил
  * (анонимность, вес ученика, общее ядро критериев), посчитано на бэкенде
  * один раз.
  */
@@ -60,15 +70,28 @@ function SchoolAnalyticsBody({
 }) {
   const current = data.current!;
   const scored = useMemo(
-    () => current.competencies.filter((c): c is SchoolCompetency & { avg: number } => c.avg !== null),
+    () => current.competencies.filter((c): c is ScoredCompetency => c.avg !== null),
     [current.competencies],
   );
-  // Ранжирование — обычная сортировка по уже посчитанному среднему. Порог
-  // значимости здесь не нужен: это не «отставание от школы», а просто «выше
-  // всех» и «ниже всех» внутри одного набора.
-  const ranked = useMemo(() => [...scored].sort((a, b) => b.avg - a.avg), [scored]);
-  const strongest = ranked.slice(0, HIGHLIGHT_COUNT);
-  const weakest = ranked.slice(-HIGHLIGHT_COUNT).reverse();
+  // Выделяем ИЗМЕНЕНИЕ за год, а не уровень: «средний балл 3.2» сам по себе
+  // ничего не говорит (шкала 1–5 и разные критерии живут в разных диапазонах),
+  // а «за год выросло на 0.9» и «почти не сдвинулось» — это уже разговор с
+  // завучем. Метрика ОДНА на оба конца: сверху самый большой прирост, снизу
+  // самый маленький (он же отрицательный, если критерий просел).
+  //
+  // Прошлого периода нет (первый год школы) — падаем на уровень: «нуждается в
+  // росте» тогда значит «ниже всех», и подпись под чартом это говорит прямо.
+  const byGrowth = useMemo(() => {
+    const withDelta = scored.filter((c) => c.delta !== null);
+    if (withDelta.length >= HIGHLIGHT_COUNT * 2) {
+      const sorted = [...withDelta].sort((a, b) => (b.delta as number) - (a.delta as number));
+      return { rows: sorted, byDelta: true };
+    }
+    return { rows: [...scored].sort((a, b) => b.avg - a.avg), byDelta: false };
+  }, [scored]);
+
+  const strongest = byGrowth.rows.slice(0, HIGHLIGHT_COUNT);
+  const weakest = byGrowth.rows.slice(-HIGHLIGHT_COUNT).reverse();
 
   const previousLabel =
     current.previous_period_year !== null && current.previous_period_month !== null
@@ -76,17 +99,10 @@ function SchoolAnalyticsBody({
       : null;
   const currentLabel = formatPeriod(current.period_year, current.period_month);
 
-  const trendPoints = data.periods.map((p) => ({
-    label: formatPeriod(p.period_year, p.period_month),
-    // На график идёт core_average — итог по общему ядру критериев. Если ядра
-    // нет вовсе (единственный период), берём итог периода: точка одна, и
-    // сравнивать её всё равно не с чем.
-    value: p.core_average ?? p.average,
-    note: `${p.students_with_results} учеников в диагностике`,
-    active: p.period_year === current.period_year && p.period_month === current.period_month,
-  }));
-
-  const [tableOpen, setTableOpen] = useState(false);
+  // Чарт или таблица — два ВИДА одного и того же, поэтому переключатель, а
+  // не отдельный сворачиваемый блок ниже: раньше таблица жила внизу страницы
+  // и читалась как другие данные, хотя цифры в ней те же самые.
+  const [view, setView] = useState<ProfileView>('chart');
 
   return (
     <>
@@ -95,21 +111,28 @@ function SchoolAnalyticsBody({
           {currentLabel} · {current.students_with_results} учеников в диагностике ·{' '}
           {current.campaigns_count} кампаний · состав на момент кампании
         </div>
+        {/* Периоды — чипы, как переключатели классов у учителя и детей у
+            родителя. Свои классы, а не .filter-chip со страниц админки:
+            тянуть стили экрана в общий компонент значило бы связать их через
+            CSS (то же решение, что у плиток профиля группы). */}
         {data.periods.length > 1 && (
-          <select
-            className="school-analytics__period"
-            value={`${current.period_year}-${current.period_month}`}
-            onChange={(e) => {
-              const [year, month] = e.target.value.split('-').map(Number);
-              onPeriodChange({ year, month });
-            }}
-          >
-            {[...data.periods].reverse().map((p) => (
-              <option key={`${p.period_year}-${p.period_month}`} value={`${p.period_year}-${p.period_month}`}>
-                {formatPeriod(p.period_year, p.period_month)}
-              </option>
-            ))}
-          </select>
+          <div className="school-periods" role="group" aria-label="Период диагностики">
+            {[...data.periods].reverse().map((p) => {
+              const active =
+                p.period_year === current.period_year && p.period_month === current.period_month;
+              return (
+                <button
+                  type="button"
+                  key={`${p.period_year}-${p.period_month}`}
+                  className={`school-period${active ? ' school-period--active' : ''}`}
+                  aria-pressed={active}
+                  onClick={() => onPeriodChange({ year: p.period_year, month: p.period_month })}
+                >
+                  {formatPeriod(p.period_year, p.period_month)}
+                </button>
+              );
+            })}
+          </div>
         )}
       </div>
 
@@ -140,97 +163,160 @@ function SchoolAnalyticsBody({
         </div>
       </div>
 
-      <div className="group-analytics__zones-title">Динамика по годам</div>
-      <div className="app-main__sub">
-        Средний балл школы по общему ядру критериев ({data.core_competencies.length} из{' '}
-        {current.competencies.length}) — только по тем, что мерили во всех периодах
+      {/* Две колонки на одной линии: слева «кто», справа «что». Это два
+          разреза одних и тех же данных, и смотрят их вместе — «класс просел»
+          и «просел вот этот критерий» складываются в один вывод, только если
+          видны разом. Узкий экран складывает их в столбик. */}
+      <div className="school-analytics__grid">
+        <section>
+          <div className="group-analytics__zones-title">Классы по среднему баллу</div>
+          <ClassBars rows={current.classes} schoolAverage={current.average} />
+        </section>
+
+        <section>
+          <div className="school-analytics__section-head">
+            <div className="group-analytics__zones-title">Профиль школы по критериям</div>
+            <div className="school-switch" role="group" aria-label="Вид профиля">
+              <button
+                type="button"
+                className={`school-switch__option${view === 'chart' ? ' school-switch__option--active' : ''}`}
+                onClick={() => setView('chart')}
+              >
+                Чарт
+              </button>
+              <button
+                type="button"
+                className={`school-switch__option${view === 'table' ? ' school-switch__option--active' : ''}`}
+                onClick={() => setView('table')}
+              >
+                Таблица
+              </button>
+            </div>
+          </div>
+
+          {view === 'chart' ? (
+            <SchoolRadar
+              competencies={current.competencies}
+              currentLabel={currentLabel}
+              previousLabel={previousLabel}
+              strongest={strongest}
+              weakest={weakest}
+              byDelta={byGrowth.byDelta}
+            />
+          ) : (
+            <CompetencyTable rows={current.competencies} previousLabel={previousLabel} />
+          )}
+        </section>
       </div>
-      <TrendChart points={trendPoints} />
-
-      <div className="school-analytics__columns">
-        <div>
-          <div className="group-analytics__zones-title">Сильнее всего</div>
-          <HighlightList rows={strongest} tone="above" />
-        </div>
-        <div>
-          <div className="group-analytics__zones-title">Слабее всего</div>
-          <HighlightList rows={weakest} tone="behind" />
-        </div>
-      </div>
-
-      {previousLabel && (
-        <>
-          <div className="group-analytics__zones-title">Как изменилась школа за год</div>
-          <div className="app-main__sub">
-            Критерий без второго столбика мерили только в этом периоде — сравнивать не с чем
-          </div>
-          <DynamicsChart
-            competencies={current.competencies.map((c) => ({
-              competency_id: c.competency_id,
-              code: c.code,
-              name: c.name,
-              overall_avg: c.avg,
-              previous_avg: c.previous_avg,
-              delta: c.delta,
-              in_core: c.delta !== null,
-            }))}
-            previousLabel={previousLabel}
-            currentLabel={currentLabel}
-          />
-        </>
-      )}
-
-      <div className="group-analytics__zones-title">Классы по среднему баллу</div>
-      <ClassBars rows={current.classes} schoolAverage={current.average} />
-
-      <Collapsible
-        title="Все критерии школы"
-        hint="Балл, самооценка, оценка окружающих и прирост к прошлому периоду"
-        open={tableOpen}
-        onToggle={() => setTableOpen((open) => !open)}
-      >
-        <CompetencyTable rows={current.competencies} previousLabel={previousLabel} />
-      </Collapsible>
-    </>
-  );
-}
-
-/** Верх и низ рейтинга критериев — та же строка, что у зон роста группы. */
-function HighlightList({
-  rows,
-  tone,
-}: {
-  rows: (SchoolCompetency & { avg: number })[];
-  tone: 'above' | 'behind';
-}) {
-  if (rows.length === 0) return <div className="app-main__sub">Данных пока нет</div>;
-
-  return (
-    <>
-      {rows.map((row) => (
-        <div className="growth-zone" key={row.competency_id}>
-          <div className={`growth-zone__score growth-zone__score--${tone}`}>
-            {row.avg.toFixed(1)}
-          </div>
-          <div className="growth-zone__name">{row.name}</div>
-          <div className="growth-zone__count">
-            {row.delta === null
-              ? 'новый критерий'
-              : `${row.delta > 0 ? '+' : ''}${row.delta.toFixed(1)} за год`}
-          </div>
-        </div>
-      ))}
     </>
   );
 }
 
 /**
+ * Профиль школы «этот год против прошлого» — тот же радар, что у класса и
+ * кейса (решение 7q: паутинка везде, где показывается профиль).
+ *
+ * Прошлый период рисуется пунктиром и серым, как «Школа» в профиле группы:
+ * это фон, с которым сравнивают, а не вторая равноправная серия.
+ *
+ * Ось остаётся и там, где значение есть только у одной из серий (критерий
+ * появился или закрылся между годами): выкинуть её значило бы спрятать
+ * реальный критерий этого года. Отсутствующую точку RadarChart кладёт на
+ * минимум шкалы, а в подсказке оси показывает «—», поэтому наведением видно,
+ * что данных нет; сноску под графиком про это убрали — экран сводки читают
+ * бегло, и абзац мелким текстом там только шумел.
+ *
+ * Выделение живёт НА ФИГУРЕ — точка на вершине и подпись оси в тот же цвет,
+ * без списка снизу: список повторял те же критерии второй раз, и глазами
+ * приходилось сопоставлять его с фигурой. Что значат цвета, говорит строка
+ * легенды под чартом — одна, а не блок.
+ */
+function SchoolRadar({
+  competencies,
+  currentLabel,
+  previousLabel,
+  strongest,
+  weakest,
+  byDelta,
+}: {
+  competencies: SchoolCompetency[];
+  currentLabel: string;
+  previousLabel: string | null;
+  strongest: ScoredCompetency[];
+  weakest: ScoredCompetency[];
+  /** Чем выделены оси: приростом за год или уровнем (первый год школы). */
+  byDelta: boolean;
+}) {
+  const scored = competencies.filter((c) => c.avg !== null || c.previous_avg !== null);
+  if (scored.length < 3) {
+    return <div className="app-main__sub">Критериев с баллом слишком мало для профиля</div>;
+  }
+
+  const series: RadarSeries[] = [
+    { label: currentLabel, values: scored.map((c) => c.avg), color: 'var(--blue)' },
+  ];
+  if (previousLabel) {
+    series.push({
+      label: previousLabel,
+      values: scored.map((c) => c.previous_avg),
+      color: '#a6a2a3',
+      dashed: true,
+    });
+  }
+
+  const strongIds = new Set(strongest.map((c) => c.competency_id));
+  const weakIds = new Set(weakest.map((c) => c.competency_id));
+  const axisTones: (RadarAxisTone | null)[] = scored.map((c) =>
+    weakIds.has(c.competency_id) ? 'weak' : strongIds.has(c.competency_id) ? 'strong' : null,
+  );
+
+  return (
+    <>
+      <RadarChart
+        axes={scored.map((c) => shortCompetencyName(c.code, c.name))}
+        axisTitles={scored.map((c) => c.name)}
+        axisTones={axisTones}
+        series={series}
+      />
+
+      <div className="school-radar__legend">
+        <span className="school-radar__legend-item">
+          <span className="school-radar__key school-radar__key--strong" />
+          {byDelta ? 'выросли сильнее всего' : 'выше всего'}
+        </span>
+        <span className="school-radar__legend-item">
+          <span className="school-radar__key school-radar__key--weak" />
+          {byDelta ? 'нуждаются в росте: прибавили меньше всех' : 'нуждаются в росте: ниже всего'}
+        </span>
+      </div>
+    </>
+  );
+}
+
+/** Как отсортированы классы. «По классу» — исходный порядок бэкенда
+ *  (5-1, 5-2, 6-1…). */
+type ClassSort = 'class' | 'average';
+
+/**
  * Классы по среднему баллу — горизонтальные полосы.
  *
- * Полоса от НУЛЯ, в отличие от линии динамики: длина здесь и есть значение,
- * а обрезанная база превратила бы разницу в 0.4 балла в двукратную. Порядок —
- * по возрастанию класса (5-1, 5-2, 6-1…), а не по баллу: это состав школы, а
- * не турнирная таблица, и искать в нём нужно свой класс.
+ * Полоса от НУЛЯ: длина здесь и есть значение, а обрезанная база превратила
+ * бы разницу в 0.4 балла в двукратную.
+ *
+ * На каждой полосе стоит засечка среднего по школе — с ней видно не только
+ * «кто выше кого», но и насколько класс отходит от школы; без неё полосы
+ * сравнивались только друг с другом. Засечка повторяется в каждой строке, а
+ * не рисуется одной линией поверх списка: строки одинаковой ширины, и
+ * повторённые метки складываются в ту же вертикаль, зато вёрстка не зависит
+ * от подгонки отступов под колонки.
+ *
+ * По умолчанию порядок — по возрастанию класса: чаще экран открывают, чтобы
+ * найти КОНКРЕТНЫЙ класс, а в рейтинге он каждый период на новом месте.
+ * Сортировка по баллу — по клику, и повторный клик её переворачивает: «кто
+ * слабее всех» и «кто сильнее всех» задают одинаково часто.
+ *
+ * Строка ведёт на страницу класса: сводка отвечает «где просело», а
+ * следующий вопрос всегда «а что там внутри».
  */
 function ClassBars({
   rows,
@@ -239,28 +325,87 @@ function ClassBars({
   rows: { class_id: number; class_label: string; students_with_results: number; average: number }[];
   schoolAverage: number;
 }) {
+  const [sort, setSort] = useState<ClassSort>('class');
+  const [descending, setDescending] = useState(true);
+
+  const sorted = useMemo(() => {
+    if (sort === 'class') return rows;
+    const byAverage = [...rows].sort((a, b) => a.average - b.average);
+    return descending ? byAverage.reverse() : byAverage;
+  }, [rows, sort, descending]);
+
   if (rows.length === 0) return <div className="app-main__sub">Классов с результатами нет</div>;
+
+  const pick = (next: ClassSort) => {
+    // Повторный клик по активной сортировке переворачивает её — отдельная
+    // кнопка направления ради двух состояний была бы лишним элементом.
+    if (next === sort && next === 'average') setDescending((prev) => !prev);
+    setSort(next);
+  };
+
+  const best = Math.max(...rows.map((r) => r.average));
 
   return (
     <div className="school-classes">
-      {rows.map((row) => (
-        <div className="school-classes__row" key={row.class_id}>
-          <div className="school-classes__label">{row.class_label}</div>
-          <div className="school-classes__track">
-            <div
-              className={`school-classes__bar${
-                row.average < schoolAverage ? ' school-classes__bar--below' : ''
-              }`}
-              style={{ width: `${(row.average / 5) * 100}%` }}
-            />
-          </div>
-          <div className="school-classes__value">{row.average.toFixed(2)}</div>
-          <div className="school-classes__count">{row.students_with_results} чел.</div>
-        </div>
-      ))}
-      <div className="app-main__sub">
-        Серым — классы ниже среднего по школе ({schoolAverage.toFixed(2)})
+      <div className="school-switch">
+        <button
+          type="button"
+          className={`school-switch__option${
+            sort === 'class' ? ' school-switch__option--active' : ''
+          }`}
+          onClick={() => pick('class')}
+        >
+          По классу
+        </button>
+        <button
+          type="button"
+          className={`school-switch__option${
+            sort === 'average' ? ' school-switch__option--active' : ''
+          }`}
+          onClick={() => pick('average')}
+        >
+          По баллу {sort === 'average' && (descending ? '↓' : '↑')}
+        </button>
       </div>
+
+      {sorted.map((row) => {
+        const delta = row.average - schoolAverage;
+        return (
+          <Link
+            className="school-classes__row"
+            key={row.class_id}
+            to="/admin/classes"
+            state={{ classId: row.class_id }}
+            // Охват уехал в подсказку: в узкой колонке пятая цифра съедала
+            // полосу, а «сколько учеников» спрашивают реже, чем «сколько
+            // баллов».
+            title={`${row.class_label}: ${row.students_with_results} учеников в диагностике — открыть класс`}
+          >
+            <div className="school-classes__label">{row.class_label}</div>
+            <div className="school-classes__track">
+              <div
+                className={`school-classes__bar${
+                  delta < 0 ? ' school-classes__bar--below' : ''
+                }${row.average === best ? ' school-classes__bar--best' : ''}`}
+                style={{ width: `${(row.average / 5) * 100}%` }}
+              />
+              <div
+                className="school-classes__mark"
+                style={{ left: `${(schoolAverage / 5) * 100}%` }}
+              />
+            </div>
+            <div className="school-classes__value">{row.average.toFixed(2)}</div>
+            <div
+              className={`school-classes__delta${
+                delta < 0 ? ' school-classes__delta--below' : ''
+              }`}
+            >
+              {delta > 0 ? '+' : delta < 0 ? '−' : '±'}
+              {Math.abs(delta).toFixed(2)}
+            </div>
+          </Link>
+        );
+      })}
     </div>
   );
 }
