@@ -899,7 +899,7 @@ async def get_school_results(
     self_scores = average_profiles([p.self_scores for p in current_profiles])
     others_scores = average_profiles([p.others_scores for p in current_profiles])
 
-    classes_out = await _school_classes_breakdown(
+    classes_out, cases_count = await _school_groups_breakdown(
         db,
         campaigns_by_period[current_period],
         profiles_by_period[current_period],
@@ -915,7 +915,11 @@ async def get_school_results(
             "previous_period_year": previous_period[0] if previous_period else None,
             "previous_period_month": previous_period[1] if previous_period else None,
             "students_with_results": len(current_profiles),
-            "campaigns_count": len(campaigns_by_period[current_period]),
+            # Кейсов в периоде: строки кружков в разрезе нет (участники из
+            # разных классов, «средний балл кейса» в одном ряду с классами
+            # сравнивался бы не с тем), но знать, что диагностика шла ещё и
+            # по кружкам, админу нужно.
+            "cases_with_results": cases_count,
             "average": sum(current_scores.values()) / len(current_scores),
             "core_average_delta": (
                 current_core_average - previous_core_average
@@ -941,12 +945,13 @@ async def get_school_results(
     }
 
 
-async def _school_classes_breakdown(
+async def _school_groups_breakdown(
     db: AsyncSession,
     campaign_ids: set[int],
     profiles_by_subject: dict[int, SubjectProfile],
-) -> list[dict]:
-    """Средний балл по классам за период — «какие классы сильнее».
+) -> tuple[list[dict], int]:
+    """Средний балл по классам за период («какие классы сильнее») и сколько
+    КЕЙСОВ в этом периоде дали результаты.
 
     Состав класса берём по СНАПШОТУ анкет, а не по нынешней привязке
     ученика: школа переиспользует строки классов из года в год, и по текущему
@@ -956,14 +961,17 @@ async def _school_classes_breakdown(
     разрез не попадает: строка «без класса» на этом экране ничего не
     объясняет, а в итог школы он всё равно уже вошёл.
     """
-    rows = await repo.class_snapshot_rows(db, campaign_ids)
+    rows = await repo.group_snapshot_rows(db, campaign_ids)
 
     grouped: dict[int, dict] = {}
-    for _campaign_id, subject_id, class_id, grade, section in rows:
-        if class_id is None:
-            continue
+    case_ids: set[int] = set()
+    for _campaign_id, subject_id, class_id, grade, section, case_id in rows:
         profile = profiles_by_subject.get(subject_id)
         if profile is None:
+            continue
+        if case_id is not None:
+            case_ids.add(case_id)
+        if class_id is None:
             continue
         group = grouped.setdefault(
             class_id,
@@ -993,4 +1001,4 @@ async def _school_classes_breakdown(
                 "average": sum(scores.values()) / len(scores),
             }
         )
-    return out
+    return out, len(case_ids)

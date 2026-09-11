@@ -3,14 +3,11 @@ import { Link } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 import { fetchSchoolResults } from '../../api/results';
 import { formatPeriod } from '../../data/period';
+import { withPlural } from '../../data/plural';
 import type { SchoolCompetency, SchoolResults } from '../../types/results';
 import { RadarChart } from '../charts/RadarChart';
 import type { RadarAxisTone, RadarSeries } from '../charts/RadarChart';
 import { shortCompetencyName } from '../../data/competencyShortNames';
-// Плитки над чартом и заголовки разделов — те же, что у профиля группы: это
-// одни и те же элементы интерфейса, и второй набор классов под них разошёлся
-// бы с первым при первой же правке.
-import './GroupProfile.css';
 import './SchoolAnalytics.css';
 
 /** Сколько осей выделять с каждого края. Две, а не три: критериев всего 11,
@@ -106,16 +103,16 @@ function SchoolAnalyticsBody({
 
   return (
     <>
-      <div className="school-analytics__head">
-        <div className="app-main__sub">
-          {currentLabel} · {current.students_with_results} учеников в диагностике ·{' '}
-          {current.campaigns_count} кампаний · состав на момент кампании
-        </div>
-        {/* Периоды — чипы, как переключатели классов у учителя и детей у
-            родителя. Свои классы, а не .filter-chip со страниц админки:
-            тянуть стили экрана в общий компонент значило бы связать их через
-            CSS (то же решение, что у плиток профиля группы). */}
-        {data.periods.length > 1 && (
+      {/* Периоды — чипы, как переключатели классов у учителя и детей у
+          родителя. Свои классы, а не .filter-chip со страниц админки: тянуть
+          стили экрана в общий компонент значило бы связать их через CSS.
+
+          Строки «Июнь 2026 · 136 учеников · 12 кампаний» над ними больше
+          нет: период назван активным чипом, охват — строкой ниже, а сколько
+          кампаний завели на период — техника проведения диагностики, она
+          видна на экране «Диагностика». */}
+      {data.periods.length > 1 && (
+        <div className="school-analytics__head">
           <div className="school-periods" role="group" aria-label="Период диагностики">
             {[...data.periods].reverse().map((p) => {
               const active =
@@ -133,33 +130,36 @@ function SchoolAnalyticsBody({
               );
             })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      <div className="group-analytics__tiles">
-        <div className="group-analytics__tile">
-          <div className="group-analytics__value group-analytics__value--blue">
-            {current.average.toFixed(2)}
-          </div>
-          <div className="group-analytics__label">Средний балл школы</div>
+      {/* Две строки вместо четырёх плиток: балл с приростом НА ОДНОЙ строке
+          (прирост без балла рядом нечитаем — «+0.37» само по себе не число,
+          а изменение), и одной строкой охват. Крупная цифра тут одна: на
+          сводке эти числа — контекст к графикам ниже, а не содержание. */}
+      <div className="school-stats">
+        <div className="school-stats__score">
+          <span className="school-stats__value">{current.average.toFixed(2)}</span>
+          {current.core_average_delta !== null && (
+            <span
+              className={`school-stats__delta${
+                current.core_average_delta > 0 ? ' school-stats__delta--up' : ''
+              }${current.core_average_delta < 0 ? ' school-stats__delta--down' : ''}`}
+            >
+              {current.core_average_delta > 0 ? '+' : current.core_average_delta < 0 ? '−' : '±'}
+              {Math.abs(current.core_average_delta).toFixed(2)}
+              {previousLabel ? ` к «${previousLabel}»` : ' за год'}
+            </span>
+          )}
+          <span className="school-stats__caption">средний балл школы</span>
         </div>
-        <div className="group-analytics__tile">
-          <div className="group-analytics__value">
-            {current.core_average_delta === null
-              ? '—'
-              : `${current.core_average_delta > 0 ? '+' : ''}${current.core_average_delta.toFixed(2)}`}
-          </div>
-          <div className="group-analytics__label">
-            {previousLabel ? `Динамика к «${previousLabel}»` : 'Динамика за год'}
-          </div>
-        </div>
-        <div className="group-analytics__tile">
-          <div className="group-analytics__value">{current.students_with_results}</div>
-          <div className="group-analytics__label">Учеников в диагностике</div>
-        </div>
-        <div className="group-analytics__tile">
-          <div className="group-analytics__value">{current.classes.length}</div>
-          <div className="group-analytics__label">Классов с результатами</div>
+
+        <div className="school-stats__coverage">
+          {withPlural(current.students_with_results, ['ученик', 'ученика', 'учеников'])} из{' '}
+          {withPlural(current.classes.length, ['класса', 'классов', 'классов'])}
+          {current.cases_with_results > 0 &&
+            ` и ${withPlural(current.cases_with_results, ['кейса', 'кейсов', 'кейсов'])}`}
+          {' — состав на момент кампании'}
         </div>
       </div>
 
@@ -169,13 +169,13 @@ function SchoolAnalyticsBody({
           видны разом. Узкий экран складывает их в столбик. */}
       <div className="school-analytics__grid">
         <section>
-          <div className="group-analytics__zones-title">Классы по среднему баллу</div>
+          <div className="school-analytics__title">Классы по среднему баллу</div>
           <ClassBars rows={current.classes} schoolAverage={current.average} />
         </section>
 
         <section>
           <div className="school-analytics__section-head">
-            <div className="group-analytics__zones-title">Профиль школы по критериям</div>
+            <div className="school-analytics__title">Профиль школы по критериям</div>
             <div className="school-switch" role="group" aria-label="Вид профиля">
               <button
                 type="button"
@@ -410,8 +410,32 @@ function ClassBars({
   );
 }
 
-/** Табличный вид тех же чисел: у диаграмм читается направление, а точные
- *  значения по слоям нужны, когда с ними идут разговаривать. */
+/** Колонка таблицы критериев: как её зовут и что из строки брать. */
+interface TableColumn {
+  key: string;
+  title: string;
+  /** Значение для сортировки. null — «нет данных», такие строки всегда внизу. */
+  value: (row: SchoolCompetency) => number | string | null;
+  /** Текст в ячейке. */
+  render: (row: SchoolCompetency) => string;
+}
+
+const SCORE_CELL = (value: number | null) => (value === null ? '—' : value.toFixed(2));
+
+/**
+ * Табличный вид тех же чисел: у диаграмм читается направление, а точные
+ * значения по слоям нужны, когда с ними идут разговаривать.
+ *
+ * Сортировка по любой колонке, три состояния по кругу: сначала «интересное
+ * сверху» (у чисел — по убыванию, у названия — по алфавиту), потом наоборот,
+ * потом обратно к порядку МЕТОДИКИ. Третье состояние нужно, потому что
+ * исходный порядок не случайный: критерии идут внутри своих «ОР / навык», и
+ * потерять эту группировку насовсем — потерять смысл списка.
+ *
+ * Пустые значения всегда внизу, в любом направлении: «—» это отсутствие
+ * данных, а не самое маленькое число. Иначе критерий, которого не было в
+ * прошлом году, возглавлял бы сортировку по приросту.
+ */
 function CompetencyTable({
   rows,
   previousLabel,
@@ -419,34 +443,103 @@ function CompetencyTable({
   rows: SchoolCompetency[];
   previousLabel: string | null;
 }) {
-  const cell = (value: number | null) => (value === null ? '—' : value.toFixed(2));
+  const [sort, setSort] = useState<{ key: string; descending: boolean } | null>(null);
+
+  const columns: TableColumn[] = [
+    { key: 'name', title: 'Критерий', value: (r) => r.name, render: (r) => r.name },
+    { key: 'avg', title: 'Итог', value: (r) => r.avg, render: (r) => SCORE_CELL(r.avg) },
+    {
+      key: 'self',
+      title: 'Самооценка',
+      value: (r) => r.self_avg,
+      render: (r) => SCORE_CELL(r.self_avg),
+    },
+    {
+      key: 'others',
+      title: 'Окружающие',
+      value: (r) => r.others_avg,
+      render: (r) => SCORE_CELL(r.others_avg),
+    },
+    {
+      key: 'previous',
+      title: previousLabel ?? 'Прошлый период',
+      value: (r) => r.previous_avg,
+      render: (r) => SCORE_CELL(r.previous_avg),
+    },
+    {
+      key: 'delta',
+      title: 'Прирост',
+      value: (r) => r.delta,
+      render: (r) => (r.delta === null ? '—' : `${r.delta > 0 ? '+' : ''}${r.delta.toFixed(2)}`),
+    },
+  ];
+
+  const sorted = useMemo(() => {
+    if (!sort) return rows;
+    const column = columns.find((c) => c.key === sort.key);
+    if (!column) return rows;
+
+    return [...rows].sort((a, b) => {
+      const left = column.value(a);
+      const right = column.value(b);
+      if (left === null || right === null) {
+        // Оба пустые — оставляем как есть (сортировка стабильная), иначе
+        // пустой всегда ниже, независимо от направления.
+        if (left === right) return 0;
+        return left === null ? 1 : -1;
+      }
+      const diff =
+        typeof left === 'string' && typeof right === 'string'
+          ? left.localeCompare(right, 'ru')
+          : (left as number) - (right as number);
+      return sort.descending ? -diff : diff;
+    });
+    // columns пересоздаются каждый рендер (в них замыкания на previousLabel),
+    // поэтому в зависимостях их нет — от сортировки зависят только rows и sort.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, sort]);
+
+  const toggle = (column: TableColumn) => {
+    setSort((prev) => {
+      // Первый клик: у чисел сверху большие, у названия — алфавит. Второй —
+      // наоборот. Третий — обратно к порядку методики.
+      const numeric = column.key !== 'name';
+      if (prev?.key !== column.key) return { key: column.key, descending: numeric };
+      if (prev.descending === numeric) return { key: column.key, descending: !numeric };
+      return null;
+    });
+  };
 
   return (
     <div className="school-table__scroll">
       <table className="admin-table school-table">
         <thead>
           <tr>
-            <th>Критерий</th>
-            <th>Итог</th>
-            <th>Самооценка</th>
-            <th>Окружающие</th>
-            <th>{previousLabel ?? 'Прошлый период'}</th>
-            <th>Прирост</th>
+            {columns.map((column) => {
+              const active = sort?.key === column.key;
+              return (
+                <th key={column.key} aria-sort={active ? (sort.descending ? 'descending' : 'ascending') : 'none'}>
+                  <button
+                    type="button"
+                    className={`school-table__sort${active ? ' school-table__sort--active' : ''}`}
+                    onClick={() => toggle(column)}
+                  >
+                    {column.title}
+                    <span className="school-table__arrow">
+                      {active ? (sort.descending ? '↓' : '↑') : ''}
+                    </span>
+                  </button>
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {sorted.map((row) => (
             <tr key={row.competency_id}>
-              <td>{row.name}</td>
-              <td>{cell(row.avg)}</td>
-              <td>{cell(row.self_avg)}</td>
-              <td>{cell(row.others_avg)}</td>
-              <td>{cell(row.previous_avg)}</td>
-              <td>
-                {row.delta === null
-                  ? '—'
-                  : `${row.delta > 0 ? '+' : ''}${row.delta.toFixed(2)}`}
-              </td>
+              {columns.map((column) => (
+                <td key={column.key}>{column.render(row)}</td>
+              ))}
             </tr>
           ))}
         </tbody>

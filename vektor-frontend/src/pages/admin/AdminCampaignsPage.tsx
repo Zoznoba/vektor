@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { Panel } from '../../components/ui/Panel';
 import { Button } from '../../components/ui/Button';
@@ -67,11 +67,17 @@ const STATUS_FILTERS: { key: CampaignStatus; label: string }[] = [
  */
 export function AdminCampaignsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const campaigns = useApi(fetchCampaigns);
   const classes = useApi(fetchClasses);
   // Кейсы — второй источник анкет наравне с классами (Этап 8).
   const cases = useApi(fetchCases);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  // Переход со сводки («идёт диагностика») кладёт id кампании в state — так
+  // сразу открывается нужная, а не первая по сортировке. Тот же приём, что у
+  // перехода в класс из карточки учителя.
+  const [selectedId, setSelectedId] = useState<number | null>(
+    () => (location.state as { campaignId?: number } | null)?.campaignId ?? null,
+  );
   const [showCreate, setShowCreate] = useState(false);
   // По умолчанию — только активные: это то, за чем админ обычно следит.
   const [statusFilter, setStatusFilter] = useState<Set<CampaignStatus>>(

@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
-import { Panel } from '../../components/ui/Panel';
 import { Collapsible } from '../../components/ui/Collapsible';
+import { ProgressBar } from '../../components/ui/ProgressBar';
 import { SchoolAnalytics } from '../../components/dashboard/SchoolAnalytics';
 import { useApi } from '../../hooks/useApi';
 import { useAuth } from '../../auth/AuthContext';
@@ -62,6 +62,44 @@ export function AdminDashboard() {
         </div>
       )}
 
+      {/* «Что сейчас идёт» — полоской СРАЗУ под заголовком, а не панелью
+          внизу экрана: это единственное на сводке, что требует действия
+          сегодня, а панель под длинной аналитикой требовала прокрутки, чтобы
+          узнать, идёт ли диагностика вообще. Строка на кампанию, клик ведёт
+          на «Диагностику» с открытой карточкой.
+
+          Активных нет — полоски нет вовсе: пустая строка «активных кампаний
+          нет» занимала бы место ради отсутствия новости. Пояснение, где их
+          заводят, осталось на самом экране «Диагностика». */}
+      {activeCampaigns.length > 0 && (
+        <div className="running-campaigns">
+          {activeCampaigns.map((c) => {
+            const percent =
+              c.total_assessments > 0 ? (c.completed_assessments / c.total_assessments) * 100 : 0;
+            return (
+              <Link
+                className="running-campaign"
+                key={c.id}
+                to="/admin/campaigns"
+                state={{ campaignId: c.id }}
+              >
+                <span className="running-campaign__dot" />
+                <span className="running-campaign__title">
+                  {c.title} · {formatPeriod(c.period_year, c.period_month)}
+                </span>
+                {/* Синяя, а не лаймовая: лайм в проекте — «выросло, хорошо»,
+                    а здесь полоса показывает ход работы, а не результат. */}
+                <ProgressBar value={percent} variant="blue" className="running-campaign__bar" />
+                <span className="running-campaign__counts">
+                  {c.completed_assessments} из {c.total_assessments} анкет
+                </span>
+                <span className="running-campaign__percent">{Math.round(percent)}%</span>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
       <div className="metric-grid">
         {metric(counts.students, 'Учеников', '/admin/users', { roleFilter: 'student' })}
         {metric(counts.teachers, 'Учителей', '/admin/users', { roleFilter: 'teacher' })}
@@ -87,28 +125,6 @@ export function AdminDashboard() {
         <SchoolAnalytics />
       </Collapsible>
 
-      <Panel title="Активные кампании 360°">
-        {campaigns.loading ? (
-          <div className="admin-empty">Загрузка…</div>
-        ) : activeCampaigns.length === 0 ? (
-          <div className="admin-empty">
-            Активных кампаний нет — создайте и запустите на странице «Диагностика»
-          </div>
-        ) : (
-          <div className="profile-rows">
-            {activeCampaigns.map((c) => (
-              <div className="profile-row" key={c.id}>
-                <span>
-                  {c.title} · {formatPeriod(c.period_year, c.period_month)}
-                </span>
-                <span>
-                  {c.completed_assessments} из {c.total_assessments} анкет
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </Panel>
     </AdminShell>
   );
 }

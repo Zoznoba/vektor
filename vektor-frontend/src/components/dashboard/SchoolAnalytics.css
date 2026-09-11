@@ -1,9 +1,79 @@
+/* Заголовок раздела внутри блока. Свой, а не .group-analytics__zones-title
+   из профиля группы: от того стиля здесь осталась одна строка, и тянуть ради
+   неё целый чужой файл значило бы связать два компонента через CSS. */
+.school-analytics__title {
+  margin-top: 18px;
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
 .school-analytics__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+/* Метрики сводки — две строки, а не плитки: на этом экране они контекст к
+   графикам ниже, а не содержание. Балл и прирост стоят РЯДОМ, потому что по
+   отдельности не читаются: «+0.37» без балла — не число, а изменение
+   неизвестно чего. */
+.school-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 14px;
+}
+
+.school-stats__score {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.school-stats__value {
+  font-family: var(--font-d);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--blue-ink);
+}
+
+/* Прирост — пилюля у самого балла: так видно, что это его изменение, а не
+   вторая самостоятельная цифра. */
+.school-stats__delta {
+  padding: 2px 9px;
+  border-radius: var(--r-pill);
+  background: var(--fog);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.school-stats__delta--up {
+  background: var(--lime-tint);
+  color: var(--lime-ink);
+}
+
+.school-stats__delta--down {
+  background: var(--amber-tint);
+  color: var(--amber-ink);
+}
+
+.school-stats__caption {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.school-stats__coverage {
+  font-size: 12px;
+  color: var(--ink-faint);
 }
 
 /* Переключатель периода — чипы-пилюли, как выбор класса у учителя и ребёнка
@@ -184,6 +254,44 @@
 .school-table th:not(:first-child) {
   text-align: right;
   white-space: nowrap;
+}
+
+/* Заголовок-кнопка: вся ячейка кликабельна, но выглядит как заголовок —
+   рамка и фон появились бы шестью кнопками в ряд поверх таблицы. */
+.school-table__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.school-table__sort:hover {
+  color: var(--ink);
+}
+
+.school-table__sort--active {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Стрелка держит своё место всегда: без этого заголовки дёргались бы по
+   ширине при каждом переключении сортировки. */
+.school-table__arrow {
+  display: inline-block;
+  min-width: 8px;
+  font-size: 11px;
+  color: var(--blue-ink);
+}
+
+/* Числовые колонки выровнены вправо — кнопка внутри th должна следовать за
+   выравниванием ячейки, иначе заголовок отъезжает от своих чисел. */
+.school-table th:not(:first-child) .school-table__sort {
+  flex-direction: row-reverse;
 }
 
 /* Сегментированный контрол — один на оба переключателя блока (вид профиля и

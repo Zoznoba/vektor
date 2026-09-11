@@ -630,15 +630,19 @@ async def closed_campaigns_by_period(db: AsyncSession) -> dict[tuple[int, int], 
     return periods
 
 
-async def class_snapshot_rows(
+async def group_snapshot_rows(
     db: AsyncSession, campaign_ids: set[int]
-) -> list[tuple[int, int, int | None, int | None, str | None]]:
-    """(campaign_id, subject_id, class_id, grade, section) по снапшоту анкет.
+) -> list[tuple[int, int, int | None, int | None, str | None, int | None]]:
+    """(campaign_id, subject_id, class_id, grade, section, case_id) по
+    снапшотам анкет.
 
-    Именно снапшот `Assessment.subject_class_id`, а не текущий класс ученика:
-    перевод в следующий класс — ежегодное событие, и по текущей привязке
-    прошлогодние баллы переехали бы в новый класс, исказив оба.
+    Именно снапшоты (`Assessment.subject_class_id` / `subject_case_id`), а не
+    текущая привязка ученика: перевод в следующий класс и смена кружка —
+    ежегодные события, и по текущему значению прошлогодние баллы переехали бы
+    в новую группу, исказив обе.
 
+    Класс и кейс в одной выборке, потому что читают их вместе: разрез по
+    классам и счётчик кейсов периода считаются из одних и тех же строк.
     Подпись класса приходит тем же запросом (outer join), чтобы сервис не
     ходил за классами вторым разом; None в grade/section — у анкет без
     класса вовсе.
@@ -653,6 +657,7 @@ async def class_snapshot_rows(
             Assessment.subject_class_id,
             SchoolClass.grade,
             SchoolClass.section,
+            Assessment.subject_case_id,
         )
         .outerjoin(SchoolClass, SchoolClass.id == Assessment.subject_class_id)
         .where(Assessment.campaign_id.in_(campaign_ids))

@@ -2224,6 +2224,32 @@ async def test_school_results_classes_breakdown(
     ]
 
 
+async def test_school_results_counts_cases_of_period(
+    client: AsyncClient, admin_headers, school_scenario, db_session
+) -> None:
+    """Кейсы периода считаются отдельным числом: строки в разрезе у них нет
+    (ученики кружка из разных классов, и средний балл кейса рядом с классами
+    сравнивался бы не с тем), но знать, что диагностика шла и по кружкам,
+    админу нужно."""
+    before = (await client.get("/results/school", headers=admin_headers)).json()
+    assert before["current"]["cases_with_results"] == 0
+
+    # Кейс проставляем прямо на анкетах: снапшот — это то, по какому
+    # основанию анкета выдана, и генерация его уже отработала.
+    kase = (
+        await client.post("/cases", json={"name": "Кружок счёта"}, headers=admin_headers)
+    ).json()
+    await db_session.execute(
+        sa_update(Assessment)
+        .where(Assessment.campaign_id == school_scenario["campaigns"][2026])
+        .values(subject_case_id=kase["id"])
+    )
+    await db_session.commit()
+
+    after = (await client.get("/results/school", headers=admin_headers)).json()
+    assert after["current"]["cases_with_results"] == 1
+
+
 async def test_school_results_empty_when_no_closed_campaigns(
     client: AsyncClient, admin_headers
 ) -> None:

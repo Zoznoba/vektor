@@ -269,7 +269,10 @@ export interface SchoolPeriodDetail {
   previous_period_year: number | null;
   previous_period_month: number | null;
   students_with_results: number;
-  campaigns_count: number;
+  /** Сколько кейсов участвовало в периоде. Отдельной строкой в разрезе их
+   *  нет: ученики кружка из разных классов, и «средний балл кейса» рядом с
+   *  классами сравнивался бы не с тем. */
+  cases_with_results: number;
   average: number;
   core_average_delta: number | null;
   competencies: SchoolCompetency[];

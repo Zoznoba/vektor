@@ -438,7 +438,10 @@ class SchoolPeriodDetailOut(BaseModel):
     previous_period_month: int | None
 
     students_with_results: int
-    campaigns_count: int
+    # Сколько КЕЙСОВ участвовало в периоде. Отдельной строкой в разрезе их
+    # нет: ученики кружка из разных классов, и «средний балл кейса» рядом с
+    # классами сравнивался бы не с тем.
+    cases_with_results: int
     average: float
     # Прирост итога к предыдущему периоду — по общему ядру ПАРЫ периодов.
     core_average_delta: float | None
