@@ -15,9 +15,14 @@ export interface AnswerIn {
   value: number;
 }
 
-export function submitAnswers(assessmentId: number, answers: AnswerIn[]): Promise<SubmitResult> {
+export function submitAnswers(
+  assessmentId: number,
+  answers: AnswerIn[],
+  options: { keepalive?: boolean } = {},
+): Promise<SubmitResult> {
   return apiRequest<SubmitResult>(`/assessments/${assessmentId}/answers`, {
     method: 'POST',
     body: { answers },
+    keepalive: options.keepalive,
   });
 }

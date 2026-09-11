@@ -9,7 +9,8 @@ import { DenseChapters } from '../../components/assessment/DenseChapters';
 import { AssessmentSummary } from '../../components/assessment/AssessmentSummary';
 import { useAuth } from '../../auth/AuthContext';
 import { ApiError } from '../../api/client';
-import { fetchAssessment, submitAnswers } from '../../api/assessments';
+import { fetchAssessment } from '../../api/assessments';
+import { useAnswerQueue } from './useAnswerQueue';
 import type { AssessmentDetail } from '../../types/assessment';
 import {
   firstIndexOfChapter,
@@ -24,7 +25,7 @@ type ViewMode = 'focus' | 'dense';
 /**
  * Экран прохождения анкеты 360 — открывается по клику «Заполнить»/«Продолжить»
  * с дашборда (StudentHome). Вопросы группируются по «ОР / навык» (см.
- * assessmentGrouping.ts), ответы сохраняются по одному сразу при выборе —
+ * assessmentGrouping.ts), ответы копятся в useAnswerQueue и уходят пачками —
  * bulk-эндпоинт (submit_answers, Этап 4d) принимает частичные пачки и
  * upsert'ит, так что «одна кнопка Сохранить» не нужна: последний ответ,
  * закрывающий анкету, сам переводит статус в completed.
@@ -49,11 +50,10 @@ export function AssessmentFillPage() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [pendingSaves, setPendingSaves] = useState(0);
   // true — человек вернулся из сводки перечитать ответы; сводка при этом не
   // показывается, хотя отвечено всё.
   const [reviewing, setReviewing] = useState(false);
+  const { enqueue, flush, saving, error: saveError } = useAnswerQueue(assessmentId);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +89,12 @@ export function AssessmentFillPage() {
   const totalCount = flat.length;
   const answeredCount = flat.filter((q) => answers[q.id] !== undefined).length;
   const allAnswered = totalCount > 0 && answeredCount === totalCount;
+
+  // Дошли до конца — не держим последнюю пачку в памяти вкладки: на сводке
+  // человек ждёт, что всё уже записано, и часто закрывает её сразу.
+  useEffect(() => {
+    if (allAnswered) flush();
+  }, [allAnswered, flush]);
   const showSummary = allAnswered && !reviewing;
   const location = locateInChapters(chapters, activeIndex);
   const currentChapter = chapters[location.chapterIndex];
@@ -98,15 +104,9 @@ export function AssessmentFillPage() {
 
   const answerQuestion = (questionId: number, value: number, advance: boolean) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
-    setSaveError(null);
-    setPendingSaves((n) => n + 1);
-    submitAnswers(assessmentId, [{ question_id: questionId, value }])
-      // Статус анкеты бэкенд считает сам; уводить со страницы по нему больше
-      // не нужно — финал показывает AssessmentSummary.
-      .catch((err: unknown) => {
-        setSaveError(err instanceof ApiError ? err.message : 'Не удалось сохранить ответ');
-      })
-      .finally(() => setPendingSaves((n) => n - 1));
+    // Статус анкеты бэкенд считает сам; уводить со страницы по нему больше
+    // не нужно — финал показывает AssessmentSummary.
+    enqueue(questionId, value);
 
     if (advance) {
       setActiveIndex((idx) => (idx < flat.length - 1 ? idx + 1 : idx));
@@ -199,8 +199,11 @@ export function AssessmentFillPage() {
                 name: c.name,
                 total: c.questions.length,
               }))}
-              saving={pendingSaves > 0}
-              onSubmit={() => navigate('/surveys')}
+              saving={saving}
+              onSubmit={() => {
+                flush();
+                navigate('/surveys');
+              }}
               onReview={() => setReviewing(true)}
               onSelectChapter={selectChapter}
             />
@@ -253,7 +256,7 @@ export function AssessmentFillPage() {
               ) : null}
 
               <div className="assessment-fill__status">
-                {pendingSaves > 0 ? (
+                {saving ? (
                   'Сохраняем…'
                 ) : (
                   <>

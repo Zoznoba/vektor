@@ -51,10 +51,17 @@ interface RequestOptions {
   body?: unknown;
   /** Запрос без Authorization-заголовка (логин, регистрация). */
   anonymous?: boolean;
+  /**
+   * Пережить закрытие страницы: браузер не убивает такой запрос вместе с
+   * вкладкой. Нужен автосохранению анкеты, которое досылает накопленное на
+   * pagehide. Тело такого запроса ограничено 64 КБ — для пачки ответов с
+   * запасом.
+   */
+  keepalive?: boolean;
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, anonymous = false } = options;
+  const { method = 'GET', body, anonymous = false, keepalive = false } = options;
 
   const headers: Record<string, string> = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -68,6 +75,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      keepalive,
     });
   } catch {
     throw new ApiError(0, 'Сервер недоступен. Проверьте соединение.');
